@@ -50,7 +50,11 @@ async def get_session_me(session: SessionDep, principal: PrincipalDep) -> dict:
 @router.get("/session/menus", response_model=Envelope[SessionMenus])
 async def get_session_menus(session: SessionDep, principal: PrincipalDep) -> dict:
     user = await _require_local_user(session, principal)
-    granted = await effective_menu_ids(session, user)
+    cached = principal.get("menu_ids")
+    if isinstance(cached, list):
+        granted = set(cached)
+    else:
+        granted = await effective_menu_ids(session, user)
     all_nodes = await session.execute(select(MenuNode))
     nodes_by_id = {node.id: node for node in all_nodes.scalars().all()}
     items = build_menu_tree(nodes_by_id, granted)

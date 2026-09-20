@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import hmac
@@ -41,6 +42,14 @@ def verify_password(plain: str, password_hash: str) -> bool:
     return hmac.compare_digest(actual, expected)
 
 
+async def hash_password_async(plain: str) -> str:
+    return await asyncio.to_thread(hash_password, plain)
+
+
+async def verify_password_async(plain: str, password_hash: str) -> bool:
+    return await asyncio.to_thread(verify_password, plain, password_hash)
+
+
 async def load_default_password(session: AsyncSession) -> str | None:
     """create / reset 用户空密码时用。登录验密走 authenticate_password。"""
     from sqlalchemy import select
@@ -60,4 +69,4 @@ async def hash_password_or_default(session: AsyncSession, plain: str | None) -> 
         if not configured:
             raise RuntimeError("缺少字典项 default_password（Q-PERM-5）")
         password = configured
-    return hash_password(password)
+    return await hash_password_async(password)

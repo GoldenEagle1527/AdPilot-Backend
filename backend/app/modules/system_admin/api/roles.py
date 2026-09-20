@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.envelope import ApiError, Envelope, success
 from app.core.pagination import PageData, PageParams, page_data, page_params
 from app.modules.system_admin.deps import MENU_ROLES, SessionDep, require_menu
+from app.modules.system_admin.domain.access import publish_acl_for_users, user_ids_holding_role
 from app.modules.system_admin.domain.models import DepartmentRole, Role, UserRole
 from app.modules.system_admin.schemas.common import IdEnabled
 from app.modules.system_admin.schemas.roles import (
@@ -148,4 +149,5 @@ async def set_role_status(
     role.enabled = body.enabled
     role.updated_at = datetime.now(timezone.utc)
     await session.commit()
+    await publish_acl_for_users(session, await user_ids_holding_role(session, role.id))
     return success({"id": role.id, "enabled": role.enabled})

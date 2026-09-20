@@ -67,6 +67,40 @@ class LoginHttpTests(unittest.TestCase):
         self.assertTrue(me_body["ok"])
         self.assertEqual(me_body["data"]["login_account"], "admin")
 
+    def test_admin_can_list_users_via_cached_menu(self) -> None:
+        login = self.client.post(
+            "/api/v1/auth/login",
+            json={"login_account": "admin", "password": "admin123"},
+        )
+        self.assertEqual(login.status_code, 200, login.text)
+        token = login.json()["data"]["token"]
+        users = self.client.get(
+            "/api/v1/system-admin/users",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        self.assertEqual(users.status_code, 200, users.text)
+        self.assertTrue(users.json()["ok"])
+
+        menus = self.client.get(
+            "/api/v1/system-admin/session/menus",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        self.assertEqual(menus.status_code, 200, menus.text)
+        self.assertTrue(menus.json()["data"]["items"])
+
+    def test_pitcher_cannot_list_users(self) -> None:
+        login = self.client.post(
+            "/api/v1/auth/login",
+            json={"login_account": "pitcher", "password": "pitcher123"},
+        )
+        self.assertEqual(login.status_code, 200, login.text)
+        token = login.json()["data"]["token"]
+        users = self.client.get(
+            "/api/v1/system-admin/users",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        self.assertEqual(users.status_code, 403, users.text)
+
     def test_wrong_password(self) -> None:
         login = self.client.post(
             "/api/v1/auth/login",

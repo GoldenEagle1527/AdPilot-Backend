@@ -53,6 +53,7 @@ def run() -> None:
         "app.main:app",
         host=settings.listen_host,
         port=settings.listen_port,
+        workers=settings.uvicorn_workers,
     )
 
 

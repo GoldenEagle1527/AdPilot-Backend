@@ -11,6 +11,7 @@ from sqlalchemy.orm import aliased, selectinload
 from app.core.envelope import ApiError, Envelope, success
 from app.core.pagination import PageData, PageParams, page_data, page_params
 from app.modules.system_admin.deps import MENU_USERS, SessionDep, require_menu
+from app.modules.system_admin.domain.access import publish_acl_for_users
 from app.modules.system_admin.domain.models import Department, DepartmentRole, Role, User
 from app.modules.system_admin.domain.password import hash_password_or_default
 from app.modules.system_admin.schemas.common import IdEnabled, UserListItem
@@ -199,6 +200,7 @@ async def update_user(
     user.role_kind = body.role_kind
     user.remark = body.remark
     await session.commit()
+    await publish_acl_for_users(session, [user_id])
     user = await get_user(session, user_id)
     roles = (await department_roles_by_dept(session, [user.department_id])).get(
         user.department_id, []
@@ -216,4 +218,5 @@ async def set_user_status(
     user = await get_user(session, user_id)
     user.enabled = body.enabled
     await session.commit()
+    await publish_acl_for_users(session, [user.id])
     return success({"id": user.id, "enabled": user.enabled})
