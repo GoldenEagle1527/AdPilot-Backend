@@ -28,3 +28,9 @@ uvicorn_workers: 2
 db_pool_size: 10
 db_pool_max_overflow: 10
 db_pool_timeout: 30
+
+changdu:
+  base_url: "https://openapi.changdupingtai.com"
+  distributor_id: "1876837880363144"
+  secret_key: "929mrilXUheJtfDnmRUApDr3BNgFmChZ"
+  sync_interval_seconds: 1800

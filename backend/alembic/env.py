@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from app.core.config import get_settings
 from app.core.db import Base
 import app.modules.system_admin.domain.models  # noqa: F401  注册表
+import app.modules.material.domain.models  # noqa: F401  注册表
 
 config = context.config
 
