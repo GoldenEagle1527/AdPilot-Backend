@@ -10,6 +10,12 @@ from app.modules.system_admin.domain.seed_data import (
     local_user_seed_rows,
     role_menu_seed_rows,
 )
+from app.modules.system_admin.domain.tags import (
+    DEPARTMENT_TAG_NAMES,
+    require_department_tag_name,
+    require_user_tag_name,
+)
+from app.modules.system_admin.schemas.departments import filter_departments
 
 
 class LocalMockSeedTests(unittest.TestCase):
@@ -36,6 +42,48 @@ class MenuTreeTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             require_menu()
         self.assertTrue(callable(require_menu(MENU_DEPARTMENTS, MENU_USERS)))
+
+
+class TagCatalogTests(unittest.TestCase):
+    def test_department_tags_are_closed(self) -> None:
+        self.assertEqual(DEPARTMENT_TAG_NAMES, ("投放部", "投放组", "素材部", "素材组"))
+        self.assertEqual(require_department_tag_name(" 投放部 "), "投放部")
+        with self.assertRaises(ValueError):
+            require_department_tag_name("财务部")
+
+    def test_user_tags_are_closed(self) -> None:
+        self.assertEqual(require_user_tag_name("投手"), "投手")
+        with self.assertRaises(ValueError):
+            require_user_tag_name("运营")
+
+
+class _Dept:
+    def __init__(self, id: str, name: str, parent_id: str | None = None, *, enabled: bool = True, deleted_at=None):
+        self.id = id
+        self.name = name
+        self.parent_id = parent_id
+        self.enabled = enabled
+        self.deleted_at = deleted_at
+        self.sort = 0
+        self.tags = []
+        self.roles = []
+
+
+class DepartmentFilterTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tree = [
+            _Dept("1", "投放部"),
+            _Dept("2", "投放一部", "1"),
+            _Dept("3", "素材部"),
+            _Dept("4", "已删", deleted_at="x"),
+        ]
+
+    def test_exact_id_keeps_ancestors_and_children(self) -> None:
+        got = {d.id for d in filter_departments(self.tree, None, None, "2")}
+        self.assertEqual(got, {"1", "2"})
+
+    def test_deleted_id_is_empty(self) -> None:
+        self.assertEqual(filter_departments(self.tree, None, None, "4"), [])
 
 
 if __name__ == "__main__":

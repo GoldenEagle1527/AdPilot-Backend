@@ -12,7 +12,8 @@ from app.modules.system_admin.domain.access import (
     effective_menu_ids,
     user_by_login,
 )
-from app.modules.system_admin.domain.models import MenuNode, UserDataScope
+from app.modules.system_admin.domain.models import MenuNode
+from app.modules.system_admin.domain.org import effective_data_scope
 from app.modules.system_admin.schemas.session import SessionDataScope, SessionMe, SessionMenus
 
 router = APIRouter(prefix="/api/v1/system-admin", tags=["system-admin"])
@@ -64,9 +65,11 @@ async def get_session_menus(session: SessionDep, principal: PrincipalDep) -> dic
 @router.get("/session/data-scope", response_model=Envelope[SessionDataScope])
 async def get_session_data_scope(session: SessionDep, principal: PrincipalDep) -> dict:
     user = await _require_local_user(session, principal)
-    rows = await session.execute(
-        select(UserDataScope.department_id)
-        .where(UserDataScope.user_id == user.id)
-        .order_by(UserDataScope.department_id)
+    self_only, department_ids = await effective_data_scope(session, user)
+    return success(
+        SessionDataScope(
+            department_ids=department_ids,
+            self_only=self_only,
+            user_id=user.id,
+        ).model_dump()
     )
-    return success(SessionDataScope(department_ids=[row[0] for row in rows.all()]).model_dump())

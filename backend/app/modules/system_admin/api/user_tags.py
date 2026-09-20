@@ -10,8 +10,9 @@ from app.core.envelope import ApiError, Envelope, success
 from app.modules.system_admin.api.users import get_user
 from app.modules.system_admin.deps import MENU_USERS, SessionDep, require_menu
 from app.modules.system_admin.domain.models import UserTag
-from app.modules.system_admin.schemas.common import IdTags, Tag, TagList
-from app.modules.system_admin.schemas.users import CreateUserTagRequest, SetUserTagsRequest
+from app.modules.system_admin.domain.tags import require_user_tag_name
+from app.modules.system_admin.schemas.common import BatchTagResult, IdTags, Tag, TagList
+from app.modules.system_admin.schemas.users import AddUserTagsRequest, CreateUserTagRequest, SetUserTagsRequest
 
 router = APIRouter(prefix="/api/v1/system-admin", tags=["system-admin"])
 
@@ -20,6 +21,16 @@ PrincipalDep = Annotated[dict[str, str], Depends(require_menu(MENU_USERS))]
 
 def _tag(item: UserTag) -> dict[str, str]:
     return {"id": item.id, "name": item.name}
+
+
+async def _tags_by_ids(session, tag_ids: list[str]) -> list[UserTag]:
+    unique_ids = list(dict.fromkeys(tag_ids))
+    result = await session.execute(select(UserTag).where(UserTag.id.in_(unique_ids)))
+    tags = {tag.id: tag for tag in result.scalars().all()}
+    missing = [tag_id for tag_id in unique_ids if tag_id not in tags]
+    if missing:
+        raise ApiError(404, "NOT_FOUND", "标签不存在")
+    return [tags[tag_id] for tag_id in unique_ids]
 
 
 @router.get("/user-tags", response_model=Envelope[TagList])
@@ -34,10 +45,14 @@ async def create_user_tag(
     session: SessionDep,
     _principal: PrincipalDep,
 ) -> dict:
-    existing = await session.execute(select(UserTag.id).where(UserTag.name == body.name))
+    try:
+        name = require_user_tag_name(body.name)
+    except ValueError as exc:
+        raise ApiError(422, "TAG_NOT_ALLOWED", str(exc)) from exc
+    existing = await session.execute(select(UserTag.id).where(UserTag.name == name))
     if existing.scalar_one_or_none() is not None:
         raise ApiError(409, "CONFLICT", "同名已存在")
-    tag = UserTag(name=body.name)
+    tag = UserTag(name=name)
     session.add(tag)
     try:
         await session.commit()
@@ -46,6 +61,27 @@ async def create_user_tag(
         raise ApiError(409, "CONFLICT", "同名已存在") from exc
     await session.refresh(tag)
     return success(_tag(tag))
+
+
+@router.put("/users/batch-tags", response_model=Envelope[BatchTagResult])
+async def add_user_tags(
+    body: AddUserTagsRequest,
+    session: SessionDep,
+    _principal: PrincipalDep,
+) -> dict:
+    tags = await _tags_by_ids(session, body.tag_ids)
+    for user_id in list(dict.fromkeys(body.user_ids)):
+        user = await get_user(session, user_id)
+        have = {t.id for t in user.tags}
+        user.tags = list(user.tags) + [t for t in tags if t.id not in have]
+    await session.commit()
+    items = []
+    for user_id in list(dict.fromkeys(body.user_ids)):
+        user = await get_user(session, user_id)
+        items.append(
+            {"id": user.id, "tags": [_tag(tag) for tag in sorted(user.tags, key=lambda t: t.id)]}
+        )
+    return success({"items": items})
 
 
 @router.put("/users/{user_id}/tags", response_model=Envelope[IdTags])
@@ -57,15 +93,21 @@ async def set_user_tags(
 ) -> dict:
     user = await get_user(session, user_id)
     unique_ids = list(dict.fromkeys(body.tag_ids))
-    if unique_ids:
-        result = await session.execute(select(UserTag).where(UserTag.id.in_(unique_ids)))
-        tags = {tag.id: tag for tag in result.scalars().all()}
-        missing = [tag_id for tag_id in unique_ids if tag_id not in tags]
-        if missing:
-            raise ApiError(404, "NOT_FOUND", "标签不存在")
-        user.tags = [tags[tag_id] for tag_id in unique_ids]
-    else:
-        user.tags = []
+    user.tags = await _tags_by_ids(session, unique_ids) if unique_ids else []
+    await session.commit()
+    user = await get_user(session, user_id)
+    return success({"id": user.id, "tags": [_tag(tag) for tag in sorted(user.tags, key=lambda t: t.id)]})
+
+
+@router.delete("/users/{user_id}/tags/{tag_id}", response_model=Envelope[IdTags])
+async def remove_user_tag(
+    user_id: str,
+    tag_id: str,
+    session: SessionDep,
+    _principal: PrincipalDep,
+) -> dict:
+    user = await get_user(session, user_id)
+    user.tags = [tag for tag in user.tags if tag.id != tag_id]
     await session.commit()
     user = await get_user(session, user_id)
     return success({"id": user.id, "tags": [_tag(tag) for tag in sorted(user.tags, key=lambda t: t.id)]})

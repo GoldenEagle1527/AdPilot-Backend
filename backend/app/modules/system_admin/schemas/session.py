@@ -33,3 +33,5 @@ class SessionMenus(BaseModel):
 
 class SessionDataScope(BaseModel):
     department_ids: list[str]
+    self_only: bool
+    user_id: str

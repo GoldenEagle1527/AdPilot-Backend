@@ -34,6 +34,7 @@ class Department(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
     tenant: Mapped[str] = mapped_column(String(64), nullable=False)
     created_at: Mapped[datetime] = mapped_column(_TS, nullable=False, server_default=func.now())
+    deleted_at: Mapped[datetime | None] = mapped_column(_TS, nullable=True)
 
     parent: Mapped[Department | None] = relationship(
         remote_side="Department.id", back_populates="children"
@@ -43,6 +44,9 @@ class Department(Base):
         secondary="department_tag_links", back_populates="departments"
     )
     users: Mapped[list[User]] = relationship(back_populates="department")
+    roles: Mapped[list[Role]] = relationship(
+        "Role", secondary="department_roles", viewonly=True
+    )
 
 
 class DepartmentTag(Base):
@@ -80,6 +84,7 @@ class Role(Base):
     updated_at: Mapped[datetime] = mapped_column(
         _TS, nullable=False, server_default=func.now(), onupdate=func.now()
     )
+    updated_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     menus: Mapped[list[MenuNode]] = relationship(secondary="role_menus", back_populates="roles")
 
@@ -106,6 +111,7 @@ class User(Base):
     remark: Mapped[str | None] = mapped_column(String(200), nullable=True)
     tenant: Mapped[str] = mapped_column(String(64), nullable=False)
     created_at: Mapped[datetime] = mapped_column(_TS, nullable=False, server_default=func.now())
+    deleted_at: Mapped[datetime | None] = mapped_column(_TS, nullable=True)
 
     department: Mapped[Department] = relationship(back_populates="users")
     tags: Mapped[list[UserTag]] = relationship(secondary="user_tag_links", back_populates="users")

@@ -1,10 +1,10 @@
 # 契约：list-roles
 
 业务id：system-admin
-文档版本：1
+文档版本：2
 方法：GET
 路径：/api/v1/system-admin/roles
-作用：分页列出角色主数据，并带上用户/部门关系计数。
+作用：分页列出角色主数据，并带上已分配用户（登录账号）与已分配部门。
 
 作者：调度者
 状态：accepted
@@ -42,8 +42,11 @@
 | enabled | boolean | |
 | created_at | string | |
 | updated_at | string | |
-| assigned_user_count | integer | 已挂该角色的用户数；关系计数，不是 Role 表字段 |
-| assigned_department_count | integer | 已挂该角色的部门数；关系计数，不是 Role 表字段 |
+| updated_by | string \| null | 最后一次改名称/备注/启停/菜单的登录账号 |
+| assigned_user_count | integer | 等于 `assigned_users.length` |
+| assigned_department_count | integer | 等于 `assigned_departments.length` |
+| assigned_users | `{ id, login_account, nickname }[]` | 已挂该**用户角色**的未删除用户 |
+| assigned_departments | RoleName[] | 已挂该角色的未删除部门 |
 
 ## 错误
 
@@ -62,4 +65,5 @@
 
 | 日期 | 文档版本 | 破坏？ | 变更 | 作者 |
 | --- | --- | --- | --- | --- |
+| 2026-09-20 | 2 | 否 | 增加 `updated_by`、已分配用户/部门名单 | 调度者 |
 | 2026-09-20 | 1 | 否 | 初稿 | 调度者 |

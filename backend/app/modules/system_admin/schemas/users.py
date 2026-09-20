@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 def iso8601_z(value: datetime) -> str:
@@ -79,7 +79,16 @@ class CreateUserTagRequest(BaseModel):
 
 
 class SetUserTagsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     tag_ids: list[str]
+
+
+class AddUserTagsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    user_ids: list[str] = Field(min_length=1)
+    tag_ids: list[str] = Field(min_length=1)
 
 
 class SetUserRolesRequest(BaseModel):
@@ -87,4 +96,18 @@ class SetUserRolesRequest(BaseModel):
 
 
 class SetUserDataScopeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     department_ids: list[str]
+
+
+class ResetPasswordRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    password: str = Field(min_length=1)
+    password_confirm: str = Field(min_length=1)
+
+    @field_validator("password", "password_confirm", mode="before")
+    @classmethod
+    def _strip_password(cls, value: object) -> object:
+        return value.strip() if isinstance(value, str) else value

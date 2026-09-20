@@ -1,7 +1,7 @@
 # 契约：create-role
 
 业务id：system-admin
-文档版本：1
+文档版本：2
 方法：POST
 路径：/api/v1/system-admin/roles
 作用：新增角色；默认启用，不接收 enabled。
@@ -33,6 +33,9 @@
 | updated_at | string | |
 | assigned_user_count | integer | 0 |
 | assigned_department_count | integer | 0 |
+| assigned_users | array | `[]` |
+| assigned_departments | array | `[]` |
+| updated_by | string | 创建人登录账号 |
 
 ## 错误
 
@@ -50,4 +53,5 @@
 
 | 日期 | 文档版本 | 破坏？ | 变更 | 作者 |
 | --- | --- | --- | --- | --- |
+| 2026-09-20 | 2 | 否 | 响应对齐 RoleListItem（更新人、已分配名单） | 调度者 |
 | 2026-09-20 | 1 | 否 | 初稿 | 调度者 |

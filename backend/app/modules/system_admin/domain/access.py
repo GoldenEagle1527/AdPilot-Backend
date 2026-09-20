@@ -14,6 +14,7 @@ from app.modules.system_admin.domain.models import (
     User,
     UserRole,
 )
+from app.modules.system_admin.domain.org import user_not_deleted
 from app.modules.system_admin.domain.password import verify_password_async
 from app.modules.system_admin.schemas.session import SessionMenuNode
 
@@ -28,7 +29,7 @@ async def user_by_login(session: AsyncSession, login_account: str) -> User | Non
     result = await session.execute(
         select(User)
         .options(selectinload(User.department))
-        .where(User.login_account == login_account)
+        .where(User.login_account == login_account, user_not_deleted())
     )
     return result.scalar_one_or_none()
 
@@ -53,7 +54,9 @@ async def authenticate_password(
     user = await user_by_login(session, login)
     if user is None and login:
         result = await session.execute(
-            select(User).where(User.phone == login, User.phone.is_not(None))
+            select(User).where(
+                User.phone == login, User.phone.is_not(None), user_not_deleted()
+            )
         )
         user = result.scalar_one_or_none()
     if user is None or not await verify_password_async(password, user.password_hash):
@@ -65,18 +68,22 @@ async def authenticate_password(
 
 async def user_ids_holding_role(session: AsyncSession, role_id: str) -> list[str]:
     user_rows = await session.execute(
-        select(UserRole.user_id).where(UserRole.role_id == role_id)
+        select(UserRole.user_id)
+        .join(User, User.id == UserRole.user_id)
+        .where(UserRole.role_id == role_id, user_not_deleted())
     )
     dept_rows = await session.execute(
         select(User.id)
         .join(DepartmentRole, DepartmentRole.department_id == User.department_id)
-        .where(DepartmentRole.role_id == role_id)
+        .where(DepartmentRole.role_id == role_id, user_not_deleted())
     )
     return list({row[0] for row in user_rows.all()} | {row[0] for row in dept_rows.all()})
 
 
 async def user_ids_in_department(session: AsyncSession, department_id: str) -> list[str]:
-    rows = await session.execute(select(User.id).where(User.department_id == department_id))
+    rows = await session.execute(
+        select(User.id).where(User.department_id == department_id, user_not_deleted())
+    )
     return [row[0] for row in rows.all()]
 
 
@@ -89,7 +96,7 @@ async def publish_acl_for_users(session: AsyncSession, user_ids: Iterable[str]) 
             continue
         seen.add(user_id)
         user = await session.get(User, user_id)
-        if user is None:
+        if user is None or user.deleted_at is not None:
             await drop_user_sessions(user_id)
             continue
         await rewrite_user_sessions(user_id, await session_principal(session, user))

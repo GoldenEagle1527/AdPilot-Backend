@@ -1,10 +1,10 @@
 # 契约：list-users
 
 业务id：system-admin
-文档版本：2
+文档版本：1
 方法：GET
 路径：/api/v1/system-admin/users
-作用：分页列出未删除用户，可按部门树（含子树）与主档条件筛选。
+作用：分页列出用户，可按部门树（含子树）与主档条件筛选。
 
 作者：调度者
 状态：accepted
@@ -16,15 +16,13 @@
 | --- | --- | --- | --- | --- |
 | department_id | query | string | 否 | 所属部门过滤 |
 | include_descendants | query | boolean | 否 | 默认 `true`。按树筛人时是否含该部门子孙；无 `department_id` 时忽略 |
-| nickname | query | string | 否 | 模糊 |
-| id | query | string | 否 | 用户 id **精确** |
-| login_account | query | string | 否 | 账号 **精确** |
-| phone | query | string | 否 | 手机号 **精确** |
-| enabled | query | boolean | 否 | 缺省=全部状态 |
+| nickname | query | string | 否 | |
+| login_account | query | string | 否 | |
+| enabled | query | boolean | 否 | |
 | page | query | integer | 否 | 从 1；缺省按全站分页约定 |
 | page_size | query | integer | 否 | 默认 20、上限 100 |
 
-无请求体。已软删用户不出现。
+无请求体。
 
 ## 响应
 
@@ -34,8 +32,6 @@
 | total | integer | |
 | page | integer | |
 | page_size | integer | |
-
-`data_scope` 为空数组表示仅本人。
 
 ## 错误
 
@@ -49,7 +45,8 @@
 
 ## 变更历史
 
+新记录插在最上行。破坏性变更须先把本文快照到 `_history/list-users-v<旧版本>.md`。
+
 | 日期 | 文档版本 | 破坏？ | 变更 | 作者 |
 | --- | --- | --- | --- | --- |
-| 2026-09-20 | 2 | 是 | `login_account` 改为精确；增加 `id` `phone` 精确条件；排除软删。快照 [_history/list-users-v1.md](_history/list-users-v1.md) | 调度者 |
 | 2026-09-20 | 1 | 否 | 初稿 | 调度者 |

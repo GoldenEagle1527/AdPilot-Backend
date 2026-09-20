@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
@@ -54,9 +55,9 @@ async def set_role_menus(
     role_id: str,
     body: SetRoleMenusBody,
     session: SessionDep,
-    _principal: PrincipalDep,
+    principal: PrincipalDep,
 ):
-    await _require_role(session, role_id)
+    role = await _require_role(session, role_id)
     menu_ids = _unique_keep_order(body.menu_ids)
     if menu_ids:
         found = set(
@@ -68,6 +69,9 @@ async def set_role_menus(
             raise ApiError(404, "NOT_FOUND", "菜单节点不存在")
     await session.execute(delete(RoleMenu).where(RoleMenu.role_id == role_id))
     session.add_all([RoleMenu(role_id=role_id, menu_id=mid) for mid in menu_ids])
+    role.updated_by = principal["login_account"]
+    role.updated_at = datetime.now(timezone.utc)
+    session.add(role)
     await session.commit()
     await publish_acl_for_users(session, await user_ids_holding_role(session, role_id))
     return success({"menu_ids": menu_ids})

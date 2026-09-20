@@ -6,6 +6,7 @@ from sqlalchemy import delete, select
 from app.core.envelope import ApiError, Envelope, success
 from app.modules.system_admin.deps import MENU_DEPARTMENTS, SessionDep, require_menu
 from app.modules.system_admin.domain import Department, DepartmentRole, Role
+from app.modules.system_admin.domain.org import department_not_deleted
 from app.modules.system_admin.domain.access import publish_acl_for_users, user_ids_in_department
 from app.modules.system_admin.schemas.common import RoleBriefList
 from app.modules.system_admin.schemas.departments import SetDepartmentRolesBody, role_brief
@@ -18,7 +19,9 @@ def _principal(user: dict[str, str] = Depends(require_menu(MENU_DEPARTMENTS))) -
 
 
 async def _require_department(session: SessionDep, department_id: str) -> Department:
-    dept = await session.get(Department, department_id)
+    dept = await session.scalar(
+        select(Department).where(Department.id == department_id, department_not_deleted())
+    )
     if dept is None:
         raise ApiError(404, "NOT_FOUND", "部门不存在")
     return dept

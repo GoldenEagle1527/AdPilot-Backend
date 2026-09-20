@@ -20,6 +20,12 @@ class RoleBrief(BaseModel):
     assigned_at: str | None
 
 
+class AssignedUser(BaseModel):
+    id: str
+    login_account: str
+    nickname: str
+
+
 class IdEnabled(BaseModel):
     id: str
     enabled: bool
@@ -48,7 +54,6 @@ class DepartmentIds(BaseModel):
 
 class PasswordResetData(BaseModel):
     reset: bool
-    password: str
 
 
 class DepartmentNode(BaseModel):
@@ -60,6 +65,7 @@ class DepartmentNode(BaseModel):
     tenant: str
     created_at: str
     tags: list[Tag]
+    roles: list[RoleName]
     children: list[DepartmentNode] = Field(default_factory=list)
 
 
@@ -99,6 +105,15 @@ class UserListItem(BaseModel):
     user_roles: list[RoleName]
     department_roles: list[RoleName]
     data_scope: list[RoleName]
+
+
+class BatchTagResult(BaseModel):
+    items: list[IdTags]
+
+
+class DeletedId(BaseModel):
+    id: str
+    deleted: bool
 
 
 class UserRolesData(BaseModel):
