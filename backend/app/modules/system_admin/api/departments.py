@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 from app.core.envelope import ApiError, Envelope, success
 from app.modules.system_admin.deps import MENU_DEPARTMENTS, SessionDep, require_menu
-from app.modules.system_admin.domain import Department
-from app.modules.system_admin.schemas.common import DepartmentNode, DepartmentTree, IdEnabled
+from app.modules.system_admin.domain import Department, User
+from app.modules.system_admin.domain.org import department_not_deleted, user_not_deleted
+from app.modules.system_admin.schemas.common import DeletedId, DepartmentNode, DepartmentTree, IdEnabled
 from app.modules.system_admin.schemas.departments import (
     CreateDepartmentBody,
     SetDepartmentStatusBody,
@@ -19,6 +22,8 @@ from app.modules.system_admin.schemas.departments import (
 
 router = APIRouter(prefix="/api/v1/system-admin", tags=["system-admin"])
 
+_DEPT_LOAD = (selectinload(Department.tags), selectinload(Department.roles))
+
 
 def _principal(user: dict[str, str] = Depends(require_menu(MENU_DEPARTMENTS))) -> dict[str, str]:
     return user
@@ -27,8 +32,8 @@ def _principal(user: dict[str, str] = Depends(require_menu(MENU_DEPARTMENTS))) -
 async def _get_department(session: SessionDep, department_id: str) -> Department:
     result = await session.scalars(
         select(Department)
-        .where(Department.id == department_id)
-        .options(selectinload(Department.tags))
+        .where(Department.id == department_id, department_not_deleted())
+        .options(*_DEPT_LOAD)
     )
     dept = result.first()
     if dept is None:
@@ -39,7 +44,9 @@ async def _get_department(session: SessionDep, department_id: str) -> Department
 async def _require_parent(session: SessionDep, parent_id: str | None) -> None:
     if parent_id is None:
         return
-    parent = await session.get(Department, parent_id)
+    parent = await session.scalar(
+        select(Department).where(Department.id == parent_id, department_not_deleted())
+    )
     if parent is None:
         raise ApiError(404, "NOT_FOUND", "父部门不存在")
 
@@ -56,7 +63,7 @@ async def _would_cycle(session: SessionDep, dept_id: str, parent_id: str | None)
             return True
         seen.add(cursor)
         parent = await session.get(Department, cursor)
-        if parent is None:
+        if parent is None or parent.deleted_at is not None:
             return False
         cursor = parent.parent_id
     return False
@@ -68,11 +75,14 @@ async def list_departments(
     _user: dict[str, str] = Depends(_principal),
     name: str | None = None,
     enabled: bool | None = None,
+    id: str | None = None,
 ):
     result = await session.scalars(
-        select(Department).options(selectinload(Department.tags))
+        select(Department).where(department_not_deleted()).options(*_DEPT_LOAD)
     )
-    items = build_department_tree(filter_departments(list(result.all()), name, enabled))
+    items = build_department_tree(
+        filter_departments(list(result.all()), name, enabled, id)
+    )
     return success({"items": items})
 
 
@@ -125,10 +135,39 @@ async def set_department_status(
     session: SessionDep,
     _user: dict[str, str] = Depends(_principal),
 ):
-    dept = await session.get(Department, id)
-    if dept is None:
-        raise ApiError(404, "NOT_FOUND", "部门不存在")
+    dept = await _get_department(session, id)
     dept.enabled = body.enabled
     session.add(dept)
     await session.commit()
     return success({"id": dept.id, "enabled": bool(dept.enabled)})
+
+
+@router.delete("/departments/{id}", response_model=Envelope[DeletedId])
+async def delete_department(
+    id: str,
+    session: SessionDep,
+    _user: dict[str, str] = Depends(_principal),
+):
+    dept = await _get_department(session, id)
+    child_n = int(
+        await session.scalar(
+            select(func.count())
+            .select_from(Department)
+            .where(Department.parent_id == id, department_not_deleted())
+        )
+        or 0
+    )
+    if child_n:
+        raise ApiError(409, "HAS_CHILDREN", "请先删除或挪走子部门")
+    member_n = int(
+        await session.scalar(
+            select(func.count()).select_from(User).where(User.department_id == id, user_not_deleted())
+        )
+        or 0
+    )
+    if member_n:
+        raise ApiError(409, "HAS_MEMBERS", "部门下仍有员工，请先把员工挪到其他部门")
+    dept.deleted_at = datetime.now(timezone.utc)
+    session.add(dept)
+    await session.commit()
+    return success({"id": dept.id, "deleted": True})

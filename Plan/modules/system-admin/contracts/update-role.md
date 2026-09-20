@@ -1,7 +1,7 @@
 # 契约：update-role
 
 业务id：system-admin
-文档版本：1
+文档版本：2
 方法：PUT
 路径：/api/v1/system-admin/roles/{id}
 作用：改角色名称与备注；不改 enabled。
@@ -22,7 +22,7 @@
 
 ## 响应
 
-`data` 为更新后的角色对象（字段同 list-roles 的 RoleListItem）。
+`data` 为更新后的角色对象（字段同 list-roles 的 RoleListItem，含 `updated_by` 与已分配名单）。
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
@@ -34,6 +34,9 @@
 | updated_at | string | |
 | assigned_user_count | integer | 关系计数，不是 Role 表字段 |
 | assigned_department_count | integer | 关系计数，不是 Role 表字段 |
+| assigned_users | array | |
+| assigned_departments | array | |
+| updated_by | string \| null | 本次操作者登录账号 |
 
 ## 错误
 
@@ -51,4 +54,5 @@
 
 | 日期 | 文档版本 | 破坏？ | 变更 | 作者 |
 | --- | --- | --- | --- | --- |
+| 2026-09-20 | 2 | 否 | 响应对齐 RoleListItem | 调度者 |
 | 2026-09-20 | 1 | 否 | 初稿 | 调度者 |

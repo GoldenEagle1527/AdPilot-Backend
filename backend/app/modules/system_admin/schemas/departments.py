@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.modules.system_admin.domain import Department, DepartmentTag, Role
+from app.modules.system_admin.schemas.common import RoleName
 
 
 def iso_z(dt: datetime) -> str:
@@ -21,6 +22,10 @@ def tag_item(tag: DepartmentTag) -> dict[str, str]:
 
 def department_node(dept: Department, *, children: list[dict] | None = None) -> dict:
     tags = [tag_item(t) for t in sorted(dept.tags, key=lambda t: (t.name, t.id))]
+    roles = [
+        RoleName(id=role.id, name=role.name).model_dump()
+        for role in sorted(dept.roles, key=lambda r: (r.name, r.id))
+    ]
     return {
         "id": dept.id,
         "name": dept.name,
@@ -30,6 +35,7 @@ def department_node(dept: Department, *, children: list[dict] | None = None) -> 
         "tenant": dept.tenant,
         "created_at": iso_z(dept.created_at),
         "tags": tags,
+        "roles": roles,
         "children": [] if children is None else children,
     }
 
@@ -47,11 +53,40 @@ def filter_departments(
     depts: list[Department],
     name: str | None,
     enabled: bool | None,
+    department_id: str | None = None,
 ) -> list[Department]:
     if enabled is not None:
         pool = [d for d in depts if d.enabled == enabled]
     else:
         pool = list(depts)
+    pool = [d for d in pool if d.deleted_at is None]
+
+    by_id = {d.id: d for d in depts}
+    children_of: dict[str | None, list[Department]] = {}
+    for dept in depts:
+        if dept.deleted_at is not None:
+            continue
+        children_of.setdefault(dept.parent_id, []).append(dept)
+
+    if department_id:
+        target = by_id.get(department_id)
+        if target is None or target.deleted_at is not None:
+            return []
+        keep: set[str] = {department_id}
+        stack = [department_id]
+        while stack:
+            current = stack.pop()
+            for child in children_of.get(current, []):
+                if child.id not in keep:
+                    keep.add(child.id)
+                    stack.append(child.id)
+        cursor = target.parent_id
+        while cursor:
+            keep.add(cursor)
+            parent = by_id.get(cursor)
+            cursor = parent.parent_id if parent is not None else None
+        pool = [d for d in pool if d.id in keep]
+
     if not name:
         return pool
 
@@ -126,6 +161,13 @@ class SetDepartmentTagsBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     tag_ids: list[str]
+
+
+class AddDepartmentTagsBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    department_ids: list[str] = Field(min_length=1)
+    tag_ids: list[str] = Field(min_length=1)
 
 
 class SetDepartmentRolesBody(BaseModel):

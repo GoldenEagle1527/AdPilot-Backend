@@ -1,20 +1,23 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import aliased, selectinload
+from sqlalchemy.orm import selectinload
 
+from app.core.auth import drop_user_sessions
 from app.core.envelope import ApiError, Envelope, success
 from app.core.pagination import PageData, PageParams, page_data, page_params
 from app.modules.system_admin.deps import MENU_USERS, SessionDep, require_menu
 from app.modules.system_admin.domain.access import publish_acl_for_users
 from app.modules.system_admin.domain.models import Department, DepartmentRole, Role, User
+from app.modules.system_admin.domain.org import department_subtree_ids, user_not_deleted
 from app.modules.system_admin.domain.password import hash_password_or_default
-from app.modules.system_admin.schemas.common import IdEnabled, UserListItem
+from app.modules.system_admin.schemas.common import DeletedId, IdEnabled, UserListItem
 from app.modules.system_admin.schemas.users import (
     CreateUserRequest,
     SetUserStatusRequest,
@@ -35,13 +38,15 @@ _USER_LOAD = (
 
 async def get_department(session: AsyncSession, department_id: str) -> Department:
     department = await session.get(Department, department_id)
-    if department is None:
+    if department is None or department.deleted_at is not None:
         raise ApiError(404, "NOT_FOUND", "部门不存在")
     return department
 
 
 async def get_user(session: AsyncSession, user_id: str) -> User:
-    result = await session.execute(select(User).options(*_USER_LOAD).where(User.id == user_id))
+    result = await session.execute(
+        select(User).options(*_USER_LOAD).where(User.id == user_id, user_not_deleted())
+    )
     user = result.scalar_one_or_none()
     if user is None:
         raise ApiError(404, "NOT_FOUND", "用户不存在")
@@ -87,18 +92,13 @@ def serialize_user(user: User, department_roles: list[Role] | None = None) -> di
         "tags": _named(sorted(user.tags, key=lambda tag: tag.id)),
         "user_roles": _named(sorted(user.roles, key=lambda role: role.id)),
         "department_roles": _named(roles),
-        "data_scope": _named(sorted(user.data_scope_departments, key=lambda dept: dept.id)),
+        "data_scope": _named(
+            sorted(
+                [dept for dept in user.data_scope_departments if dept.deleted_at is None],
+                key=lambda dept: dept.id,
+            )
+        ),
     }
-
-
-async def department_subtree_ids(session: AsyncSession, root_id: str) -> list[str]:
-    if await session.get(Department, root_id) is None:
-        return []
-    tree = select(Department.id).where(Department.id == root_id).cte(name="dept_tree", recursive=True)
-    child = aliased(Department)
-    tree = tree.union_all(select(child.id).where(child.parent_id == tree.c.id))
-    result = await session.execute(select(tree.c.id))
-    return list(result.scalars().all())
 
 
 @router.get("/users", response_model=Envelope[PageData[UserListItem]])
@@ -111,8 +111,12 @@ async def list_users(
     nickname: str | None = None,
     login_account: str | None = None,
     enabled: bool | None = None,
+    id: str | None = None,
+    phone: str | None = None,
 ) -> dict:
-    filters = []
+    filters = [user_not_deleted()]
+    if id:
+        filters.append(User.id == id.strip())
     if department_id:
         dept_ids = (
             await department_subtree_ids(session, department_id)
@@ -125,7 +129,9 @@ async def list_users(
     if nickname:
         filters.append(User.nickname.ilike(f"%{nickname.strip()}%"))
     if login_account:
-        filters.append(User.login_account.ilike(f"%{login_account.strip()}%"))
+        filters.append(User.login_account == login_account.strip())
+    if phone:
+        filters.append(User.phone == phone.strip())
     if enabled is not None:
         filters.append(User.enabled.is_(enabled))
 
@@ -220,3 +226,18 @@ async def set_user_status(
     await session.commit()
     await publish_acl_for_users(session, [user.id])
     return success({"id": user.id, "enabled": user.enabled})
+
+
+@router.delete("/users/{user_id}", response_model=Envelope[DeletedId])
+async def delete_user(
+    user_id: str,
+    session: SessionDep,
+    principal: PrincipalDep,
+) -> dict:
+    if principal["id"] == user_id:
+        raise ApiError(409, "CANNOT_DELETE_SELF", "不能删除当前登录账号")
+    user = await get_user(session, user_id)
+    user.deleted_at = datetime.now(timezone.utc)
+    await session.commit()
+    await drop_user_sessions(user_id)
+    return success({"id": user.id, "deleted": True})
