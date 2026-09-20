@@ -1,0 +1,44 @@
+# 开发栈：只拉 Harbor。112.12 不出现在这里。
+services:
+  postgres:
+    image: 192.168.111.40:88/group-one/postgres:18
+    environment:
+      POSTGRES_DB: ad_pilot
+      POSTGRES_USER: ad_pilot
+      POSTGRES_PASSWORD: ad_pilot
+    volumes:
+      - pgdata:/var/lib/postgresql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ad_pilot -d ad_pilot"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: 192.168.111.40:88/group-one/redis:7.2.16
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build:
+      context: .
+      dockerfile: dockerfile/backend.Dockerfile
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./deployment:/opt/adpilot/deployment:ro
+
+volumes:
+  pgdata:

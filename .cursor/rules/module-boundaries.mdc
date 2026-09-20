@@ -1,0 +1,19 @@
+---
+description: 业务包边界与授权落点。改 app/modules 时必守。
+globs: backend/app/modules/**/*.py
+alwaysApply: false
+---
+
+# 业务包边界
+
+一业务一个包：`app/modules/<snake>/`，包内再拆 `api/`、`schemas/`、`domain/`。  
+新业务加包 + `main.py` 一行 `include_router`。禁止全站 `app/routers`、`app/models`、`app/permissions.py`。
+
+禁止 `import` 另一包的 ORM、私有 schema、内部函数。  
+其它包若要鉴权，只许调 `system_admin` 公开窄口：`require_menu`、session 查询。禁止 import `system_admin.domain`。
+
+授权机器只住 `system_admin`：角色、菜单树、部门数据范围。禁止平行权限码、第二套权限台。菜单树里的投放/报表节点是数据，不要因此新建投放业务包或假 CRUD。
+
+登录态（Token）在 `core`。功能权限按角色勾菜单；数据权限是用户上的可见部门集合，不是若依 dataScope 档位。
+
+新业务先复制 `Plan/modules/_template/`，不要另起目录约定。

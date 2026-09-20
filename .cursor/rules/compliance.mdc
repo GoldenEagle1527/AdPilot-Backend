@@ -1,0 +1,14 @@
+---
+description: 公司规范：PG/Redis 版本、许可证、镜像、禁宝塔。加依赖或改部署时必守。
+alwaysApply: true
+---
+
+# 合规
+
+- PostgreSQL **18.x**，Redis **7.2.x**。`/api/v1/ready` 已校验主版本，不要绕过。
+- 许可证只准 MIT / Apache-2.0 / BSD-2/3 / ISC。禁止未批 GPL/AGPL/LGPL/EPL。**禁止 psycopg\***。
+- 加依赖：先核许可证，再改 `backend/pyproject.toml` 和 `backend/许可证.md`。
+- 禁止宝塔等非标面板。镜像只从 Harbor `192.168.111.40:88/group-one`。应用 Dockerfile 不要 `FROM postgres` / `FROM redis`。
+- 配置只读仓库根 `deployment/*.yaml`。开发旁路容器在 `docker-compose.yml`，不打进应用镜像。
+
+规范：`Plan/meta/公司研发规范.md`

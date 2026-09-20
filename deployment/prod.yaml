@@ -1,0 +1,19 @@
+# 生产共用库。开发不要用这份。
+listen_host: "0.0.0.0"
+listen_port: 8000
+
+cors_origins: []
+
+postgres:
+  host: "192.168.112.12"
+  port: 5432
+  database: "ad_pilot"
+  user: "ad_pilot"
+  password: "password"
+
+redis:
+  host: "192.168.112.12"
+  port: 6379
+  password: null
+
+api_base: "http://BACKEND_LAN_HOST:8000"

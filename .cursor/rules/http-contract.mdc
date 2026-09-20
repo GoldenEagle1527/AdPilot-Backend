@@ -1,0 +1,29 @@
+---
+description: HTTP 信封、鉴权头、OpenAPI 与对接短文。改接口时必守。
+globs: backend/app/**/*.py
+alwaysApply: false
+---
+
+# HTTP 与对接
+
+成功：`{ "ok": true, "data": ..., "error": null }`  
+失败：HTTP 4xx/5xx + `{ "ok": false, "data": null, "error": { "code": "SNAKE", "message": "一句话" } }`  
+分页 `data`：`{ items, total, page, page_size }`；`page` 从 1，`page_size` 默认 20、上限 100。树不分页，`data` 为 `{ items }`。
+
+除 `/api/v1/auth/login`、`/health`、`/ready`、`/openapi.json`、`/docs` 外，必须 `Authorization: Bearer`。禁止 Cookie 登录。用 `ApiError` / `success()`，不要裸返回业务 dict。
+
+主键 string；启停字段名 `enabled`（boolean）；时间 ISO-8601 UTC 带 `Z`。
+
+新接口或改对外字段时：给路由补 `response_model`（或等价 OpenAPI），使 `/openapi.json` 与行为一致。现有不少路由只返回 `dict`，再改这些接口时一并补上，不要再扩这个债。
+
+对外 HTTP 有变化（路径/方法/字段/错误码）必须发群对接短文，不要贴整份 schema：
+
+```
+【对接】YYYY-MM-DD
+类型：新增 / 变更 / 删除
+接口：METHOD /api/v1/...
+一句话：……
+拉规格：{API基址}/openapi.json
+```
+
+信封形状见 `Plan/architecture/信封与分页.md`。对接全文见 `Plan/backend/接口变更对接.md`。

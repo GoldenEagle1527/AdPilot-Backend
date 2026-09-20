@@ -1,0 +1,1147 @@
+[
+  {
+    "path": "总览",
+    "name": "总览",
+    "type": "目录",
+    "domain": "",
+    "tenant": "",
+    "roles": [],
+    "grantable": false
+  },
+  {
+    "path": "总览/巨量概览",
+    "name": "巨量概览",
+    "type": "菜单",
+    "domain": "报表域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "短剧投手",
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "数据报表",
+    "name": "数据报表",
+    "type": "目录",
+    "domain": "",
+    "tenant": "",
+    "roles": [],
+    "grantable": false
+  },
+  {
+    "path": "数据报表/漫剧报表",
+    "name": "漫剧报表",
+    "type": "目录",
+    "domain": "",
+    "tenant": "",
+    "roles": [],
+    "grantable": false
+  },
+  {
+    "path": "数据报表/漫剧报表/(免费)端原生短剧报表",
+    "name": "(免费)端原生短剧报表",
+    "type": "菜单",
+    "domain": "报表域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "短剧投手",
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "数据报表/漫剧报表/短剧NB统计",
+    "name": "短剧NB统计",
+    "type": "组件",
+    "domain": "报表域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "短剧投手",
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "数据报表/漫剧报表/(免费)端原生投手报表",
+    "name": "(免费)端原生投手报表",
+    "type": "菜单",
+    "domain": "报表域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "短剧投手",
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "数据报表/漫剧报表/(免费)端原生组报表",
+    "name": "(免费)端原生组报表",
+    "type": "菜单",
+    "domain": "报表域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "短剧投手",
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "数据报表/漫剧报表/(付费)端原生短剧报表",
+    "name": "(付费)端原生短剧报表",
+    "type": "菜单",
+    "domain": "报表域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "短剧投手",
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "数据报表/漫剧报表/(付费)端原生投手报表",
+    "name": "(付费)端原生投手报表",
+    "type": "菜单",
+    "domain": "报表域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "短剧投手",
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "数据报表/漫剧报表/(付费)端原生组报表",
+    "name": "(付费)端原生组报表",
+    "type": "菜单",
+    "domain": "报表域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "短剧投手",
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "数据报表/漫剧全域报表",
+    "name": "漫剧全域报表",
+    "type": "目录",
+    "domain": "",
+    "tenant": "",
+    "roles": [],
+    "grantable": false
+  },
+  {
+    "path": "数据报表/漫剧全域报表/短剧报表",
+    "name": "短剧报表",
+    "type": "菜单",
+    "domain": "报表域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "短剧投手",
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "数据报表/漫剧全域报表/投手报表",
+    "name": "投手报表",
+    "type": "菜单",
+    "domain": "报表域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "短剧投手",
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "数据报表/漫剧全域报表/组报表",
+    "name": "组报表",
+    "type": "菜单",
+    "domain": "报表域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "短剧投手",
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "数据报表/素材报表",
+    "name": "素材报表",
+    "type": "目录",
+    "domain": "",
+    "tenant": "",
+    "roles": [],
+    "grantable": false
+  },
+  {
+    "path": "数据报表/素材报表/素材消耗",
+    "name": "素材消耗",
+    "type": "菜单",
+    "domain": "报表域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "短剧投手",
+      "运营管理员",
+      "剪辑师"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "数据报表/素材报表/剪辑师消耗",
+    "name": "剪辑师消耗",
+    "type": "菜单",
+    "domain": "报表域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "短剧投手",
+      "运营管理员",
+      "剪辑师"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "数据报表/素材报表/素材报表",
+    "name": "素材报表",
+    "type": "菜单",
+    "domain": "报表域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "短剧投手",
+      "运营管理员",
+      "剪辑师"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "数据报表/素材报表/素材报表/未上NB新剧",
+    "name": "未上NB新剧",
+    "type": "组件",
+    "domain": "报表域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "短剧投手",
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "数据报表/素材报表/剪辑师统计",
+    "name": "剪辑师统计",
+    "type": "菜单",
+    "domain": "报表域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "短剧投手",
+      "运营管理员",
+      "剪辑师"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "数据报表/利润报表",
+    "name": "利润报表",
+    "type": "目录",
+    "domain": "",
+    "tenant": "",
+    "roles": [],
+    "grantable": false
+  },
+  {
+    "path": "数据报表/利润报表/利润统计概览",
+    "name": "利润统计概览",
+    "type": "菜单",
+    "domain": "报表域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "数据报表/利润报表/每日利润统计",
+    "name": "每日利润统计",
+    "type": "菜单",
+    "domain": "报表域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "短剧投手",
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "数据报表/利润报表/每日利润统计/编辑列",
+    "name": "编辑列",
+    "type": "组件",
+    "domain": "报表域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "数据报表/利润报表/每日利润统计/参数配置",
+    "name": "参数配置",
+    "type": "组件",
+    "domain": "报表域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "数据报表/利润报表/每日利润统计/盈亏运行",
+    "name": "盈亏运行",
+    "type": "组件",
+    "domain": "报表域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "数据报表/利润报表/投手利润统计",
+    "name": "投手利润统计",
+    "type": "菜单",
+    "domain": "报表域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "数据报表/利润报表/组利润统计",
+    "name": "组利润统计",
+    "type": "菜单",
+    "domain": "报表域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "智能投放",
+    "name": "智能投放",
+    "type": "目录",
+    "domain": "",
+    "tenant": "",
+    "roles": [],
+    "grantable": false
+  },
+  {
+    "path": "智能投放/巨量广告",
+    "name": "巨量广告",
+    "type": "目录",
+    "domain": "",
+    "tenant": "",
+    "roles": [],
+    "grantable": false
+  },
+  {
+    "path": "智能投放/巨量广告/账户",
+    "name": "账户",
+    "type": "菜单",
+    "domain": "推广域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "短剧投手",
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "智能投放/巨量广告/项目",
+    "name": "项目",
+    "type": "菜单",
+    "domain": "推广域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "短剧投手",
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "智能投放/巨量广告/广告",
+    "name": "广告",
+    "type": "菜单",
+    "domain": "推广域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "短剧投手",
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "智能投放/巨量广告/素材",
+    "name": "素材",
+    "type": "菜单",
+    "domain": "推广域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "短剧投手",
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "智能投放/巨量广告/全部广告",
+    "name": "全部广告",
+    "type": "菜单",
+    "domain": "推广域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "智能投放/巨量广告/全域项目",
+    "name": "全域项目",
+    "type": "菜单",
+    "domain": "推广域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "短剧投手",
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "智能投放/漫剧标准投放",
+    "name": "漫剧标准投放",
+    "type": "目录",
+    "domain": "",
+    "tenant": "",
+    "roles": [],
+    "grantable": false
+  },
+  {
+    "path": "智能投放/漫剧标准投放/(免费)端原生投放任务",
+    "name": "(免费)端原生投放任务",
+    "type": "菜单",
+    "domain": "推广域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "短剧投手",
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "智能投放/漫剧标准投放/(免费)端原生投放任务/端原生批量",
+    "name": "端原生批量",
+    "type": "组件",
+    "domain": "推广域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "短剧投手",
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "智能投放/漫剧标准投放/(免费)端原生投放任务/端原生模板批量",
+    "name": "端原生模板批量",
+    "type": "组件",
+    "domain": "推广域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "短剧投手",
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "智能投放/漫剧标准投放/(免费)端原生投放任务/半自动化投放",
+    "name": "半自动化投放",
+    "type": "组件",
+    "domain": "推广域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "短剧投手",
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "智能投放/漫剧标准投放/(免费)端原生投放任务/模板批量简化版",
+    "name": "模板批量简化版",
+    "type": "组件",
+    "domain": "推广域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "短剧投手",
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "智能投放/漫剧标准投放/(免费)端原生投放任务/端原生批量简化版",
+    "name": "端原生批量简化版",
+    "type": "组件",
+    "domain": "推广域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "短剧投手",
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "智能投放/漫剧标准投放/(免费)端原生模板管理",
+    "name": "(免费)端原生模板管理",
+    "type": "菜单",
+    "domain": "推广域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "运营管理员",
+      "组长角色"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "智能投放/漫剧标准投放/(付费)端原生投放任务",
+    "name": "(付费)端原生投放任务",
+    "type": "菜单",
+    "domain": "推广域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "短剧投手",
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "智能投放/漫剧标准投放/(付费)端原生投放任务/半自动化批量",
+    "name": "半自动化批量",
+    "type": "组件",
+    "domain": "推广域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "短剧投手",
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "智能投放/漫剧标准投放/(付费)端原生投放任务/模板批量简化版",
+    "name": "模板批量简化版",
+    "type": "组件",
+    "domain": "推广域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "短剧投手",
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "智能投放/漫剧标准投放/(付费)端原生投放任务/端原生批量简化版",
+    "name": "端原生批量简化版",
+    "type": "组件",
+    "domain": "推广域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "短剧投手",
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "智能投放/漫剧标准投放/(付费)端原生模板管理",
+    "name": "(付费)端原生模板管理",
+    "type": "菜单",
+    "domain": "推广域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "运营管理员",
+      "组长角色"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "智能投放/漫剧标准投放/(免费)端原生自动投放",
+    "name": "(免费)端原生自动投放",
+    "type": "菜单",
+    "domain": "推广域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "短剧投手",
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "智能投放/漫剧标准投放/(付费)端原生自动投放",
+    "name": "(付费)端原生自动投放",
+    "type": "菜单",
+    "domain": "推广域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "短剧投手",
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "智能投放/漫剧标准投放/漫剧同素材投放任务",
+    "name": "漫剧同素材投放任务",
+    "type": "菜单",
+    "domain": "推广域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "智能投放/漫剧标准投放/自动剪辑投放任务",
+    "name": "自动剪辑投放任务",
+    "type": "菜单",
+    "domain": "推广域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "智能投放/漫剧全域投放",
+    "name": "漫剧全域投放",
+    "type": "目录",
+    "domain": "",
+    "tenant": "",
+    "roles": [],
+    "grantable": false
+  },
+  {
+    "path": "智能投放/漫剧全域投放/端原生投放任务",
+    "name": "端原生投放任务",
+    "type": "菜单",
+    "domain": "推广域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "短剧投手",
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "智能投放/漫剧全域投放/端原生自动化投放",
+    "name": "端原生自动化投放",
+    "type": "菜单",
+    "domain": "推广域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "短剧投手",
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "智能投放/全域模板管理",
+    "name": "全域模板管理",
+    "type": "目录",
+    "domain": "",
+    "tenant": "",
+    "roles": [],
+    "grantable": false
+  },
+  {
+    "path": "智能投放/全域模板管理/漫剧模板",
+    "name": "漫剧模板",
+    "type": "目录",
+    "domain": "",
+    "tenant": "",
+    "roles": [],
+    "grantable": false
+  },
+  {
+    "path": "智能投放/全域模板管理/漫剧模板/全域模板管理",
+    "name": "全域模板管理",
+    "type": "菜单",
+    "domain": "推广域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "运营管理员",
+      "组长角色"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "智能投放/全域模板管理/漫剧模板/模板抖音号分配",
+    "name": "模板抖音号分配",
+    "type": "菜单",
+    "domain": "推广域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "短剧投手",
+      "运营管理员",
+      "组长角色"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "智能投放/全域模板管理/账户管理",
+    "name": "账户管理",
+    "type": "目录",
+    "domain": "",
+    "tenant": "",
+    "roles": [],
+    "grantable": false
+  },
+  {
+    "path": "智能投放/全域模板管理/账户管理/广告主账户",
+    "name": "广告主账户",
+    "type": "菜单",
+    "domain": "资产域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "智能投放/全域模板管理/账户管理/授权组织",
+    "name": "授权组织",
+    "type": "菜单",
+    "domain": "资产域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "智能投放/全域模板管理/账户管理/投放主体",
+    "name": "投放主体",
+    "type": "菜单",
+    "domain": "推广域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "智能投放/全域模板管理/账户管理/抖音号管理",
+    "name": "抖音号管理",
+    "type": "菜单",
+    "domain": "推广域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "智能投放/全域模板管理/账户管理/全域抖音号分配",
+    "name": "全域抖音号分配",
+    "type": "菜单",
+    "domain": "推广域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "智能投放/全域模板管理/账户管理/商品库管理",
+    "name": "商品库管理",
+    "type": "菜单",
+    "domain": "推广域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "智能投放/全域模板管理/标准自动投放策略",
+    "name": "标准自动投放策略",
+    "type": "目录",
+    "domain": "",
+    "tenant": "",
+    "roles": [],
+    "grantable": false
+  },
+  {
+    "path": "智能投放/全域模板管理/标准自动投放策略/自动关停",
+    "name": "自动关停",
+    "type": "菜单",
+    "domain": "推广域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "智能投放/全域模板管理/标准自动投放策略/小程序自动投放策略",
+    "name": "小程序自动投放策略",
+    "type": "菜单",
+    "domain": "推广域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "智能投放/全域模板管理/标准自动投放策略/端原生自动投放策略",
+    "name": "端原生自动投放策略",
+    "type": "菜单",
+    "domain": "推广域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "智能投放/全域模板管理/标准自动投放策略/端原生投手补广告",
+    "name": "端原生投手补广告",
+    "type": "菜单",
+    "domain": "推广域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "智能投放/全域模板管理/标准自动投放策略/端原生补广告规则",
+    "name": "端原生补广告规则",
+    "type": "菜单",
+    "domain": "推广域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "智能投放/全域模板管理/标准自动投放策略/端原生补广告日志",
+    "name": "端原生补广告日志",
+    "type": "菜单",
+    "domain": "推广域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "智能投放/全域模板管理/标准自动投放策略/(免费)漫剧端原生机器人",
+    "name": "(免费)漫剧端原生机器人",
+    "type": "菜单",
+    "domain": "推广域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "短剧投手",
+      "运营管理员",
+      "机器人建推广链"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "智能投放/全域模板管理/标准自动投放策略/(付费)漫剧端原生机器人",
+    "name": "(付费)漫剧端原生机器人",
+    "type": "菜单",
+    "domain": "推广域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "智能投放/全域模板管理/全域自动投放策略",
+    "name": "全域自动投放策略",
+    "type": "目录",
+    "domain": "",
+    "tenant": "",
+    "roles": [],
+    "grantable": false
+  },
+  {
+    "path": "智能投放/全域模板管理/全域自动投放策略/自动投放策略",
+    "name": "自动投放策略",
+    "type": "菜单",
+    "domain": "推广域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "智能投放/全域模板管理/全域自动投放策略/漫剧机器人",
+    "name": "漫剧机器人",
+    "type": "菜单",
+    "domain": "推广域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "短剧投手",
+      "运营管理员",
+      "机器人建推广链"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "智能投放/全域模板管理/三方剧场",
+    "name": "三方剧场",
+    "type": "目录",
+    "domain": "",
+    "tenant": "代理商租户类型",
+    "roles": [],
+    "grantable": false
+  },
+  {
+    "path": "智能投放/全域模板管理/三方剧场/平台列表",
+    "name": "平台列表",
+    "type": "菜单",
+    "domain": "推广域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "智能投放/全域模板管理/三方剧场/平台管理",
+    "name": "平台管理",
+    "type": "菜单",
+    "domain": "推广域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "智能投放/全域模板管理/三方剧场/应用列表",
+    "name": "应用列表",
+    "type": "菜单",
+    "domain": "推广域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "智能投放/全域模板管理/三方剧场/端原生推广链",
+    "name": "端原生推广链",
+    "type": "菜单",
+    "domain": "推广域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "短剧投手",
+      "运营管理员",
+      "剪辑师"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "智能投放/全域模板管理/三方剧场/番茄推广链接同步",
+    "name": "番茄推广链接同步",
+    "type": "菜单",
+    "domain": "推广域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "短剧投手",
+      "运营管理员",
+      "剪辑师"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "智能投放/全域模板管理/三方剧场/机器人剪辑",
+    "name": "机器人剪辑",
+    "type": "菜单",
+    "domain": "推广域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "素材管理",
+    "name": "素材管理",
+    "type": "目录",
+    "domain": "",
+    "tenant": "",
+    "roles": [],
+    "grantable": false
+  },
+  {
+    "path": "素材管理/视频",
+    "name": "视频",
+    "type": "菜单",
+    "domain": "素材域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "短剧投手",
+      "运营管理员",
+      "剪辑师"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "素材管理/视频/批量删除",
+    "name": "批量删除",
+    "type": "组件",
+    "domain": "素材域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "短剧投手",
+      "运营管理员",
+      "剪辑师"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "素材管理/视频/添加高光视频",
+    "name": "添加高光视频",
+    "type": "组件",
+    "domain": "素材域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "短剧投手",
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "素材管理/标题",
+    "name": "标题",
+    "type": "菜单",
+    "domain": "素材域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "短剧投手",
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "素材管理/标题/批量删除",
+    "name": "批量删除",
+    "type": "组件",
+    "domain": "素材域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "短剧投手",
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "素材管理/标题/添加标题分类",
+    "name": "添加标题分类",
+    "type": "组件",
+    "domain": "素材域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "素材管理/漫剧流转剧库",
+    "name": "漫剧流转剧库",
+    "type": "菜单",
+    "domain": "素材域",
+    "tenant": "代理商租户类型",
+    "roles": [
+      "短剧投手",
+      "运营管理员",
+      "剪辑师"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "系统管理",
+    "name": "系统管理",
+    "type": "目录",
+    "domain": "平台管理",
+    "tenant": "系统租户类型",
+    "roles": [],
+    "grantable": false
+  },
+  {
+    "path": "系统管理/组织管理",
+    "name": "组织管理",
+    "type": "目录",
+    "domain": "平台管理",
+    "tenant": "",
+    "roles": [],
+    "grantable": false
+  },
+  {
+    "path": "系统管理/组织管理/部门管理",
+    "name": "部门管理",
+    "type": "菜单",
+    "domain": "平台管理",
+    "tenant": "",
+    "roles": [
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "系统管理/权限管理",
+    "name": "权限管理",
+    "type": "目录",
+    "domain": "平台管理",
+    "tenant": "系统租户类型",
+    "roles": [],
+    "grantable": false
+  },
+  {
+    "path": "系统管理/权限管理/角色管理",
+    "name": "角色管理",
+    "type": "菜单",
+    "domain": "平台管理",
+    "tenant": "系统租户类型",
+    "roles": [
+      "运营管理员"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "系统管理/权限管理/用户管理",
+    "name": "用户管理",
+    "type": "菜单",
+    "domain": "平台管理",
+    "tenant": "系统租户类型",
+    "roles": [
+      "运营管理员",
+      "用户管理"
+    ],
+    "grantable": true
+  },
+  {
+    "path": "系统管理/权限管理/权限角色查询",
+    "name": "权限角色查询",
+    "type": "菜单",
+    "domain": "平台管理",
+    "tenant": "",
+    "roles": [
+      "运营管理员"
+    ],
+    "grantable": true
+  }
+]

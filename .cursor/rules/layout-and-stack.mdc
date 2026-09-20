@@ -1,0 +1,24 @@
+---
+description: AdPilot 后端目录与栈。改启动、core、依赖或部署时必守。
+alwaysApply: true
+---
+
+# 目录与栈
+
+本仓只跑 FastAPI API。不要托管前端静态页，不要假定浏览器同源。
+
+```
+backend/app/main.py          # 只 create_app + include_router
+backend/app/core/            # 配置、信封、分页、CORS、DB、Redis、登录态
+backend/app/modules/<pkg>/   # 一业务一包（现有 system_admin）
+deployment/*.yaml            # 唯一配置源；禁止 dotenv
+```
+
+栈锁死：FastAPI、SQLAlchemy 2 asyncio、asyncpg、Alembic、PyYAML。禁止换 ORM/驱动，禁止 psycopg*。
+
+`core` 只准：启动、读 yaml、CORS、信封/分页、engine/session、Redis 客户端、Header Token（登录 mock 已在 `core/auth.py`）。  
+禁止把 User/Role/Department/MenuNode 或授权计算放进 `core`。登录回答「谁来了」，授权在 `system_admin`。
+
+开发用本机 Compose（`deployment/dev.yaml` + `docker-compose.yml`）。不要连 `192.168.112.12`，那是生产 `prod.yaml`。
+
+细则：`Plan/architecture/共享白名单.md`、`Plan/decisions/0014-后端定版.md`、`Plan/decisions/0020-本地Docker开发.md`
