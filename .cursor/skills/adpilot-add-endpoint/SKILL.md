@@ -29,7 +29,7 @@ async def list_things(session: SessionDep, _user: dict = Depends(current_princip
 5. 对外错误用 `ApiError(status, "CODE", "一句话")`。共用码：`UNAUTHORIZED` `FORBIDDEN` `VALIDATION_ERROR` `NOT_FOUND` `INTERNAL_ERROR`。业务特有码写在该契约「错误」表，不要在 `core` 枚举业务名词。
 6. **补 `response_model` 或把 `data` 做成 Pydantic 再 `success(...)`**，让 `/openapi.json` 看得到字段。现有大量 `-> dict` 是债，新接口不要学。
 7. 列表走 `app.core.pagination.page_params` / `page_data`。树返回 `{ items }`，不分页。
-8. 时间用 UTC `Z`（包内已有 `iso8601_z` / `iso_z`，不要再发明格式）。启停字段名 `enabled`。
+8. 时间用 UTC `Z`：`from app.core.times import iso8601_z`。主键 `from app.core.ids import new_id`。不要在业务包再抄一份。启停字段名 `enabled`。
 9. `system_admin` 的 `__init__.py` 已集中 `include_router`；新文件要挂上去。
 10. 做完发对接短文（见 rule `http-contract`）。不要贴 OpenAPI JSON。
 

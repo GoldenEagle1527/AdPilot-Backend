@@ -16,7 +16,7 @@ deployment/*.yaml            # 唯一配置源；禁止 dotenv
 
 栈锁死：FastAPI、SQLAlchemy 2 asyncio、asyncpg、Alembic、PyYAML。禁止换 ORM/驱动，禁止 psycopg*。
 
-`core` 只准：启动、读 yaml、CORS、信封/分页、engine/session、Redis 客户端、Header Token。  
+`core` 只准：启动、读 yaml、CORS、信封/分页、engine/session、Redis 客户端、Header Token、主键 `new_id`、时间 `iso8601_z`。  
 登录查库（窄口在 `system_admin`），Token 存 Redis。禁止把 User/Role/Department/MenuNode 或授权计算放进 `core`。登录回答「谁来了」，授权在 `system_admin`。
 
 开发用本机 Compose（`deployment/dev.yaml` + `docker-compose.yml`）。不要连 `192.168.112.12`，那是生产 `prod.yaml`。

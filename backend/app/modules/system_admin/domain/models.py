@@ -15,8 +15,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.ids import new_id
 from app.modules.system_admin.domain.base import Base
-from app.modules.system_admin.domain.ids import new_id
 
 _ID = String(32)
 _TS = DateTime(timezone=True)

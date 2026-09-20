@@ -38,7 +38,28 @@ services:
       redis:
         condition: service_healthy
     volumes:
+      - ./backend:/opt/adpilot/backend
       - ./deployment:/opt/adpilot/deployment:ro
+
+  # 本机 Windows 上 asyncpg 走端口映射常被掐断；测试进同一 Compose 网。
+  test:
+    build:
+      context: .
+      dockerfile: dockerfile/backend.Dockerfile
+    working_dir: /opt/adpilot/backend
+    environment:
+      ADPILOT_ENV: dev
+      PYTHONPATH: /opt/adpilot/backend
+    volumes:
+      - ./backend:/opt/adpilot/backend
+      - ./deployment:/opt/adpilot/deployment:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    profiles: ["test"]
+    command: ["sh", "-c", "alembic upgrade head && python -m unittest discover -s tests -v"]
 
 volumes:
   pgdata:

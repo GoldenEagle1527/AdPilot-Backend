@@ -6,7 +6,6 @@ from app.modules.system_admin.schemas.users import (
     SetUserStatusRequest,
     SetUserTagsRequest,
     UpdateUserRequest,
-    iso8601_z,
 )
 
 __all__ = [
@@ -17,5 +16,4 @@ __all__ = [
     "SetUserStatusRequest",
     "SetUserTagsRequest",
     "UpdateUserRequest",
-    "iso8601_z",
 ]
