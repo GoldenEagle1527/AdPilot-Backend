@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import get_token_user, require_token
+from app.core.auth import require_token
 from app.core.db import get_session
 from app.core.envelope import ApiError
 from app.modules.system_admin.domain.access import (
@@ -18,30 +18,35 @@ from app.modules.system_admin.domain.access import (
 )
 
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
-TokenDep = Annotated[str, Depends(require_token)]
+PrincipalDep = Annotated[dict[str, Any], Depends(require_token)]
 
 
-async def current_principal(token: TokenDep) -> dict[str, str]:
-    user = await get_token_user(token)
-    if user is None:
-        raise ApiError(401, "UNAUTHORIZED", "未带或 Token 无效")
-    return user
+async def current_principal(principal: PrincipalDep) -> dict[str, Any]:
+    return principal
 
 
 def require_menu(*menu_ids: str):
-    """其它业务包只许调这个窄口。任一节点在有效菜单里即通过。"""
+    """其它业务包只许调这个窄口。任一节点在有效菜单里即通过。优先用会话里缓存的 menu_ids。"""
     if not menu_ids:
         raise ValueError("require_menu 至少要一个菜单节点 id")
+    needed = frozenset(menu_ids)
 
     async def _check(
         session: SessionDep,
-        principal: Annotated[dict[str, str], Depends(current_principal)],
-    ) -> dict[str, str]:
-        user = await user_by_login(session, principal["login_account"])
-        if user is None or not user.enabled:
+        principal: PrincipalDep,
+    ) -> dict[str, Any]:
+        granted = principal.get("menu_ids")
+        enabled = principal.get("enabled")
+        if not isinstance(granted, list) or enabled is None:
+            user = await user_by_login(session, str(principal["login_account"]))
+            if user is None or not user.enabled:
+                raise ApiError(403, "FORBIDDEN", "已登录但无对应菜单或组件")
+            granted = list(await effective_menu_ids(session, user))
+            enabled = True
+        if enabled is False:
             raise ApiError(403, "FORBIDDEN", "已登录但无对应菜单或组件")
-        granted = await effective_menu_ids(session, user)
-        if not any(menu_id in granted for menu_id in menu_ids):
+        granted_set = granted if isinstance(granted, set) else set(granted)
+        if needed.isdisjoint(granted_set):
             raise ApiError(403, "FORBIDDEN", "已登录但无对应菜单或组件")
         return principal
 
@@ -53,8 +58,8 @@ __all__ = [
     "MENU_ROLE_QUERY",
     "MENU_ROLES",
     "MENU_USERS",
+    "PrincipalDep",
     "SessionDep",
-    "TokenDep",
     "current_principal",
     "require_menu",
 ]

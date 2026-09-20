@@ -24,3 +24,7 @@ redis:
 
 api_base: "http://127.0.0.1:8000"
 token_ttl_seconds: 86400
+uvicorn_workers: 2
+db_pool_size: 10
+db_pool_max_overflow: 10
+db_pool_timeout: 30

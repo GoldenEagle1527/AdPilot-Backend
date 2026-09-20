@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -12,7 +14,7 @@ from app.modules.system_admin.domain.models import (
     User,
     UserRole,
 )
-from app.modules.system_admin.domain.password import verify_password
+from app.modules.system_admin.domain.password import verify_password_async
 from app.modules.system_admin.schemas.session import SessionMenuNode
 
 # 系统管理页对应菜单树节点 id（权限清单 98–102）。
@@ -31,9 +33,22 @@ async def user_by_login(session: AsyncSession, login_account: str) -> User | Non
     return result.scalar_one_or_none()
 
 
+async def session_principal(session: AsyncSession, user: User) -> dict:
+    """给 core 存进 Redis 的主体：身份 + 有效菜单。core 不解释菜单含义。"""
+    menus = await effective_menu_ids(session, user)
+    return {
+        "id": user.id,
+        "nickname": user.nickname,
+        "login_account": user.login_account,
+        "tenant": user.tenant,
+        "enabled": user.enabled,
+        "menu_ids": sorted(menus),
+    }
+
+
 async def authenticate_password(
     session: AsyncSession, login: str, password: str
-) -> tuple[str, dict[str, str] | None]:
+) -> tuple[str, dict | None]:
     """查库验密。返回 ('ok', principal) / ('disabled', None) / ('invalid', None)。不把 ORM 交给 core。"""
     user = await user_by_login(session, login)
     if user is None and login:
@@ -41,16 +56,43 @@ async def authenticate_password(
             select(User).where(User.phone == login, User.phone.is_not(None))
         )
         user = result.scalar_one_or_none()
-    if user is None or not verify_password(password, user.password_hash):
+    if user is None or not await verify_password_async(password, user.password_hash):
         return "invalid", None
     if not user.enabled:
         return "disabled", None
-    return "ok", {
-        "id": user.id,
-        "nickname": user.nickname,
-        "login_account": user.login_account,
-        "tenant": user.tenant,
-    }
+    return "ok", await session_principal(session, user)
+
+
+async def user_ids_holding_role(session: AsyncSession, role_id: str) -> list[str]:
+    user_rows = await session.execute(
+        select(UserRole.user_id).where(UserRole.role_id == role_id)
+    )
+    dept_rows = await session.execute(
+        select(User.id)
+        .join(DepartmentRole, DepartmentRole.department_id == User.department_id)
+        .where(DepartmentRole.role_id == role_id)
+    )
+    return list({row[0] for row in user_rows.all()} | {row[0] for row in dept_rows.all()})
+
+
+async def user_ids_in_department(session: AsyncSession, department_id: str) -> list[str]:
+    rows = await session.execute(select(User.id).where(User.department_id == department_id))
+    return [row[0] for row in rows.all()]
+
+
+async def publish_acl_for_users(session: AsyncSession, user_ids: Iterable[str]) -> None:
+    from app.core.auth import drop_user_sessions, rewrite_user_sessions
+
+    seen: set[str] = set()
+    for user_id in user_ids:
+        if user_id in seen:
+            continue
+        seen.add(user_id)
+        user = await session.get(User, user_id)
+        if user is None:
+            await drop_user_sessions(user_id)
+            continue
+        await rewrite_user_sessions(user_id, await session_principal(session, user))
 
 
 async def effective_menu_ids(session: AsyncSession, user: User) -> set[str]:

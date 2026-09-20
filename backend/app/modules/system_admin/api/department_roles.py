@@ -6,6 +6,7 @@ from sqlalchemy import delete, select
 from app.core.envelope import ApiError, Envelope, success
 from app.modules.system_admin.deps import MENU_DEPARTMENTS, SessionDep, require_menu
 from app.modules.system_admin.domain import Department, DepartmentRole, Role
+from app.modules.system_admin.domain.access import publish_acl_for_users, user_ids_in_department
 from app.modules.system_admin.schemas.common import RoleBriefList
 from app.modules.system_admin.schemas.departments import SetDepartmentRolesBody, role_brief
 
@@ -67,4 +68,5 @@ async def set_department_roles(
     for role_id in unique_ids:
         session.add(DepartmentRole(department_id=id, role_id=role_id))
     await session.commit()
+    await publish_acl_for_users(session, await user_ids_in_department(session, id))
     return success({"items": await _all_role_briefs(session, id)})

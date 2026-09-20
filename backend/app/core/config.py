@@ -39,6 +39,10 @@ class Settings(BaseModel):
     redis: RedisSettings
     api_base: str | None = None
     token_ttl_seconds: int = 86400
+    uvicorn_workers: int = 2
+    db_pool_size: int = 10
+    db_pool_max_overflow: int = 10
+    db_pool_timeout: int = 30
 
     @property
     def async_database_url(self) -> str:

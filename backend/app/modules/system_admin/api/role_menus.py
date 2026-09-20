@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.envelope import ApiError, Envelope, success
 from app.modules.system_admin.deps import MENU_ROLES, SessionDep, require_menu
+from app.modules.system_admin.domain.access import publish_acl_for_users, user_ids_holding_role
 from app.modules.system_admin.domain.models import MenuNode, Role, RoleMenu
 from app.modules.system_admin.schemas.common import MenuIds
 from app.modules.system_admin.schemas.roles import SetRoleMenusBody
@@ -68,4 +69,5 @@ async def set_role_menus(
     await session.execute(delete(RoleMenu).where(RoleMenu.role_id == role_id))
     session.add_all([RoleMenu(role_id=role_id, menu_id=mid) for mid in menu_ids])
     await session.commit()
+    await publish_acl_for_users(session, await user_ids_holding_role(session, role_id))
     return success({"menu_ids": menu_ids})

@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends
 from app.core.envelope import ApiError, Envelope, success
 from app.modules.system_admin.api.users import get_user
 from app.modules.system_admin.deps import MENU_USERS, SessionDep, require_menu
-from app.modules.system_admin.domain.password import hash_password, load_default_password
+from app.modules.system_admin.domain.password import hash_password_async, load_default_password
 from app.modules.system_admin.schemas.common import PasswordResetData
 
 router = APIRouter(prefix="/api/v1/system-admin", tags=["system-admin"])
@@ -25,6 +25,6 @@ async def reset_user_password(
     password = await load_default_password(session)
     if not password:
         raise ApiError(500, "INTERNAL_ERROR", "缺少字典项 default_password（Q-PERM-5）")
-    user.password_hash = hash_password(password)
+    user.password_hash = await hash_password_async(password)
     await session.commit()
     return success({"reset": True, "password": password})
