@@ -21,8 +21,8 @@ SessionDep = Annotated[AsyncSession, Depends(get_session)]
 TokenDep = Annotated[str, Depends(require_token)]
 
 
-def current_principal(token: TokenDep) -> dict[str, str]:
-    user = get_token_user(token)
+async def current_principal(token: TokenDep) -> dict[str, str]:
+    user = await get_token_user(token)
     if user is None:
         raise ApiError(401, "UNAUTHORIZED", "未带或 Token 无效")
     return user

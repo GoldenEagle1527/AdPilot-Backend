@@ -6,8 +6,8 @@
 
 - 项目版本管理使用 Git。
 - 远程预定 `http://git.73oc.local/`。
-- **现在不创建远程、不强制 push。**
-- 启用远程后，Issue / PR 作为跨人通信面。
+- 远程预定 `http://git.73oc.local/`。后端仓已加 origin（`AdPilot-Backend`）。
+- 合入：Issue / PR 作为跨人通信面（`feat/<business>/<short>` → `main`）。
 - 产品名与「一个仓」的旧口径见 [0016](0016-未决收口.md)；**两个应用仓**见 [0018](0018-前后端两个Git仓库.md)。对接见 [0019](0019-后端OpenAPI对接.md)。
 
 ## 后果

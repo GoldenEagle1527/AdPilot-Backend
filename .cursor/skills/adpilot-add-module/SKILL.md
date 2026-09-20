@@ -5,7 +5,8 @@ description: Adds a new FastAPI business package under app/modules and mounts it
 
 # 新建业务包
 
-本仓已有框架和 `system_admin`。不要重搭进程、不要建 `app/routers`。
+本仓已有框架和 `system_admin`。不要重搭进程、不要建 `app/routers`。  
+先从 `main` 开 `feat/<kebab>/<short>`，做完用 PR 合入（见 git-branch-pr 规则）。
 
 ## 步骤
 
@@ -24,7 +25,7 @@ backend/app/modules/<snake>/
 4. `main.py` 只加一行 `include_router`。路径前缀 `/api/v1/<kebab>/...`。
 5. 鉴权：`from app.modules.system_admin import require_menu`，例如 `Depends(require_menu("32"))`（节点 id 看菜单树）。禁止 import `system_admin.domain.models`。
 6. 配置/CORS/信封/engine 用 `app.core`，禁止新开引擎或 dotenv。
-7. 迁移：新表用 Alembic 新 revision，不要再 `create_all` 糊进 `20260920_01`。
+7. 迁移：表模型 `from app.core.db import Base`，禁止再声明第二份 `DeclarativeBase`。新表用 Alembic 新 revision；在 `backend/alembic/env.py` 加一行 `import app.modules.<snake>.domain.models`。不要 `create_all` 糊进 `20260920_01`。
 8. 测试目录：`backend/tests/modules/<snake>/`（仓库里测试目录目前是空的，新包一起建）。
 
 ## 不要

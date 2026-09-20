@@ -42,7 +42,7 @@ def verify_password(plain: str, password_hash: str) -> bool:
 
 
 async def load_default_password(session: AsyncSession) -> str | None:
-    """后续 create/reset 用户接库时用；本阶段登录仍走 core mock。"""
+    """create / reset 用户空密码时用。登录验密走 authenticate_password。"""
     from sqlalchemy import select
 
     from app.modules.system_admin.domain.models import DictItem

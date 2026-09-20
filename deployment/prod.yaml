@@ -17,3 +17,4 @@ redis:
   password: null
 
 api_base: "http://BACKEND_LAN_HOST:8000"
+token_ttl_seconds: 86400

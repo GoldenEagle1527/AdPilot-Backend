@@ -14,7 +14,7 @@ alwaysApply: false
 
 主键 string；启停字段名 `enabled`（boolean）；时间 ISO-8601 UTC 带 `Z`。
 
-新接口或改对外字段时：给路由补 `response_model`（或等价 OpenAPI），使 `/openapi.json` 与行为一致。现有不少路由只返回 `dict`，再改这些接口时一并补上，不要再扩这个债。
+新接口或改对外字段时：给路由补 `response_model`（或等价 OpenAPI），使 `/openapi.json` 与行为一致。
 
 对外 HTTP 有变化（路径/方法/字段/错误码）必须发群对接短文，不要贴整份 schema：
 

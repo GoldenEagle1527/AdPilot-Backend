@@ -15,6 +15,8 @@ def init_redis(settings: Settings | None = None) -> Redis:
         port=settings.redis.port,
         password=settings.redis.password or None,
         decode_responses=True,
+        socket_connect_timeout=3,
+        socket_timeout=3,
     )
     return _redis
 

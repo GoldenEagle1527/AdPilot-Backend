@@ -9,14 +9,15 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from app.core.config import get_settings
-from app.modules.system_admin.domain.models import Base
+from app.core.db import Base
+import app.modules.system_admin.domain.models  # noqa: F401  注册表
 
 config = context.config
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# 表模型住业务包，core 不声明 User/Role。
+# 各业务包 inherit app.core.db.Base。新包在此再 import 其 domain.models。
 target_metadata = Base.metadata
 
 settings = get_settings()

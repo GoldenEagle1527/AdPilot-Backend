@@ -5,7 +5,8 @@ description: Changes an existing AdPilot HTTP API while updating Plan contracts,
 
 # 变更接口
 
-代码与 `Plan/modules/<id>/contracts/<endpoint>.md` 不一致 = 没做完。前端真源是进程上的 `/openapi.json`。
+代码与 `Plan/modules/<id>/contracts/<endpoint>.md` 不一致 = 没做完。对外真源是进程上的 `/openapi.json`。  
+在 `feat/<business>/<short>` 上改，合入走 PR。
 
 ## 步骤
 

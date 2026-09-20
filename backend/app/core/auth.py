@@ -1,47 +1,23 @@
 from __future__ import annotations
 
+import json
 import secrets
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
+from app.core.db import get_session
 from app.core.envelope import ApiError, Envelope, success
+from app.core.redis_client import get_redis
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
 _bearer = HTTPBearer(auto_error=False)
-
-# 本阶段 mock：协议与正式登录相同，不查库。
-_MOCK_USERS: dict[str, dict[str, str]] = {
-    "admin": {
-        "password": "admin123",
-        "id": "1",
-        "nickname": "管理员",
-        "login_account": "admin",
-        "tenant": "default",
-        "enabled": "1",
-    },
-    "disabled": {
-        "password": "disabled123",
-        "id": "2",
-        "nickname": "已停用",
-        "login_account": "disabled",
-        "tenant": "default",
-        "enabled": "0",
-    },
-    "pitcher": {
-        "password": "pitcher123",
-        "id": "3",
-        "nickname": "短剧投手",
-        "login_account": "pitcher",
-        "tenant": "default",
-        "enabled": "1",
-    },
-}
-
-_tokens: dict[str, dict[str, str]] = {}
+_TOKEN_KEY = "adpilot:token:{token}"
 
 
 class LoginRequest(BaseModel):
@@ -72,33 +48,57 @@ def read_bearer_token(
     return credentials.credentials
 
 
-def require_token(
+def _token_key(token: str) -> str:
+    return _TOKEN_KEY.format(token=token)
+
+
+async def get_token_user(token: str) -> dict[str, str] | None:
+    raw = await get_redis().get(_token_key(token))
+    if not raw:
+        return None
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    return {str(key): str(value) for key, value in data.items()}
+
+
+async def require_token(
     token: Annotated[str | None, Depends(read_bearer_token)],
 ) -> str:
-    if not token or token not in _tokens:
+    if not token:
+        raise ApiError(401, "UNAUTHORIZED", "未带或 Token 无效")
+    user = await get_token_user(token)
+    if user is None:
         raise ApiError(401, "UNAUTHORIZED", "未带或 Token 无效")
     return token
 
 
-def get_token_user(token: str) -> dict[str, str] | None:
-    return _tokens.get(token)
-
-
 @router.post("/login", response_model=Envelope[LoginData])
-async def login(body: LoginRequest) -> dict:
-    account = _MOCK_USERS.get(body.login_account)
-    if account is None or account["password"] != body.password:
-        raise ApiError(401, "INVALID_CREDENTIALS", "账号或密码不对")
-    if account["enabled"] != "1":
+async def login(
+    body: LoginRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> dict:
+    from app.modules.system_admin.domain.access import authenticate_password
+
+    status, principal = await authenticate_password(
+        session, body.login_account, body.password
+    )
+    if status == "disabled":
         raise ApiError(403, "ACCOUNT_DISABLED", "账号停用")
+    if status != "ok" or principal is None:
+        raise ApiError(401, "INVALID_CREDENTIALS", "账号或密码不对")
 
     token = secrets.token_urlsafe(32)
+    ttl = get_settings().token_ttl_seconds
+    await get_redis().set(_token_key(token), json.dumps(principal), ex=ttl)
     user = LoginUser(
-        id=account["id"],
-        nickname=account["nickname"],
-        login_account=account["login_account"],
-        tenant=account["tenant"],
+        id=principal["id"],
+        nickname=principal["nickname"],
+        login_account=principal["login_account"],
+        tenant=principal["tenant"],
     )
-    _tokens[token] = user.model_dump()
     payload = LoginData(token=token, token_type="bearer", user=user)
     return success(payload.model_dump())

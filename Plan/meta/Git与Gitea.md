@@ -1,21 +1,23 @@
 # Git 与内网 Gitea
 
 状态：accepted  
-ADR：0002、0016、0018、0019。
+ADR：0002、0018、0019。  
+Agent 必守：`.cursor/rules/git-branch-pr.mdc`。
 
-产品名 **AdPilot**。**两个** Git 仓库：后端、前端。`Plan/` 只是现在写计划，**不单独建远程**。远程预定 <http://git.73oc.local/>。**现在：本工作区已本地 init；两个应用仓实现期再 init。都不加 origin、不 push。**
+产品名 **AdPilot**。本仓是后端应用仓。`Plan/` 跟本仓走，不单独建远程。远程：<http://git.73oc.local/>。
 
-大文件放云盘，小文件进 git。
-
-对接：[architecture/两仓通信.md](../architecture/两仓通信.md)。
-
-## 两个仓
-
-| 仓 | 预定远程名 | 分支习惯 |
+| 仓 | 远程 | 分支 |
 | --- | --- | --- |
-| 后端 | AdPilot | `main`、`feat/<business>/<short>`（框架：`feat/framework`） |
-| 前端 | AdPilot-Frontend | 同上 |
+| 本仓（后端） | `GoldeneaglePersonal/AdPilot-Backend` | `main` 受保护；`feat/<business>/<short>` |
 
-一个分支不要混两个业务。不要把前端文件推进后端仓。
+大文件放云盘。对接：[architecture/两仓通信.md](../architecture/两仓通信.md)。
 
-生产密钥不准进仓。开发库口令写在**该应用仓**的 `deployment/dev.yaml`。
+## 怎么开分支、怎么合
+
+1. 从最新 `main` 拉 `feat/<business>/<short>`。
+2. 一个分支只做一个业务。不要往本仓塞前端工程。
+3. 合入：Gitea **Pull Request → `main`**。不要直推 `main`。
+4. 一人多个接口：仍宜一接口一 PR。
+5. 改对外 HTTP：同一 PR 改契约、变更历史、`contracts/最新表.md`；破坏性带 `_history/`。合入后发群对接短文。
+
+生产密钥不准进仓。开发库口令写在 `deployment/dev.yaml`。

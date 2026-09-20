@@ -5,7 +5,8 @@ description: Adds a backend HTTP endpoint in an existing business package using 
 
 # 新建接口
 
-在**已有业务包**里加路由。登录/health 已在 `core`，不要再往 `core` 堆业务路径。
+在**已有业务包**里加路由。登录/health 已在 `core`，不要再往 `core` 堆业务路径。  
+在 `feat/<business>/<short>` 上改，合入走 PR。
 
 ## 步骤
 

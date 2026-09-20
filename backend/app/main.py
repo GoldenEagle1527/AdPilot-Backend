@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 import uvicorn
 from fastapi import FastAPI
 
+from app.core.access_log import apply_access_log
 from app.core.auth import router as auth_router
 from app.core.config import get_settings
 from app.core.cors import apply_cors
@@ -36,6 +37,7 @@ def create_app() -> FastAPI:
     )
     register_exception_handlers(app)
     apply_cors(app, settings)
+    apply_access_log(app)
     app.include_router(health_router)
     app.include_router(auth_router)
     app.include_router(system_admin_router)

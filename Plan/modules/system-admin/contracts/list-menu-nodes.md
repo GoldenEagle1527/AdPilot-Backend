@@ -28,7 +28,7 @@
 | --- | --- | --- |
 | items | MenuNode[] | 全树（或筛选后仍按树形）。节点形状见 [说明.md](说明.md) 嵌套对象 |
 
-清单数据可含投放/报表等节点名，这不是要前端预建那些页。
+清单数据可含投放/报表等节点名，这不是要预建那些业务 CRUD。
 
 `include_assigned_roles=false`（默认）：节点不带 `assigned_roles`。  
 `include_assigned_roles=true`：每个节点带 `assigned_roles: RoleName[]`（`{ id, name }`）。目录节点在参考产品上已分配角色为「-」，本接口给空数组 `[]`。
@@ -39,7 +39,7 @@
 
 ## 被谁调用
 
-| 页面卡片 | 页面动作 |
+| 调用方 | 动作 |
 | --- | --- |
 | 角色管理 | 打开分配菜单（`include_assigned_roles=false`） |
 | 权限角色查询 | 按领域/名称查树（`include_assigned_roles=true`） |

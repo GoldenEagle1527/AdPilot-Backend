@@ -12,6 +12,7 @@ from app.modules.system_admin.domain.models import (
     User,
     UserRole,
 )
+from app.modules.system_admin.domain.password import verify_password
 from app.modules.system_admin.schemas.session import SessionMenuNode
 
 # 系统管理页对应菜单树节点 id（权限清单 98–102）。
@@ -28,6 +29,28 @@ async def user_by_login(session: AsyncSession, login_account: str) -> User | Non
         .where(User.login_account == login_account)
     )
     return result.scalar_one_or_none()
+
+
+async def authenticate_password(
+    session: AsyncSession, login: str, password: str
+) -> tuple[str, dict[str, str] | None]:
+    """查库验密。返回 ('ok', principal) / ('disabled', None) / ('invalid', None)。不把 ORM 交给 core。"""
+    user = await user_by_login(session, login)
+    if user is None and login:
+        result = await session.execute(
+            select(User).where(User.phone == login, User.phone.is_not(None))
+        )
+        user = result.scalar_one_or_none()
+    if user is None or not verify_password(password, user.password_hash):
+        return "invalid", None
+    if not user.enabled:
+        return "disabled", None
+    return "ok", {
+        "id": user.id,
+        "nickname": user.nickname,
+        "login_account": user.login_account,
+        "tenant": user.tenant,
+    }
 
 
 async def effective_menu_ids(session: AsyncSession, user: User) -> set[str]:

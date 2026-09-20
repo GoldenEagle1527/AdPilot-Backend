@@ -38,6 +38,7 @@ class Settings(BaseModel):
     postgres: PostgresSettings
     redis: RedisSettings
     api_base: str | None = None
+    token_ttl_seconds: int = 86400
 
     @property
     def async_database_url(self) -> str:
