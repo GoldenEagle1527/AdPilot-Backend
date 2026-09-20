@@ -7,12 +7,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.envelope import ApiError, Envelope, success
+from app.core.times import iso8601_z
 from app.modules.system_admin.api.users import department_roles_by_dept, get_user
 from app.modules.system_admin.deps import MENU_USERS, SessionDep, require_menu
 from app.modules.system_admin.domain.access import publish_acl_for_users
 from app.modules.system_admin.domain.models import Role, User, UserRole
 from app.modules.system_admin.schemas.common import UserRolesData
-from app.modules.system_admin.schemas.users import SetUserRolesRequest, iso8601_z
+from app.modules.system_admin.schemas.users import SetUserRolesRequest
 
 router = APIRouter(prefix="/api/v1/system-admin", tags=["system-admin"])
 

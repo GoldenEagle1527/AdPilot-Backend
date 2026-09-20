@@ -12,6 +12,7 @@ from sqlalchemy.orm import selectinload
 from app.core.auth import drop_user_sessions
 from app.core.envelope import ApiError, Envelope, success
 from app.core.pagination import PageData, PageParams, page_data, page_params
+from app.core.times import iso8601_z
 from app.modules.system_admin.deps import MENU_USERS, SessionDep, require_menu
 from app.modules.system_admin.domain.access import publish_acl_for_users
 from app.modules.system_admin.domain.models import Department, DepartmentRole, Role, User
@@ -22,7 +23,6 @@ from app.modules.system_admin.schemas.users import (
     CreateUserRequest,
     SetUserStatusRequest,
     UpdateUserRequest,
-    iso8601_z,
 )
 
 router = APIRouter(prefix="/api/v1/system-admin", tags=["system-admin"])

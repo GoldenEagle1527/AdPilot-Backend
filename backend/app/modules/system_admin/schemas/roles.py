@@ -1,19 +1,11 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.core.times import iso8601_z
 from app.modules.system_admin.schemas.common import AssignedUser, RoleName
-
-
-def iso_z(value: datetime) -> str:
-    if value.tzinfo is None:
-        value = value.replace(tzinfo=timezone.utc)
-    else:
-        value = value.astimezone(timezone.utc)
-    return value.isoformat().replace("+00:00", "Z")
 
 
 class RoleListItem(BaseModel):
@@ -68,8 +60,8 @@ def role_item_dict(
         name=role.name,
         remark=role.remark,
         enabled=role.enabled,
-        created_at=iso_z(role.created_at),
-        updated_at=iso_z(role.updated_at),
+        created_at=iso8601_z(role.created_at),
+        updated_at=iso8601_z(role.updated_at),
         updated_by=role.updated_by,
         assigned_user_count=len(users),
         assigned_department_count=len(depts),

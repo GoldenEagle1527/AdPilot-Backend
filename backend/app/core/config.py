@@ -1,12 +1,27 @@
 from __future__ import annotations
 
 import os
+import socket
 from functools import lru_cache
 from pathlib import Path
 from urllib.parse import quote_plus
 
 import yaml
 from pydantic import BaseModel, Field
+
+# Compose 服务名只在容器网里有效；本机跑测试/alembic 时改连已映射的 127.0.0.1。
+_COMPOSE_SERVICE_HOSTS = frozenset({"postgres", "redis"})
+_HOST_FALLBACK = "127.0.0.1"
+
+
+def _host_for_this_process(host: str) -> str:
+    if host not in _COMPOSE_SERVICE_HOSTS:
+        return host
+    try:
+        socket.getaddrinfo(host, None)
+    except OSError:
+        return _HOST_FALLBACK
+    return host
 
 
 def repo_root() -> Path:
@@ -58,7 +73,17 @@ def load_yaml(path: Path) -> Settings:
     raw = yaml.safe_load(path.read_text(encoding="utf-8"))
     if not isinstance(raw, dict):
         raise RuntimeError(f"配置不是映射：{path}")
-    return Settings.model_validate(raw)
+    settings = Settings.model_validate(raw)
+    postgres_host = _host_for_this_process(settings.postgres.host)
+    redis_host = _host_for_this_process(settings.redis.host)
+    if postgres_host == settings.postgres.host and redis_host == settings.redis.host:
+        return settings
+    return settings.model_copy(
+        update={
+            "postgres": settings.postgres.model_copy(update={"host": postgres_host}),
+            "redis": settings.redis.model_copy(update={"host": redis_host}),
+        }
+    )
 
 
 @lru_cache

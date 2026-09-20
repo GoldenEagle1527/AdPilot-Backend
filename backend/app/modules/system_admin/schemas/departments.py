@@ -1,19 +1,12 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.core.times import iso8601_z
 from app.modules.system_admin.domain import Department, DepartmentTag, Role
 from app.modules.system_admin.schemas.common import RoleName
-
-
-def iso_z(dt: datetime) -> str:
-    if dt.tzinfo is None:
-        aware = dt.replace(tzinfo=timezone.utc)
-    else:
-        aware = dt.astimezone(timezone.utc)
-    return aware.isoformat().replace("+00:00", "Z")
 
 
 def tag_item(tag: DepartmentTag) -> dict[str, str]:
@@ -33,7 +26,7 @@ def department_node(dept: Department, *, children: list[dict] | None = None) -> 
         "sort": dept.sort,
         "enabled": bool(dept.enabled),
         "tenant": dept.tenant,
-        "created_at": iso_z(dept.created_at),
+        "created_at": iso8601_z(dept.created_at),
         "tags": tags,
         "roles": roles,
         "children": [] if children is None else children,
@@ -45,7 +38,7 @@ def role_brief(role: Role, assigned: bool, assigned_at: datetime | None) -> dict
         "id": role.id,
         "name": role.name,
         "assigned": assigned,
-        "assigned_at": iso_z(assigned_at) if assigned_at is not None else None,
+        "assigned_at": iso8601_z(assigned_at) if assigned_at is not None else None,
     }
 
 
