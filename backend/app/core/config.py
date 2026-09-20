@@ -46,12 +46,20 @@ class RedisSettings(BaseModel):
     password: str | None = None
 
 
+class ChangduSettings(BaseModel):
+    base_url: str = "https://openapi.changdupingtai.com"
+    distributor_id: str = ""
+    secret_key: str = ""
+    sync_interval_seconds: int = 1800
+
+
 class Settings(BaseModel):
     listen_host: str = "0.0.0.0"
     listen_port: int = 8000
     cors_origins: list[str] = Field(default_factory=list)
     postgres: PostgresSettings
     redis: RedisSettings
+    changdu: ChangduSettings = Field(default_factory=ChangduSettings)
     api_base: str | None = None
     token_ttl_seconds: int = 86400
     uvicorn_workers: int = 2
