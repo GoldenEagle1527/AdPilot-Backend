@@ -1,3 +1,5 @@
+"""用户标签目录，以及给用户打标/换标/去标。"""
+
 from __future__ import annotations
 
 from typing import Annotated
@@ -33,18 +35,20 @@ async def _tags_by_ids(session, tag_ids: list[str]) -> list[UserTag]:
     return [tags[tag_id] for tag_id in unique_ids]
 
 
-@router.get("/user-tags", response_model=Envelope[TagList])
+@router.get("/user-tags", response_model=Envelope[TagList], summary="用户标签目录")
 async def list_user_tags(session: SessionDep, _principal: PrincipalDep) -> dict:
+    """列出固定枚举的用户标签（投手、素材手）。"""
     result = await session.execute(select(UserTag).order_by(UserTag.id))
     return success({"items": [_tag(item) for item in result.scalars().all()]})
 
 
-@router.post("/user-tags", response_model=Envelope[Tag])
+@router.post("/user-tags", response_model=Envelope[Tag], summary="新增用户标签")
 async def create_user_tag(
     body: CreateUserTagRequest,
     session: SessionDep,
     _principal: PrincipalDep,
 ) -> dict:
+    """仅允许枚举名；同名冲突。"""
     try:
         name = require_user_tag_name(body.name)
     except ValueError as exc:
@@ -63,12 +67,13 @@ async def create_user_tag(
     return success(_tag(tag))
 
 
-@router.put("/users/batch-tags", response_model=Envelope[BatchTagResult])
+@router.put("/users/batch-tags", response_model=Envelope[BatchTagResult], summary="批量给用户追加标签")
 async def add_user_tags(
     body: AddUserTagsRequest,
     session: SessionDep,
     _principal: PrincipalDep,
 ) -> dict:
+    """给多个用户追加标签，已有的不重复加。"""
     tags = await _tags_by_ids(session, body.tag_ids)
     for user_id in list(dict.fromkeys(body.user_ids)):
         user = await get_user(session, user_id)
@@ -84,13 +89,14 @@ async def add_user_tags(
     return success({"items": items})
 
 
-@router.put("/users/{user_id}/tags", response_model=Envelope[IdTags])
+@router.put("/users/{user_id}/tags", response_model=Envelope[IdTags], summary="替换用户标签")
 async def set_user_tags(
     user_id: str,
     body: SetUserTagsRequest,
     session: SessionDep,
     _principal: PrincipalDep,
 ) -> dict:
+    """用传入的 tag_ids 整表替换该用户标签。"""
     user = await get_user(session, user_id)
     unique_ids = list(dict.fromkeys(body.tag_ids))
     user.tags = await _tags_by_ids(session, unique_ids) if unique_ids else []
@@ -99,13 +105,14 @@ async def set_user_tags(
     return success({"id": user.id, "tags": [_tag(tag) for tag in sorted(user.tags, key=lambda t: t.id)]})
 
 
-@router.delete("/users/{user_id}/tags/{tag_id}", response_model=Envelope[IdTags])
+@router.delete("/users/{user_id}/tags/{tag_id}", response_model=Envelope[IdTags], summary="去掉一个用户标签")
 async def remove_user_tag(
     user_id: str,
     tag_id: str,
     session: SessionDep,
     _principal: PrincipalDep,
 ) -> dict:
+    """从用户上移除单个标签；标签本身不删。"""
     user = await get_user(session, user_id)
     user.tags = [tag for tag in user.tags if tag.id != tag_id]
     await session.commit()

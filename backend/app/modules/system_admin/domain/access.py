@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.modules.system_admin.domain.enums import MENU_TYPE_DIRECTORY
 from app.modules.system_admin.domain.models import (
     DepartmentRole,
     MenuNode,
@@ -168,7 +169,7 @@ def build_menu_tree(nodes_by_id: dict[str, MenuNode], granted_ids: set[str]) -> 
         items: list[SessionMenuNode] = []
         for node in siblings:
             kids = walk(node.id)
-            if node.type == "目录" and not kids:
+            if node.type == MENU_TYPE_DIRECTORY and not kids:
                 continue
             items.append(_to_menu_node(node, kids))
         return items

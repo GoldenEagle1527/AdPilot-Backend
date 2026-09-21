@@ -1,3 +1,5 @@
+"""部门树：查询、新增、改名/改父、启停、软删。"""
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -69,7 +71,7 @@ async def _would_cycle(session: SessionDep, dept_id: str, parent_id: str | None)
     return False
 
 
-@router.get("/departments", response_model=Envelope[DepartmentTree])
+@router.get("/departments", response_model=Envelope[DepartmentTree], summary="查询部门树")
 async def list_departments(
     session: SessionDep,
     _user: dict[str, str] = Depends(_principal),
@@ -77,6 +79,7 @@ async def list_departments(
     enabled: bool | None = None,
     id: str | None = None,
 ):
+    """列出未删除部门树，可按名称、启用状态、id 过滤；节点含标签与角色。"""
     result = await session.scalars(
         select(Department).where(department_not_deleted()).options(*_DEPT_LOAD)
     )
@@ -86,12 +89,13 @@ async def list_departments(
     return success({"items": items})
 
 
-@router.post("/departments", response_model=Envelope[DepartmentNode])
+@router.post("/departments", response_model=Envelope[DepartmentNode], summary="新增部门")
 async def create_department(
     body: CreateDepartmentBody,
     session: SessionDep,
     user: dict[str, str] = Depends(_principal),
 ):
+    """新增部门或子部门，默认启用。"""
     await _require_parent(session, body.parent_id)
     tenant = body.tenant if body.tenant is not None else user["tenant"]
     dept = Department(
@@ -108,13 +112,14 @@ async def create_department(
     return success(department_node(loaded, children=[]))
 
 
-@router.put("/departments/{id}", response_model=Envelope[DepartmentNode])
+@router.put("/departments/{id}", response_model=Envelope[DepartmentNode], summary="改部门")
 async def update_department(
     id: str,
     body: UpdateDepartmentBody,
     session: SessionDep,
     _user: dict[str, str] = Depends(_principal),
 ):
+    """改名称、父部门、排序；禁止把父部门设为自身或子孙。"""
     dept = await _get_department(session, id)
     await _require_parent(session, body.parent_id)
     if await _would_cycle(session, id, body.parent_id):
@@ -128,13 +133,18 @@ async def update_department(
     return success(department_node(loaded, children=[]))
 
 
-@router.patch("/departments/{id}/status", response_model=Envelope[IdEnabled])
+@router.patch(
+    "/departments/{id}/status",
+    response_model=Envelope[IdEnabled],
+    summary="部门启停",
+)
 async def set_department_status(
     id: str,
     body: SetDepartmentStatusBody,
     session: SessionDep,
     _user: dict[str, str] = Depends(_principal),
 ):
+    """启用或停用部门。"""
     dept = await _get_department(session, id)
     dept.enabled = body.enabled
     session.add(dept)
@@ -142,12 +152,13 @@ async def set_department_status(
     return success({"id": dept.id, "enabled": bool(dept.enabled)})
 
 
-@router.delete("/departments/{id}", response_model=Envelope[DeletedId])
+@router.delete("/departments/{id}", response_model=Envelope[DeletedId], summary="软删部门")
 async def delete_department(
     id: str,
     session: SessionDep,
     _user: dict[str, str] = Depends(_principal),
 ):
+    """软删部门。有子部门或在职员工时拒绝。"""
     dept = await _get_department(session, id)
     child_n = int(
         await session.scalar(

@@ -17,6 +17,13 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.ids import new_id
 from app.modules.system_admin.domain.base import Base
+from app.modules.system_admin.domain.enums import (
+    MENU_TYPE_COMPONENT,
+    MENU_TYPE_DIRECTORY,
+    MENU_TYPE_MENU,
+    ROLE_KIND_MEMBER,
+    ROLE_KIND_OWNER,
+)
 
 _ID = String(32)
 _TS = DateTime(timezone=True)
@@ -92,7 +99,10 @@ class Role(Base):
 class User(Base):
     __tablename__ = "users"
     __table_args__ = (
-        CheckConstraint("role_kind IN ('负责人', '成员')", name="ck_users_role_kind"),
+        CheckConstraint(
+            f"role_kind IN ('{ROLE_KIND_OWNER}', '{ROLE_KIND_MEMBER}')",
+            name="ck_users_role_kind",
+        ),
     )
 
     id: Mapped[str] = mapped_column(_ID, primary_key=True, default=new_id)
@@ -107,7 +117,9 @@ class User(Base):
     department_id: Mapped[str] = mapped_column(
         _ID, ForeignKey("departments.id", ondelete="RESTRICT"), nullable=False
     )
-    role_kind: Mapped[str] = mapped_column(String(16), nullable=False, server_default=text("'成员'"))
+    role_kind: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default=text(f"'{ROLE_KIND_MEMBER}'")
+    )
     remark: Mapped[str | None] = mapped_column(String(200), nullable=True)
     tenant: Mapped[str] = mapped_column(String(64), nullable=False)
     created_at: Mapped[datetime] = mapped_column(_TS, nullable=False, server_default=func.now())
@@ -144,7 +156,10 @@ class UserTagLink(Base):
 class MenuNode(Base):
     __tablename__ = "menu_nodes"
     __table_args__ = (
-        CheckConstraint("type IN ('目录', '菜单', '组件')", name="ck_menu_nodes_type"),
+        CheckConstraint(
+            f"type IN ('{MENU_TYPE_DIRECTORY}', '{MENU_TYPE_MENU}', '{MENU_TYPE_COMPONENT}')",
+            name="ck_menu_nodes_type",
+        ),
     )
 
     id: Mapped[str] = mapped_column(_ID, primary_key=True, default=new_id)

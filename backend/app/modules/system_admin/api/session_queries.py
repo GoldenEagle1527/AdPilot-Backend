@@ -1,3 +1,5 @@
+"""登录会话侧查询：当前用户、有效菜单、有效数据范围。"""
+
 from __future__ import annotations
 
 from typing import Annotated
@@ -28,8 +30,9 @@ async def _require_local_user(session, principal: dict[str, str]):
     return user
 
 
-@router.get("/session/me", response_model=Envelope[SessionMe])
+@router.get("/session/me", response_model=Envelope[SessionMe], summary="当前用户主档")
 async def get_session_me(session: SessionDep, principal: PrincipalDep) -> dict:
+    """返回当前登录账号对应的本地用户主档。"""
     user = await _require_local_user(session, principal)
     dept_name = user.department.name if user.department is not None else ""
     payload = SessionMe(
@@ -48,8 +51,9 @@ async def get_session_me(session: SessionDep, principal: PrincipalDep) -> dict:
     return success(payload.model_dump())
 
 
-@router.get("/session/menus", response_model=Envelope[SessionMenus])
+@router.get("/session/menus", response_model=Envelope[SessionMenus], summary="当前用户有效菜单")
 async def get_session_menus(session: SessionDep, principal: PrincipalDep) -> dict:
+    """按用户有效菜单/组件拼出侧栏树。"""
     user = await _require_local_user(session, principal)
     cached = principal.get("menu_ids")
     if isinstance(cached, list):
@@ -62,8 +66,13 @@ async def get_session_menus(session: SessionDep, principal: PrincipalDep) -> dic
     return success(SessionMenus(items=items).model_dump())
 
 
-@router.get("/session/data-scope", response_model=Envelope[SessionDataScope])
+@router.get(
+    "/session/data-scope",
+    response_model=Envelope[SessionDataScope],
+    summary="当前用户有效数据范围",
+)
 async def get_session_data_scope(session: SessionDep, principal: PrincipalDep) -> dict:
+    """返回有效部门范围；空列表且 self_only 表示仅本人。"""
     user = await _require_local_user(session, principal)
     self_only, department_ids = await effective_data_scope(session, user)
     return success(

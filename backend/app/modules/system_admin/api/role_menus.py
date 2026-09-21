@@ -1,3 +1,5 @@
+"""角色菜单勾选：查询已勾节点，整表替换。"""
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -37,12 +39,13 @@ def _unique_keep_order(ids: list[str]) -> list[str]:
     return out
 
 
-@router.get("/roles/{role_id}/menus", response_model=Envelope[MenuIds])
+@router.get("/roles/{role_id}/menus", response_model=Envelope[MenuIds], summary="角色已勾菜单")
 async def get_role_menus(
     role_id: str,
     session: SessionDep,
     _principal: PrincipalDep,
 ):
+    """返回该角色已勾选的菜单/组件节点 id。"""
     await _require_role(session, role_id)
     rows = (
         await session.execute(select(RoleMenu.menu_id).where(RoleMenu.role_id == role_id))
@@ -50,13 +53,14 @@ async def get_role_menus(
     return success({"menu_ids": list(rows)})
 
 
-@router.put("/roles/{role_id}/menus", response_model=Envelope[MenuIds])
+@router.put("/roles/{role_id}/menus", response_model=Envelope[MenuIds], summary="替换角色菜单勾选")
 async def set_role_menus(
     role_id: str,
     body: SetRoleMenusBody,
     session: SessionDep,
     principal: PrincipalDep,
 ):
+    """用 menu_ids 整表替换角色勾选，并刷新持有该角色的用户授权。"""
     role = await _require_role(session, role_id)
     menu_ids = _unique_keep_order(body.menu_ids)
     if menu_ids:

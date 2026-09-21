@@ -1,3 +1,5 @@
+"""用户主档：分页查询、新增、改主档、启停、软删。"""
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -15,6 +17,7 @@ from app.core.pagination import PageData, PageParams, page_data, page_params
 from app.core.times import iso8601_z
 from app.modules.system_admin.deps import MENU_USERS, SessionDep, require_menu
 from app.modules.system_admin.domain.access import publish_acl_for_users
+from app.modules.system_admin.domain.enums import ROLE_KIND_MEMBER
 from app.modules.system_admin.domain.models import Department, DepartmentRole, Role, User
 from app.modules.system_admin.domain.org import department_subtree_ids, user_not_deleted
 from app.modules.system_admin.domain.password import hash_password_or_default
@@ -101,7 +104,11 @@ def serialize_user(user: User, department_roles: list[Role] | None = None) -> di
     }
 
 
-@router.get("/users", response_model=Envelope[PageData[UserListItem]])
+@router.get(
+    "/users",
+    response_model=Envelope[PageData[UserListItem]],
+    summary="分页查询用户",
+)
 async def list_users(
     session: SessionDep,
     _principal: PrincipalDep,
@@ -114,6 +121,7 @@ async def list_users(
     id: str | None = None,
     phone: str | None = None,
 ) -> dict:
+    """按部门（可含子孙）、昵称、账号、手机、启用状态分页列出未删除用户。"""
     filters = [user_not_deleted()]
     if id:
         filters.append(User.id == id.strip())
@@ -152,12 +160,13 @@ async def list_users(
     return success(page_data(items, total, params))
 
 
-@router.post("/users", response_model=Envelope[UserListItem])
+@router.post("/users", response_model=Envelope[UserListItem], summary="新增用户")
 async def create_user(
     body: CreateUserRequest,
     session: SessionDep,
     principal: PrincipalDep,
 ) -> dict:
+    """在指定部门下创建用户；登录账号唯一，默认启用、职务为成员。"""
     await get_department(session, body.department_id)
     existing = await session.execute(
         select(User.id).where(User.login_account == body.login_account)
@@ -173,7 +182,7 @@ async def create_user(
         phone=body.phone,
         enabled=True,
         department_id=body.department_id,
-        role_kind="成员",
+        role_kind=ROLE_KIND_MEMBER,
         remark=body.remark,
         tenant=body.tenant or principal["tenant"],
     )
@@ -190,13 +199,14 @@ async def create_user(
     return success(serialize_user(user, roles))
 
 
-@router.put("/users/{user_id}", response_model=Envelope[UserListItem])
+@router.put("/users/{user_id}", response_model=Envelope[UserListItem], summary="改用户主档")
 async def update_user(
     user_id: str,
     body: UpdateUserRequest,
     session: SessionDep,
     _principal: PrincipalDep,
 ) -> dict:
+    """改昵称、部门、职务等；不改登录账号。"""
     user = await get_user(session, user_id)
     await get_department(session, body.department_id)
     user.nickname = body.nickname
@@ -214,13 +224,14 @@ async def update_user(
     return success(serialize_user(user, roles))
 
 
-@router.patch("/users/{user_id}/status", response_model=Envelope[IdEnabled])
+@router.patch("/users/{user_id}/status", response_model=Envelope[IdEnabled], summary="用户启停")
 async def set_user_status(
     user_id: str,
     body: SetUserStatusRequest,
     session: SessionDep,
     _principal: PrincipalDep,
 ) -> dict:
+    """启用或停用用户，并刷新其授权缓存。"""
     user = await get_user(session, user_id)
     user.enabled = body.enabled
     await session.commit()
@@ -228,12 +239,13 @@ async def set_user_status(
     return success({"id": user.id, "enabled": user.enabled})
 
 
-@router.delete("/users/{user_id}", response_model=Envelope[DeletedId])
+@router.delete("/users/{user_id}", response_model=Envelope[DeletedId], summary="软删用户")
 async def delete_user(
     user_id: str,
     session: SessionDep,
     principal: PrincipalDep,
 ) -> dict:
+    """软删用户并踢掉其登录会话；不能删当前登录账号。"""
     if principal["id"] == user_id:
         raise ApiError(409, "CANNOT_DELETE_SELF", "不能删除当前登录账号")
     user = await get_user(session, user_id)

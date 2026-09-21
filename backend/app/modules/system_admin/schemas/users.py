@@ -40,6 +40,7 @@ class UpdateUserRequest(BaseModel):
     short_name: str | None = None
     phone: str | None = None
     department_id: str = Field(min_length=1)
+    # 对外取值见 domain.enums.ROLE_KIND_*；此处必须是字面量才能进 OpenAPI。
     role_kind: Literal["负责人", "成员"]
     remark: str | None = Field(default=None, max_length=200)
 

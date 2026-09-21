@@ -141,11 +141,12 @@ async def rewrite_user_sessions(user_id: str, principal: dict[str, Any]) -> None
         await redis.set(tkey, payload, ex=ex)
 
 
-@router.post("/login", response_model=Envelope[LoginData])
+@router.post("/login", response_model=Envelope[LoginData], summary="密码登录")
 async def login(
     body: LoginRequest,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> dict:
+    """查库验密后签发 Token（JWT + Redis 会话）。"""
     from app.modules.system_admin.domain.access import authenticate_password
 
     status, principal = await authenticate_password(
