@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import socket
 import unittest
+from datetime import datetime, timedelta, timezone
+
+import jwt
+from redis.asyncio import Redis
 
 try:
     from fastapi.testclient import TestClient
@@ -120,6 +125,88 @@ class LoginHttpTests(unittest.TestCase):
         body = login.json()
         self.assertFalse(body["ok"])
         self.assertEqual(body["error"]["code"], "ACCOUNT_DISABLED")
+
+    def test_login_token_is_verifiable_jwt(self) -> None:
+        login = self.client.post(
+            "/api/v1/auth/login",
+            json={"login_account": "admin", "password": "admin123"},
+        )
+        self.assertEqual(login.status_code, 200, login.text)
+        token = login.json()["data"]["token"]
+        self.assertEqual(len(token.split(".")), 3)
+        claims = jwt.decode(token, get_settings().jwt_secret, algorithms=["HS256"])
+        self.assertEqual(claims["login_account"], "admin")
+        self.assertEqual(claims["sub"], login.json()["data"]["user"]["id"])
+        self.assertTrue(claims.get("jti"))
+
+    def test_tampered_jwt_is_unauthorized(self) -> None:
+        login = self.client.post(
+            "/api/v1/auth/login",
+            json={"login_account": "admin", "password": "admin123"},
+        )
+        self.assertEqual(login.status_code, 200, login.text)
+        token = login.json()["data"]["token"]
+        header, payload, signature = token.split(".")
+        flip = "A" if payload[-1] != "A" else "B"
+        tampered = f"{header}.{payload[:-1]}{flip}.{signature}"
+        me = self.client.get(
+            "/api/v1/system-admin/session/me",
+            headers={"Authorization": f"Bearer {tampered}"},
+        )
+        self.assertEqual(me.status_code, 401, me.text)
+        self.assertEqual(me.json()["error"]["code"], "UNAUTHORIZED")
+
+    def test_wrong_secret_jwt_is_unauthorized(self) -> None:
+        now = datetime.now(timezone.utc)
+        forged = jwt.encode(
+            {
+                "sub": "1",
+                "login_account": "admin",
+                "nickname": "x",
+                "tenant": "t",
+                "jti": "forged-jti",
+                "iat": now,
+                "exp": now + timedelta(hours=1),
+            },
+            "wrong-secret-wrong-secret-wrong-secret-xx",
+            algorithm="HS256",
+        )
+        me = self.client.get(
+            "/api/v1/system-admin/session/me",
+            headers={"Authorization": f"Bearer {forged}"},
+        )
+        self.assertEqual(me.status_code, 401, me.text)
+        self.assertEqual(me.json()["error"]["code"], "UNAUTHORIZED")
+
+    def test_revoked_jti_is_unauthorized(self) -> None:
+        login = self.client.post(
+            "/api/v1/auth/login",
+            json={"login_account": "admin", "password": "admin123"},
+        )
+        self.assertEqual(login.status_code, 200, login.text)
+        token = login.json()["data"]["token"]
+        jti = jwt.decode(token, get_settings().jwt_secret, algorithms=["HS256"])["jti"]
+
+        async def wipe_jti() -> None:
+            settings = get_settings()
+            redis = Redis(
+                host=settings.redis.host,
+                port=settings.redis.port,
+                password=settings.redis.password,
+                decode_responses=True,
+            )
+            try:
+                await redis.delete(f"adpilot:token:{jti}")
+            finally:
+                await redis.aclose()
+
+        asyncio.run(wipe_jti())
+        me = self.client.get(
+            "/api/v1/system-admin/session/me",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        self.assertEqual(me.status_code, 401, me.text)
+        self.assertEqual(me.json()["error"]["code"], "UNAUTHORIZED")
 
 
 if __name__ == "__main__":

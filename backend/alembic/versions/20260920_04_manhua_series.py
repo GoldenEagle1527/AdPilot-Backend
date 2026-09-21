@@ -39,6 +39,7 @@ def upgrade() -> None:
         sa.Column("delivery_status", sa.Boolean(), nullable=False, server_default=sa.text("false")),
         sa.Column("collected_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
         sa.UniqueConstraint("playlet_id", "book_name", name="uq_manhua_series_playlet_book"),
+        if_not_exists=True,
     )
 
 

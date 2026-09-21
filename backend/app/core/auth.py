@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import json
 import secrets
+from datetime import datetime, timedelta, timezone
 from typing import Annotated, Any
 
+import jwt
 from fastapi import APIRouter, Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
@@ -20,6 +22,7 @@ _bearer = HTTPBearer(auto_error=False)
 _TOKEN_KEY = "adpilot:token:{token}"
 _USER_TOKENS_KEY = "adpilot:user-tokens:{user_id}"
 _PRINCIPAL_STR = ("id", "nickname", "login_account", "tenant")
+_JWT_ALG = "HS256"
 
 
 class LoginRequest(BaseModel):
@@ -50,8 +53,8 @@ def read_bearer_token(
     return credentials.credentials
 
 
-def _token_key(token: str) -> str:
-    return _TOKEN_KEY.format(token=token)
+def _token_key(jti: str) -> str:
+    return _TOKEN_KEY.format(token=jti)
 
 
 def _user_tokens_key(user_id: str) -> str:
@@ -76,8 +79,27 @@ def parse_principal(raw: str) -> dict[str, Any] | None:
     return principal
 
 
+def session_jti_from_jwt(token: str) -> str | None:
+    try:
+        claims = jwt.decode(
+            token,
+            get_settings().jwt_secret,
+            algorithms=[_JWT_ALG],
+            options={"require": ["exp", "iat", "jti", "sub"]},
+        )
+    except jwt.PyJWTError:
+        return None
+    jti = claims.get("jti")
+    if not isinstance(jti, str) or not jti:
+        return None
+    return jti
+
+
 async def get_token_user(token: str) -> dict[str, Any] | None:
-    raw = await get_redis().get(_token_key(token))
+    jti = session_jti_from_jwt(token)
+    if jti is None:
+        return None
+    raw = await get_redis().get(_token_key(jti))
     if not raw:
         return None
     return parse_principal(raw)
@@ -94,17 +116,31 @@ async def require_token(
     return user
 
 
+def _encode_access_jwt(*, user_id: str, principal: dict[str, Any], jti: str, ttl: int) -> str:
+    now = datetime.now(timezone.utc)
+    claims = {
+        "sub": user_id,
+        "nickname": str(principal["nickname"]),
+        "login_account": str(principal["login_account"]),
+        "tenant": str(principal["tenant"]),
+        "jti": jti,
+        "iat": now,
+        "exp": now + timedelta(seconds=ttl),
+    }
+    return jwt.encode(claims, get_settings().jwt_secret, algorithm=_JWT_ALG)
+
+
 async def issue_session(principal: dict[str, Any]) -> str:
-    token = secrets.token_urlsafe(32)
+    jti = secrets.token_urlsafe(32)
     ttl = get_settings().token_ttl_seconds
     user_id = str(principal["id"])
     redis = get_redis()
     pipe = redis.pipeline()
-    pipe.set(_token_key(token), json.dumps(principal, ensure_ascii=False), ex=ttl)
-    pipe.sadd(_user_tokens_key(user_id), token)
+    pipe.set(_token_key(jti), json.dumps(principal, ensure_ascii=False), ex=ttl)
+    pipe.sadd(_user_tokens_key(user_id), jti)
     pipe.expire(_user_tokens_key(user_id), ttl)
     await pipe.execute()
-    return token
+    return _encode_access_jwt(user_id=user_id, principal=principal, jti=jti, ttl=ttl)
 
 
 async def drop_user_sessions(user_id: str) -> None:
