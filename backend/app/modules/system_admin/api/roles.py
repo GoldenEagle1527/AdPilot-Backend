@@ -46,7 +46,7 @@ def _role_filters(name: str | None, enabled: bool | None):
 
 
 async def _assignments(
-    session: AsyncSession, role_ids: list[str]
+    session: AsyncSession, role_ids: list[int]
 ) -> tuple[dict[str, list[AssignedUser]], dict[str, list[RoleName]]]:
     users_map: dict[str, list[AssignedUser]] = defaultdict(list)
     depts_map: dict[str, list[RoleName]] = defaultdict(list)
@@ -78,7 +78,7 @@ async def _assignments(
 
 
 async def _role_payload(session: AsyncSession, role: Role) -> dict[str, Any]:
-    users_map, depts_map = await _assignments(session, [str(role.id)])
+    users_map, depts_map = await _assignments(session, [role.id])
     return role_item_dict(role, users_map.get(str(role.id), []), depts_map.get(str(role.id), []))
 
 

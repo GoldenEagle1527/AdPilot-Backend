@@ -268,6 +268,73 @@ class AclGapHttpTests(unittest.TestCase):
             headers=self._auth(admin),
         )
 
+    def test_batch_user_tags_accepts_string_ids(self) -> None:
+        admin = self._admin_token()
+        created = self.client.post(
+            "/api/v1/system-admin/users",
+            headers=self._auth(admin),
+            json={
+                "nickname": "tags",
+                "login_account": f"acl_tag_{self._stamp}",
+                "password": "AclGap@123",
+                "department_id": "1",
+            },
+        )
+        self.assertEqual(created.status_code, 200, created.text)
+        user_id = created.json()["data"]["id"]
+        catalog = self.client.get(
+            "/api/v1/system-admin/user-tags",
+            headers=self._auth(admin),
+        )
+        self.assertEqual(catalog.status_code, 200, catalog.text)
+        tag_ids = [item["id"] for item in catalog.json()["data"]["items"][:2]]
+        self.assertTrue(tag_ids)
+        try:
+            tagged = self.client.put(
+                "/api/v1/system-admin/users/batch-tags",
+                headers=self._auth(admin),
+                json={"user_ids": [user_id], "tag_ids": tag_ids},
+            )
+            self.assertEqual(tagged.status_code, 200, tagged.text)
+            got = tagged.json()["data"]["items"][0]["tags"]
+            self.assertEqual([item["id"] for item in got], tag_ids)
+        finally:
+            self.client.delete(
+                f"/api/v1/system-admin/users/{user_id}",
+                headers=self._auth(admin),
+            )
+
+    def test_role_string_path_id_queries_as_int(self) -> None:
+        admin = self._admin_token()
+        created = self.client.post(
+            "/api/v1/system-admin/roles",
+            headers=self._auth(admin),
+            json={"name": f"intq_{self._stamp}", "remark": "type-cast"},
+        )
+        self.assertEqual(created.status_code, 200, created.text)
+        role_id = created.json()["data"]["id"]
+        try:
+            menus = self.client.get(
+                f"/api/v1/system-admin/roles/{role_id}/menus",
+                headers=self._auth(admin),
+            )
+            self.assertEqual(menus.status_code, 200, menus.text)
+            self.assertEqual(menus.json()["data"]["menu_ids"], [])
+
+            updated = self.client.put(
+                f"/api/v1/system-admin/roles/{role_id}",
+                headers=self._auth(admin),
+                json={"name": f"intq_{self._stamp}_u", "remark": "ok"},
+            )
+            self.assertEqual(updated.status_code, 200, updated.text)
+            self.assertEqual(updated.json()["data"]["name"], f"intq_{self._stamp}_u")
+        finally:
+            self.client.patch(
+                f"/api/v1/system-admin/roles/{role_id}/status",
+                headers=self._auth(admin),
+                json={"enabled": False},
+            )
+
     def test_get_data_scope_expands_new_child(self) -> None:
         admin = self._admin_token()
         created = self.client.post(

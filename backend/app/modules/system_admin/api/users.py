@@ -66,19 +66,20 @@ async def get_user(session: AsyncSession, user_id: str) -> User:
 
 
 async def department_roles_by_dept(
-    session: AsyncSession, department_ids: list[str]
-) -> dict[str, list[Role]]:
-    mapping: dict[str, list[Role]] = {dept_id: [] for dept_id in department_ids}
-    if not department_ids:
+    session: AsyncSession, department_ids: list[int]
+) -> dict[int, list[Role]]:
+    pks = [int(dept_id) for dept_id in department_ids]
+    mapping: dict[int, list[Role]] = {pk: [] for pk in pks}
+    if not pks:
         return mapping
     result = await session.execute(
         select(DepartmentRole.department_id, Role)
         .join(Role, Role.id == DepartmentRole.role_id)
-        .where(DepartmentRole.department_id.in_(department_ids))
+        .where(DepartmentRole.department_id.in_(pks))
         .order_by(Role.id)
     )
     for dept_id, role in result.all():
-        mapping.setdefault(dept_id, []).append(role)
+        mapping.setdefault(int(dept_id), []).append(role)
     return mapping
 
 

@@ -99,6 +99,10 @@ class IntIdTests(unittest.TestCase):
         self.assertIsNone(parse_int_id("0"))
         self.assertIsNone(parse_int_id(True))
 
+    def test_require_int_id_returns_int(self) -> None:
+        self.assertEqual(require_int_id("12", "用户不存在"), 12)
+        self.assertEqual(require_int_id(7, "用户不存在"), 7)
+
     def test_require_int_id_is_not_found(self) -> None:
         with self.assertRaises(ApiError) as ctx:
             require_int_id("abc", "用户不存在")

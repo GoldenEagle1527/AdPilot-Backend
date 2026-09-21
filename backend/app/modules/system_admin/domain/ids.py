@@ -20,8 +20,9 @@ def parse_int_id(raw: object) -> str | None:
     return str(value)
 
 
-def require_int_id(raw: object, not_found: str) -> str:
+def require_int_id(raw: object, not_found: str) -> int:
+    """校验后返回整型主键，供 SQL 比较；对外信封仍用 str(...)。"""
     parsed = parse_int_id(raw)
     if parsed is None:
         raise ApiError(404, "NOT_FOUND", not_found)
-    return parsed
+    return int(parsed)

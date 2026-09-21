@@ -52,9 +52,9 @@ async def get_role_menus(
     _principal: PrincipalDep,
 ):
     """返回该角色已勾选的菜单/组件节点 id。"""
-    await _require_role(session, role_id)
+    role = await _require_role(session, role_id)
     rows = (
-        await session.execute(select(RoleMenu.menu_id).where(RoleMenu.role_id == role_id))
+        await session.execute(select(RoleMenu.menu_id).where(RoleMenu.role_id == role.id))
     ).scalars().all()
     return success({"menu_ids": [str(item) for item in rows]})
 
@@ -88,4 +88,4 @@ async def set_role_menus(
     await assert_user_manager_remains(session)
     await session.commit()
     await publish_acl_for_users(session, await user_ids_holding_role(session, str(role.id)))
-    return success({"menu_ids": menu_ids})
+    return success({"menu_ids": [str(item) for item in menu_ids]})
