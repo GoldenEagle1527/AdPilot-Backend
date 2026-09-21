@@ -26,7 +26,7 @@ SessionDep = Annotated[AsyncSession, Depends(get_session)]
 
 def serialize_item(row: ManhuaSeries) -> ManhuaSeriesItem:
     return ManhuaSeriesItem(
-        id=row.id,
+        id=str(row.id),
         playlet_id=str(row.playlet_id),
         book_id=str(row.book_id),
         category_text=row.category_text,

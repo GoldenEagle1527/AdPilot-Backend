@@ -74,19 +74,19 @@ async def department_roles_by_dept(
 
 
 def _named(items: list) -> list[dict[str, str]]:
-    return [{"id": item.id, "name": item.name} for item in items]
+    return [{"id": str(item.id), "name": item.name} for item in items]
 
 
 def serialize_user(user: User, department_roles: list[Role] | None = None) -> dict:
     roles = department_roles if department_roles is not None else []
     return {
-        "id": user.id,
+        "id": str(user.id),
         "nickname": user.nickname,
         "login_account": user.login_account,
         "short_name": user.short_name,
         "phone": user.phone,
         "enabled": user.enabled,
-        "department_id": user.department_id,
+        "department_id": str(user.department_id),
         "department_name": user.department.name,
         "role_kind": user.role_kind,
         "remark": user.remark,
@@ -236,7 +236,7 @@ async def set_user_status(
     user.enabled = body.enabled
     await session.commit()
     await publish_acl_for_users(session, [user.id])
-    return success({"id": user.id, "enabled": user.enabled})
+    return success({"id": str(user.id), "enabled": user.enabled})
 
 
 @router.delete("/users/{user_id}", response_model=Envelope[DeletedId], summary="软删用户")
@@ -252,4 +252,4 @@ async def delete_user(
     user.deleted_at = datetime.now(timezone.utc)
     await session.commit()
     await drop_user_sessions(user_id)
-    return success({"id": user.id, "deleted": True})
+    return success({"id": str(user.id), "deleted": True})

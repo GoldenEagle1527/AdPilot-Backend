@@ -39,12 +39,12 @@ async def session_principal(session: AsyncSession, user: User) -> dict:
     """给 core 存进 Redis 的主体：身份 + 有效菜单。core 不解释菜单含义。"""
     menus = await effective_menu_ids(session, user)
     return {
-        "id": user.id,
+        "id": str(user.id),
         "nickname": user.nickname,
         "login_account": user.login_account,
         "tenant": user.tenant,
         "enabled": user.enabled,
-        "menu_ids": sorted(menus),
+        "menu_ids": sorted(str(item) for item in menus),
     }
 
 
@@ -78,14 +78,14 @@ async def user_ids_holding_role(session: AsyncSession, role_id: str) -> list[str
         .join(DepartmentRole, DepartmentRole.department_id == User.department_id)
         .where(DepartmentRole.role_id == role_id, user_not_deleted())
     )
-    return list({row[0] for row in user_rows.all()} | {row[0] for row in dept_rows.all()})
+    return list({str(row[0]) for row in user_rows.all()} | {str(row[0]) for row in dept_rows.all()})
 
 
 async def user_ids_in_department(session: AsyncSession, department_id: str) -> list[str]:
     rows = await session.execute(
         select(User.id).where(User.department_id == department_id, user_not_deleted())
     )
-    return [row[0] for row in rows.all()]
+    return [str(row[0]) for row in rows.all()]
 
 
 async def publish_acl_for_users(session: AsyncSession, user_ids: Iterable[str]) -> None:
@@ -119,7 +119,7 @@ async def effective_menu_ids(session: AsyncSession, user: User) -> set[str]:
     if not role_ids:
         return set()
     menus = await session.execute(select(RoleMenu.menu_id).where(RoleMenu.role_id.in_(role_ids)))
-    return {row[0] for row in menus.all()}
+    return {str(row[0]) for row in menus.all()}
 
 
 def _node_sort_key(node: MenuNode) -> tuple[int, str]:
@@ -131,10 +131,10 @@ def _node_sort_key(node: MenuNode) -> tuple[int, str]:
 
 def _to_menu_node(node: MenuNode, children: list[SessionMenuNode]) -> SessionMenuNode:
     return SessionMenuNode(
-        id=node.id,
+        id=str(node.id),
         name=node.name,
         type=node.type,
-        parent_id=node.parent_id,
+        parent_id=None if node.parent_id is None else str(node.parent_id),
         business_domain=node.business_domain,
         tenant_kind=node.tenant_kind,
         children=children,
@@ -145,22 +145,23 @@ def build_menu_tree(nodes_by_id: dict[str, MenuNode], granted_ids: set[str]) -> 
     if not granted_ids:
         return []
 
-    keep: set[str] = set(granted_ids)
-    for menu_id in list(granted_ids):
-        current = nodes_by_id.get(menu_id)
+    keyed = {str(key): node for key, node in nodes_by_id.items()}
+    keep: set[str] = {str(item) for item in granted_ids}
+    for menu_id in list(keep):
+        current = keyed.get(menu_id)
         while current is not None and current.parent_id:
-            parent = nodes_by_id.get(current.parent_id)
+            parent = keyed.get(str(current.parent_id))
             if parent is None:
                 break
-            keep.add(parent.id)
+            keep.add(str(parent.id))
             current = parent
 
     children_of: dict[str | None, list[MenuNode]] = {}
     for menu_id in keep:
-        node = nodes_by_id.get(menu_id)
+        node = keyed.get(menu_id)
         if node is None:
             continue
-        parent_key = node.parent_id if node.parent_id in keep else None
+        parent_key = str(node.parent_id) if node.parent_id is not None and str(node.parent_id) in keep else None
         children_of.setdefault(parent_key, []).append(node)
 
     def walk(parent_id: str | None) -> list[SessionMenuNode]:
@@ -168,7 +169,7 @@ def build_menu_tree(nodes_by_id: dict[str, MenuNode], granted_ids: set[str]) -> 
         siblings.sort(key=_node_sort_key)
         items: list[SessionMenuNode] = []
         for node in siblings:
-            kids = walk(node.id)
+            kids = walk(str(node.id))
             if node.type == MENU_TYPE_DIRECTORY and not kids:
                 continue
             items.append(_to_menu_node(node, kids))

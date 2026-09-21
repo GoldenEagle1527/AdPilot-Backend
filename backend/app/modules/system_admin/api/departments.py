@@ -56,10 +56,11 @@ async def _require_parent(session: SessionDep, parent_id: str | None) -> None:
 async def _would_cycle(session: SessionDep, dept_id: str, parent_id: str | None) -> bool:
     if parent_id is None:
         return False
-    cursor: str | None = parent_id
+    cursor: str | None = None if parent_id is None else str(parent_id)
+    dept_key = str(dept_id)
     seen: set[str] = set()
     while cursor is not None:
-        if cursor == dept_id:
+        if cursor == dept_key:
             return True
         if cursor in seen:
             return True
@@ -67,7 +68,7 @@ async def _would_cycle(session: SessionDep, dept_id: str, parent_id: str | None)
         parent = await session.get(Department, cursor)
         if parent is None or parent.deleted_at is not None:
             return False
-        cursor = parent.parent_id
+        cursor = None if parent.parent_id is None else str(parent.parent_id)
     return False
 
 
@@ -149,7 +150,7 @@ async def set_department_status(
     dept.enabled = body.enabled
     session.add(dept)
     await session.commit()
-    return success({"id": dept.id, "enabled": bool(dept.enabled)})
+    return success({"id": str(dept.id), "enabled": bool(dept.enabled)})
 
 
 @router.delete("/departments/{id}", response_model=Envelope[DeletedId], summary="软删部门")
@@ -181,4 +182,4 @@ async def delete_department(
     dept.deleted_at = datetime.now(timezone.utc)
     session.add(dept)
     await session.commit()
-    return success({"id": dept.id, "deleted": True})
+    return success({"id": str(dept.id), "deleted": True})

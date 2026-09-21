@@ -20,7 +20,7 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     op.create_table(
         "manhua_series",
-        sa.Column("id", sa.String(length=32), primary_key=True),
+        sa.Column("id", sa.Integer(), sa.Identity(), primary_key=True),
         sa.Column("thumb_url", sa.String(length=1024), nullable=False, server_default=""),
         sa.Column("book_id", sa.BigInteger(), nullable=False, server_default="0"),
         sa.Column("playlet_id", sa.BigInteger(), nullable=False, server_default="0"),
@@ -39,6 +39,7 @@ def upgrade() -> None:
         sa.Column("delivery_status", sa.Boolean(), nullable=False, server_default=sa.text("false")),
         sa.Column("collected_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
         sa.UniqueConstraint("playlet_id", "book_name", name="uq_manhua_series_playlet_book"),
+        if_not_exists=True,
     )
 
 

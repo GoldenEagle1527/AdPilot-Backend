@@ -9,7 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
 from app.core.db import get_engine
-from app.core.ids import new_id
 from app.modules.material.domain.changdu import (
     PAGE_GAP_SECONDS,
     PAGE_SIZE,
@@ -35,7 +34,6 @@ async def upsert_records(session: AsyncSession, records: list[AwemeSeriesRecord]
         return 0
     rows = [
         {
-            "id": new_id(),
             "thumb_url": item.thumb_url,
             "book_id": item.book_id,
             "playlet_id": item.playlet_id,

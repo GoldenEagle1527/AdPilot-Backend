@@ -53,16 +53,16 @@ async def set_user_data_scope(
         result = await session.execute(
             select(Department).where(Department.id.in_(unique_ids), department_not_deleted())
         )
-        departments = {dept.id: dept for dept in result.scalars().all()}
-        missing = [dept_id for dept_id in unique_ids if dept_id not in departments]
+        departments = {str(dept.id): dept for dept in result.scalars().all()}
+        missing = [dept_id for dept_id in unique_ids if str(dept_id) not in departments]
         if missing:
             raise ApiError(404, "NOT_FOUND", "部门不存在")
         expanded = await expand_department_ids(session, unique_ids)
         found = await session.execute(
             select(Department).where(Department.id.in_(expanded), department_not_deleted())
         )
-        by_id = {dept.id: dept for dept in found.scalars().all()}
-        user.data_scope_departments = [by_id[dept_id] for dept_id in expanded if dept_id in by_id]
+        by_id = {str(dept.id): dept for dept in found.scalars().all()}
+        user.data_scope_departments = [by_id[str(dept_id)] for dept_id in expanded if str(dept_id) in by_id]
     else:
         user.data_scope_departments = []
     await session.commit()

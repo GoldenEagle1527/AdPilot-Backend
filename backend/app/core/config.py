@@ -62,6 +62,7 @@ class Settings(BaseModel):
     changdu: ChangduSettings = Field(default_factory=ChangduSettings)
     api_base: str | None = None
     token_ttl_seconds: int = 86400
+    jwt_secret: str = Field(min_length=32)
     uvicorn_workers: int = 2
     db_pool_size: int = 10
     db_pool_max_overflow: int = 10

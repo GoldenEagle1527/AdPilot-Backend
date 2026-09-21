@@ -5,16 +5,16 @@ from __future__ import annotations
 DEPARTMENT_TAG_NAMES: tuple[str, ...] = ("投放部", "投放组", "素材部", "素材组")
 USER_TAG_NAMES: tuple[str, ...] = ("投手", "素材手")
 
-DEPARTMENT_TAG_SEED: list[dict[str, str]] = [
-    {"id": "1", "name": "投放部"},
-    {"id": "2", "name": "投放组"},
-    {"id": "3", "name": "素材部"},
-    {"id": "4", "name": "素材组"},
+DEPARTMENT_TAG_SEED: list[dict[str, object]] = [
+    {"id": 1, "name": "投放部"},
+    {"id": 2, "name": "投放组"},
+    {"id": 3, "name": "素材部"},
+    {"id": 4, "name": "素材组"},
 ]
 
-USER_TAG_SEED: list[dict[str, str]] = [
-    {"id": "1", "name": "投手"},
-    {"id": "2", "name": "素材手"},
+USER_TAG_SEED: list[dict[str, object]] = [
+    {"id": 1, "name": "投手"},
+    {"id": 2, "name": "素材手"},
 ]
 
 

@@ -22,16 +22,16 @@ class LocalMockSeedTests(unittest.TestCase):
     def test_admin_and_pitcher_seeded(self) -> None:
         accounts = {row["login_account"] for row in local_user_seed_rows()}
         self.assertEqual(accounts, {"admin", "disabled", "pitcher"})
-        self.assertEqual({row["id"] for row in LOCAL_DEPARTMENTS}, {"1", "2"})
+        self.assertEqual({row["id"] for row in LOCAL_DEPARTMENTS}, {1, 2})
 
     def test_admin_has_ops_role(self) -> None:
         pairs = {(row["user_id"], row["role_id"]) for row in local_user_role_seed_rows()}
-        self.assertIn(("1", "5"), pairs)
-        self.assertIn(("3", "6"), pairs)
+        self.assertIn((1, 5), pairs)
+        self.assertIn((3, 6), pairs)
 
     def test_ops_role_has_system_admin_menus(self) -> None:
-        granted = {row["menu_id"] for row in role_menu_seed_rows() if row["role_id"] == "5"}
-        self.assertTrue({"98", "100", "101", "102"} <= granted)
+        granted = {row["menu_id"] for row in role_menu_seed_rows() if row["role_id"] == 5}
+        self.assertTrue({98, 100, 101, 102} <= granted)
 
 
 class MenuTreeTests(unittest.TestCase):

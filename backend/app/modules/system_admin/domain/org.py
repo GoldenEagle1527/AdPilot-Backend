@@ -29,7 +29,7 @@ async def department_subtree_ids(session: AsyncSession, root_id: str) -> list[st
         select(child.id).where(child.parent_id == tree.c.id, child.deleted_at.is_(None))
     )
     result = await session.execute(select(tree.c.id))
-    return list(result.scalars().all())
+    return [str(item) for item in result.scalars().all()]
 
 
 async def expand_department_ids(session: AsyncSession, department_ids: list[str]) -> list[str]:
@@ -52,7 +52,7 @@ async def stored_data_scope_ids(session: AsyncSession, user: User) -> list[str]:
         .where(UserDataScope.user_id == user.id, department_not_deleted())
         .order_by(UserDataScope.department_id)
     )
-    return list(rows.scalars().all())
+    return [str(item) for item in rows.scalars().all()]
 
 
 async def effective_data_scope(

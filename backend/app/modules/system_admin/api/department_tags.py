@@ -46,11 +46,11 @@ async def _tags_by_ids(session: SessionDep, tag_ids: list[str]) -> list[Departme
     found = list(
         (await session.scalars(select(DepartmentTag).where(DepartmentTag.id.in_(unique_ids)))).all()
     )
-    found_by_id = {t.id: t for t in found}
-    missing = [tid for tid in unique_ids if tid not in found_by_id]
+    found_by_id = {str(t.id): t for t in found}
+    missing = [tid for tid in unique_ids if str(tid) not in found_by_id]
     if missing:
         raise ApiError(404, "NOT_FOUND", "标签不存在")
-    return [found_by_id[tid] for tid in unique_ids]
+    return [found_by_id[str(tid)] for tid in unique_ids]
 
 
 @router.get("/department-tags", response_model=Envelope[TagList], summary="部门标签目录")
@@ -102,14 +102,14 @@ async def add_department_tags(
     tags = await _tags_by_ids(session, body.tag_ids)
     for dept_id in list(dict.fromkeys(body.department_ids)):
         dept = await _get_department(session, dept_id)
-        have = {t.id for t in dept.tags}
-        dept.tags = list(dept.tags) + [t for t in tags if t.id not in have]
+        have = {str(t.id) for t in dept.tags}
+        dept.tags = list(dept.tags) + [t for t in tags if str(t.id) not in have]
         session.add(dept)
     await session.commit()
     out: list[dict] = []
     for dept_id in list(dict.fromkeys(body.department_ids)):
         loaded = await _get_department(session, dept_id)
-        out.append({"id": loaded.id, "tags": [tag_item(t) for t in loaded.tags]})
+        out.append({"id": str(loaded.id), "tags": [tag_item(t) for t in loaded.tags]})
     return success({"items": out})
 
 
@@ -127,7 +127,7 @@ async def set_department_tags(
     session.add(dept)
     await session.commit()
     loaded = await _get_department(session, id)
-    return success({"id": loaded.id, "tags": [tag_item(t) for t in loaded.tags]})
+    return success({"id": str(loaded.id), "tags": [tag_item(t) for t in loaded.tags]})
 
 
 @router.delete(
@@ -143,8 +143,8 @@ async def remove_department_tag(
 ):
     """从部门上移除单个标签；标签本身不删。"""
     dept = await _get_department(session, id)
-    dept.tags = [t for t in dept.tags if t.id != tag_id]
+    dept.tags = [t for t in dept.tags if str(t.id) != str(tag_id)]
     session.add(dept)
     await session.commit()
     loaded = await _get_department(session, id)
-    return success({"id": loaded.id, "tags": [tag_item(t) for t in loaded.tags]})
+    return success({"id": str(loaded.id), "tags": [tag_item(t) for t in loaded.tags]})

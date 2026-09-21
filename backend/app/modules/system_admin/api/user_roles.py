@@ -30,7 +30,7 @@ async def user_roles_payload(session: AsyncSession, user: User) -> dict:
     assigned_at = {row.role_id: row.assigned_at for row in assigned_rows}
     items = [
         {
-            "id": role.id,
+            "id": str(role.id),
             "name": role.name,
             "assigned": role.id in assigned_at,
             "assigned_at": iso8601_z(assigned_at[role.id]) if role.id in assigned_at else None,
@@ -42,7 +42,7 @@ async def user_roles_payload(session: AsyncSession, user: User) -> dict:
     )
     return {
         "items": items,
-        "department_roles": [{"id": role.id, "name": role.name} for role in dept_roles],
+        "department_roles": [{"id": str(role.id), "name": role.name} for role in dept_roles],
     }
 
 
@@ -69,11 +69,11 @@ async def set_user_roles(
     unique_ids = list(dict.fromkeys(body.role_ids))
     if unique_ids:
         result = await session.execute(select(Role).where(Role.id.in_(unique_ids)))
-        roles = {role.id: role for role in result.scalars().all()}
-        missing = [role_id for role_id in unique_ids if role_id not in roles]
+        roles = {str(role.id): role for role in result.scalars().all()}
+        missing = [role_id for role_id in unique_ids if str(role_id) not in roles]
         if missing:
             raise ApiError(404, "NOT_FOUND", "角色不存在")
-        user.roles = [roles[role_id] for role_id in unique_ids]
+        user.roles = [roles[str(role_id)] for role_id in unique_ids]
     else:
         user.roles = []
     await session.commit()

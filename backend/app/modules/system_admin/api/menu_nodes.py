@@ -40,10 +40,10 @@ def _to_dict(
     roles_by_menu: dict[str, list[dict[str, str]]],
 ) -> dict[str, Any]:
     item: dict[str, Any] = {
-        "id": node.id,
+        "id": str(node.id),
         "name": node.name,
         "type": node.type,
-        "parent_id": node.parent_id,
+        "parent_id": None if node.parent_id is None else str(node.parent_id),
         "business_domain": node.business_domain,
         "tenant_kind": node.tenant_kind,
         "children": children,
@@ -52,7 +52,7 @@ def _to_dict(
         if node.type == MENU_TYPE_DIRECTORY:
             item["assigned_roles"] = []
         else:
-            item["assigned_roles"] = roles_by_menu.get(node.id, [])
+            item["assigned_roles"] = roles_by_menu.get(str(node.id), [])
     return item
 
 
@@ -92,13 +92,14 @@ async def list_menu_nodes(
             )
         ).all()
         for menu_id, role_id, role_name in assign_rows:
-            roles_by_menu.setdefault(menu_id, []).append({"id": role_id, "name": role_name})
+            roles_by_menu.setdefault(str(menu_id), []).append({"id": str(role_id), "name": role_name})
 
     children_of: dict[str | None, list[MenuNode]] = {}
     for node in nodes:
         if node.id not in keep:
             continue
-        children_of.setdefault(node.parent_id, []).append(node)
+        parent_key = None if node.parent_id is None else str(node.parent_id)
+        children_of.setdefault(parent_key, []).append(node)
     for siblings in children_of.values():
         siblings.sort(key=_sort_key)
 
@@ -106,7 +107,7 @@ async def list_menu_nodes(
         return [
             _to_dict(
                 child,
-                build(child.id),
+                build(str(child.id)),
                 include_assigned_roles,
                 roles_by_menu,
             )

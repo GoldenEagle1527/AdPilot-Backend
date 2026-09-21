@@ -8,6 +8,7 @@ Create Date: 2026-09-20
 
 from typing import Sequence, Union
 
+import sqlalchemy as sa
 from alembic import op
 
 from app.modules.system_admin.domain.models import Base
@@ -30,6 +31,14 @@ def upgrade() -> None:
     op.bulk_insert(tables["users"], local_user_seed_rows())
     op.bulk_insert(tables["user_roles"], local_user_role_seed_rows())
     op.bulk_insert(tables["user_data_scopes"], local_data_scope_seed_rows())
+    for table in ("departments", "users"):
+        op.execute(
+            sa.text(
+                f"SELECT setval(pg_get_serial_sequence('{table}', 'id'), "
+                f"COALESCE((SELECT MAX(id) FROM {table}), 1), "
+                f"(SELECT EXISTS (SELECT 1 FROM {table})))"
+            )
+        )
 
 
 def downgrade() -> None:
