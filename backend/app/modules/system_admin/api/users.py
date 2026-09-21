@@ -16,8 +16,12 @@ from app.core.envelope import ApiError, Envelope, success
 from app.core.pagination import PageData, PageParams, page_data, page_params
 from app.core.times import iso8601_z
 from app.modules.system_admin.deps import MENU_USERS, SessionDep, require_menu
-from app.modules.system_admin.domain.access import publish_acl_for_users
+from app.modules.system_admin.domain.access import (
+    assert_user_manager_remains,
+    publish_acl_for_users,
+)
 from app.modules.system_admin.domain.enums import ROLE_KIND_MEMBER
+from app.modules.system_admin.domain.ids import parse_int_id, require_int_id
 from app.modules.system_admin.domain.models import Department, DepartmentRole, Role, User
 from app.modules.system_admin.domain.org import department_subtree_ids, user_not_deleted
 from app.modules.system_admin.domain.password import hash_password_or_default
@@ -39,16 +43,22 @@ _USER_LOAD = (
 )
 
 
-async def get_department(session: AsyncSession, department_id: str) -> Department:
-    department = await session.get(Department, department_id)
+async def get_department(
+    session: AsyncSession, department_id: str, *, require_enabled: bool = False
+) -> Department:
+    department_id = require_int_id(department_id, "部门不存在")
+    department = await session.get(Department, int(department_id))
     if department is None or department.deleted_at is not None:
         raise ApiError(404, "NOT_FOUND", "部门不存在")
+    if require_enabled and not department.enabled:
+        raise ApiError(409, "DEPARTMENT_DISABLED", "部门已停用")
     return department
 
 
 async def get_user(session: AsyncSession, user_id: str) -> User:
+    user_id = require_int_id(user_id, "用户不存在")
     result = await session.execute(
-        select(User).options(*_USER_LOAD).where(User.id == user_id, user_not_deleted())
+        select(User).options(*_USER_LOAD).where(User.id == int(user_id), user_not_deleted())
     )
     user = result.scalar_one_or_none()
     if user is None:
@@ -124,16 +134,22 @@ async def list_users(
     """按部门（可含子孙）、昵称、账号、手机、启用状态分页列出未删除用户。"""
     filters = [user_not_deleted()]
     if id:
-        filters.append(User.id == id.strip())
+        parsed = parse_int_id(id.strip())
+        if parsed is None:
+            return success(page_data([], 0, params))
+        filters.append(User.id == int(parsed))
     if department_id:
+        parsed_dept = parse_int_id(department_id)
+        if parsed_dept is None:
+            return success(page_data([], 0, params))
         dept_ids = (
-            await department_subtree_ids(session, department_id)
+            await department_subtree_ids(session, parsed_dept)
             if include_descendants
-            else [department_id]
+            else [parsed_dept]
         )
         if not dept_ids:
             return success(page_data([], 0, params))
-        filters.append(User.department_id.in_(dept_ids))
+        filters.append(User.department_id.in_([int(item) for item in dept_ids]))
     if nickname:
         filters.append(User.nickname.ilike(f"%{nickname.strip()}%"))
     if login_account:
@@ -167,7 +183,7 @@ async def create_user(
     principal: PrincipalDep,
 ) -> dict:
     """在指定部门下创建用户；登录账号唯一，默认启用、职务为成员。"""
-    await get_department(session, body.department_id)
+    department = await get_department(session, body.department_id, require_enabled=True)
     existing = await session.execute(
         select(User.id).where(User.login_account == body.login_account)
     )
@@ -181,7 +197,7 @@ async def create_user(
         password_hash=await hash_password_or_default(session, body.password),
         phone=body.phone,
         enabled=True,
-        department_id=body.department_id,
+        department_id=department.id,
         role_kind=ROLE_KIND_MEMBER,
         remark=body.remark,
         tenant=body.tenant or principal["tenant"],
@@ -208,15 +224,15 @@ async def update_user(
 ) -> dict:
     """改昵称、部门、职务等；不改登录账号。"""
     user = await get_user(session, user_id)
-    await get_department(session, body.department_id)
+    department = await get_department(session, body.department_id, require_enabled=True)
     user.nickname = body.nickname
     user.short_name = body.short_name
     user.phone = body.phone
-    user.department_id = body.department_id
+    user.department_id = department.id
     user.role_kind = body.role_kind
     user.remark = body.remark
     await session.commit()
-    await publish_acl_for_users(session, [user_id])
+    await publish_acl_for_users(session, [str(user.id)])
     user = await get_user(session, user_id)
     roles = (await department_roles_by_dept(session, [user.department_id])).get(
         user.department_id, []
@@ -229,13 +245,20 @@ async def set_user_status(
     user_id: str,
     body: SetUserStatusRequest,
     session: SessionDep,
-    _principal: PrincipalDep,
+    principal: PrincipalDep,
 ) -> dict:
-    """启用或停用用户，并刷新其授权缓存。"""
+    """启用或停用用户；停用会踢掉其登录会话。"""
     user = await get_user(session, user_id)
+    if not body.enabled and principal["id"] == str(user.id):
+        raise ApiError(409, "CANNOT_DISABLE_SELF", "不能停用当前登录账号")
     user.enabled = body.enabled
+    if not body.enabled:
+        await assert_user_manager_remains(session)
     await session.commit()
-    await publish_acl_for_users(session, [user.id])
+    if not body.enabled:
+        await drop_user_sessions(str(user.id))
+    else:
+        await publish_acl_for_users(session, [str(user.id)])
     return success({"id": str(user.id), "enabled": user.enabled})
 
 
@@ -246,10 +269,11 @@ async def delete_user(
     principal: PrincipalDep,
 ) -> dict:
     """软删用户并踢掉其登录会话；不能删当前登录账号。"""
-    if principal["id"] == user_id:
-        raise ApiError(409, "CANNOT_DELETE_SELF", "不能删除当前登录账号")
     user = await get_user(session, user_id)
+    if principal["id"] == str(user.id):
+        raise ApiError(409, "CANNOT_DELETE_SELF", "不能删除当前登录账号")
     user.deleted_at = datetime.now(timezone.utc)
+    await assert_user_manager_remains(session)
     await session.commit()
-    await drop_user_sessions(user_id)
+    await drop_user_sessions(str(user.id))
     return success({"id": str(user.id), "deleted": True})

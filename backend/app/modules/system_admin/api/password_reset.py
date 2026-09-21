@@ -6,6 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends
 
+from app.core.auth import drop_user_sessions
 from app.core.envelope import ApiError, Envelope, success
 from app.modules.system_admin.api.users import get_user
 from app.modules.system_admin.deps import MENU_USERS, SessionDep, require_menu
@@ -35,4 +36,5 @@ async def reset_user_password(
     user = await get_user(session, user_id)
     user.password_hash = await hash_password_async(body.password)
     await session.commit()
+    await drop_user_sessions(str(user.id))
     return success({"reset": True})

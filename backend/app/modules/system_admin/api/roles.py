@@ -14,7 +14,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.envelope import ApiError, Envelope, success
 from app.core.pagination import PageData, PageParams, page_data, page_params
 from app.modules.system_admin.deps import MENU_ROLES, SessionDep, require_menu
-from app.modules.system_admin.domain.access import publish_acl_for_users, user_ids_holding_role
+from app.modules.system_admin.domain.access import (
+    assert_user_manager_remains,
+    publish_acl_for_users,
+    user_ids_holding_role,
+)
+from app.modules.system_admin.domain.ids import require_int_id
 from app.modules.system_admin.domain.models import Department, DepartmentRole, Role, User, UserRole
 from app.modules.system_admin.domain.org import department_not_deleted, user_not_deleted
 from app.modules.system_admin.schemas.common import AssignedUser, IdEnabled, RoleName
@@ -78,7 +83,8 @@ async def _role_payload(session: AsyncSession, role: Role) -> dict[str, Any]:
 
 
 async def _get_role_or_404(session: AsyncSession, role_id: str) -> Role:
-    role = await session.get(Role, role_id)
+    role_id = require_int_id(role_id, "角色不存在")
+    role = await session.get(Role, int(role_id))
     if role is None:
         raise ApiError(404, "NOT_FOUND", "角色不存在")
     return role
@@ -175,6 +181,7 @@ async def set_role_status(
     role = await _get_role_or_404(session, role_id)
     role.enabled = body.enabled
     _touch(role, principal["login_account"])
+    await assert_user_manager_remains(session)
     await session.commit()
-    await publish_acl_for_users(session, await user_ids_holding_role(session, role.id))
+    await publish_acl_for_users(session, await user_ids_holding_role(session, str(role.id)))
     return success({"id": str(role.id), "enabled": role.enabled})
