@@ -1,4 +1,5 @@
-# 本机 Docker Compose 开发。不要填 192.168.112.12。
+# 本机 Docker Compose 开发。复制为 deployment/dev.yaml（该文件不入库）。
+# 不要填 192.168.112.12。
 listen_host: "0.0.0.0"
 listen_port: 8000
 
@@ -7,8 +8,6 @@ cors_origins:
   - "http://127.0.0.1:5173"
   - "http://localhost:4173"
   - "http://127.0.0.1:4173"
-  - "http://192.168.112.9:5173"
-  - "http://192.168.112.9:4173"
 
 postgres:
   host: "postgres"
@@ -24,7 +23,7 @@ redis:
 
 api_base: "http://127.0.0.1:8000"
 token_ttl_seconds: 86400
-jwt_secret: "_Nr7ZcngV7vdJXuy9meCEApeKEHeDlAGY-Kxu7sW_78FPHHAeyHeznDNkgDzsZ0T"
+jwt_secret: "replace-dev-jwt-secret-min-32-characters"
 uvicorn_workers: 2
 db_pool_size: 10
 db_pool_max_overflow: 10
@@ -32,6 +31,6 @@ db_pool_timeout: 30
 
 changdu:
   base_url: "https://openapi.changdupingtai.com"
-  distributor_id: "1876837880363144"
-  secret_key: "929mrilXUheJtfDnmRUApDr3BNgFmChZ"
+  distributor_id: ""
+  secret_key: ""
   sync_interval_seconds: 1800

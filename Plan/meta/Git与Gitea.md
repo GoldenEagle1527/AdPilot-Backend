@@ -20,4 +20,4 @@ Agent 必守：`.cursor/rules/git-branch-pr.mdc`。
 4. 一人多个接口：仍宜一接口一 PR。
 5. 改对外 HTTP：同一 PR 改契约、变更历史、`contracts/最新表.md`；破坏性带 `_history/`。合入后发群对接短文。
 
-生产密钥不准进仓。开发库口令写在 `deployment/dev.yaml`。
+生产密钥不准进仓。开发库口令写在本机 `deployment/dev.yaml`（不入库；从 `deployment/dev.yaml.example` 复制）。

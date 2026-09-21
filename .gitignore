@@ -17,6 +17,8 @@ build/
 .env
 .env.*
 !.env.example
+deployment/dev.yaml
+!deployment/dev.yaml.example
 
 # Cursor / local indexes
 .cursor/mcp.json

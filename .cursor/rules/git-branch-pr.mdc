@@ -16,6 +16,6 @@ alwaysApply: true
 
 一人领多个接口时，仍宜一接口一 PR。改对外 HTTP 的同一 PR 必须改契约、变更历史、`Plan/modules/<id>/contracts/最新表.md`；破坏性带 `_history/`。合入后发群对接短文。
 
-生产密钥不准进仓。开发口令只写本仓 `deployment/dev.yaml`。
+生产密钥不准进仓。开发口令只写本机 `deployment/dev.yaml`（已 gitignore；从 `deployment/dev.yaml.example` 复制）。
 
 人读细则：`Plan/meta/Git与Gitea.md`。
