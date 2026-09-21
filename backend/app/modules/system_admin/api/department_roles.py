@@ -1,3 +1,5 @@
+"""部门角色：查询已分配表，整表替换。"""
+
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
@@ -42,23 +44,33 @@ async def _all_role_briefs(session: SessionDep, department_id: str) -> list[dict
     ]
 
 
-@router.get("/departments/{id}/roles", response_model=Envelope[RoleBriefList])
+@router.get(
+    "/departments/{id}/roles",
+    response_model=Envelope[RoleBriefList],
+    summary="部门角色已分配表",
+)
 async def list_department_roles(
     id: str,
     session: SessionDep,
     _user: dict[str, str] = Depends(_principal),
 ):
+    """列出全部角色及该部门是否已分配。"""
     await _require_department(session, id)
     return success({"items": await _all_role_briefs(session, id)})
 
 
-@router.put("/departments/{id}/roles", response_model=Envelope[RoleBriefList])
+@router.put(
+    "/departments/{id}/roles",
+    response_model=Envelope[RoleBriefList],
+    summary="替换部门角色",
+)
 async def set_department_roles(
     id: str,
     body: SetDepartmentRolesBody,
     session: SessionDep,
     _user: dict[str, str] = Depends(_principal),
 ):
+    """用 role_ids 整表替换部门角色，并刷新该部门下用户授权。"""
     await _require_department(session, id)
     unique_ids = list(dict.fromkeys(body.role_ids))
     if unique_ids:

@@ -1,3 +1,5 @@
+"""用户角色：查询已分配表（含只读部门角色），只替换用户角色。"""
+
 from __future__ import annotations
 
 from typing import Annotated
@@ -44,23 +46,25 @@ async def user_roles_payload(session: AsyncSession, user: User) -> dict:
     }
 
 
-@router.get("/users/{user_id}/roles", response_model=Envelope[UserRolesData])
+@router.get("/users/{user_id}/roles", response_model=Envelope[UserRolesData], summary="用户角色已分配表")
 async def list_user_roles(
     user_id: str,
     session: SessionDep,
     _principal: PrincipalDep,
 ) -> dict:
+    """列出全部角色及该用户是否已分配；部门角色只读附带。"""
     user = await get_user(session, user_id)
     return success(await user_roles_payload(session, user))
 
 
-@router.put("/users/{user_id}/roles", response_model=Envelope[UserRolesData])
+@router.put("/users/{user_id}/roles", response_model=Envelope[UserRolesData], summary="替换用户角色")
 async def set_user_roles(
     user_id: str,
     body: SetUserRolesRequest,
     session: SessionDep,
     _principal: PrincipalDep,
 ) -> dict:
+    """只替换用户角色，不改部门角色；随后刷新授权。"""
     user = await get_user(session, user_id)
     unique_ids = list(dict.fromkeys(body.role_ids))
     if unique_ids:

@@ -1,3 +1,5 @@
+"""部门标签目录，以及给部门打标/换标/去标。"""
+
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
@@ -51,21 +53,23 @@ async def _tags_by_ids(session: SessionDep, tag_ids: list[str]) -> list[Departme
     return [found_by_id[str(tid)] for tid in unique_ids]
 
 
-@router.get("/department-tags", response_model=Envelope[TagList])
+@router.get("/department-tags", response_model=Envelope[TagList], summary="部门标签目录")
 async def list_department_tags(
     session: SessionDep,
     _user: dict[str, str] = Depends(_principal),
 ):
+    """列出固定枚举的部门标签（投放部/组、素材部/组）。"""
     result = await session.scalars(select(DepartmentTag).order_by(DepartmentTag.name, DepartmentTag.id))
     return success({"items": [tag_item(t) for t in result.all()]})
 
 
-@router.post("/department-tags", response_model=Envelope[Tag])
+@router.post("/department-tags", response_model=Envelope[Tag], summary="新增部门标签")
 async def create_department_tag(
     body: CreateDepartmentTagBody,
     session: SessionDep,
     _user: dict[str, str] = Depends(_principal),
 ):
+    """仅允许枚举名；同名冲突。"""
     try:
         name = require_department_tag_name(body.name)
     except ValueError as exc:
@@ -84,12 +88,17 @@ async def create_department_tag(
     return success(tag_item(tag))
 
 
-@router.put("/departments/batch-tags", response_model=Envelope[BatchTagResult])
+@router.put(
+    "/departments/batch-tags",
+    response_model=Envelope[BatchTagResult],
+    summary="批量给部门追加标签",
+)
 async def add_department_tags(
     body: AddDepartmentTagsBody,
     session: SessionDep,
     _user: dict[str, str] = Depends(_principal),
 ):
+    """给多个部门追加标签，已有的不重复加。"""
     tags = await _tags_by_ids(session, body.tag_ids)
     for dept_id in list(dict.fromkeys(body.department_ids)):
         dept = await _get_department(session, dept_id)
@@ -104,13 +113,14 @@ async def add_department_tags(
     return success({"items": out})
 
 
-@router.put("/departments/{id}/tags", response_model=Envelope[IdTags])
+@router.put("/departments/{id}/tags", response_model=Envelope[IdTags], summary="替换部门标签")
 async def set_department_tags(
     id: str,
     body: SetDepartmentTagsBody,
     session: SessionDep,
     _user: dict[str, str] = Depends(_principal),
 ):
+    """用传入的 tag_ids 整表替换该部门标签。"""
     dept = await _get_department(session, id)
     unique_ids = list(dict.fromkeys(body.tag_ids))
     dept.tags = await _tags_by_ids(session, unique_ids) if unique_ids else []
@@ -120,13 +130,18 @@ async def set_department_tags(
     return success({"id": str(loaded.id), "tags": [tag_item(t) for t in loaded.tags]})
 
 
-@router.delete("/departments/{id}/tags/{tag_id}", response_model=Envelope[IdTags])
+@router.delete(
+    "/departments/{id}/tags/{tag_id}",
+    response_model=Envelope[IdTags],
+    summary="去掉一个部门标签",
+)
 async def remove_department_tag(
     id: str,
     tag_id: str,
     session: SessionDep,
     _user: dict[str, str] = Depends(_principal),
 ):
+    """从部门上移除单个标签；标签本身不删。"""
     dept = await _get_department(session, id)
     dept.tags = [t for t in dept.tags if str(t.id) != str(tag_id)]
     session.add(dept)

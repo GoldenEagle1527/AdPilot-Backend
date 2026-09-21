@@ -1,3 +1,5 @@
+"""角色：分页列表、新增、改名、启停。"""
+
 from __future__ import annotations
 
 from collections import defaultdict
@@ -87,7 +89,7 @@ def _touch(role: Role, login_account: str) -> None:
     role.updated_at = datetime.now(timezone.utc)
 
 
-@router.get("/roles", response_model=Envelope[PageData[RoleListItem]])
+@router.get("/roles", response_model=Envelope[PageData[RoleListItem]], summary="分页查询角色")
 async def list_roles(
     session: SessionDep,
     _principal: PrincipalDep,
@@ -95,6 +97,7 @@ async def list_roles(
     name: str | None = Query(default=None),
     enabled: bool | None = Query(default=None),
 ):
+    """按名称、启用状态分页列出角色，并带已分配用户与部门。"""
     filters = _role_filters(name, enabled)
     stmt = select(Role)
     count_stmt = select(func.count()).select_from(Role)
@@ -116,12 +119,13 @@ async def list_roles(
     return success(page_data(items, total, params))
 
 
-@router.post("/roles", response_model=Envelope[RoleListItem])
+@router.post("/roles", response_model=Envelope[RoleListItem], summary="新增角色")
 async def create_role(
     body: CreateRoleBody,
     session: SessionDep,
     principal: PrincipalDep,
 ):
+    """新增角色，默认启用；名称唯一。"""
     role = Role(
         name=body.name,
         remark=body.remark,
@@ -138,13 +142,14 @@ async def create_role(
     return success(role_item_dict(role, [], []))
 
 
-@router.put("/roles/{role_id}", response_model=Envelope[RoleListItem])
+@router.put("/roles/{role_id}", response_model=Envelope[RoleListItem], summary="改角色")
 async def update_role(
     role_id: str,
     body: UpdateRoleBody,
     session: SessionDep,
     principal: PrincipalDep,
 ):
+    """改角色名称与备注。"""
     role = await _get_role_or_404(session, role_id)
     role.name = body.name
     if "remark" in body.model_fields_set:
@@ -159,13 +164,14 @@ async def update_role(
     return success(await _role_payload(session, role))
 
 
-@router.patch("/roles/{role_id}/status", response_model=Envelope[IdEnabled])
+@router.patch("/roles/{role_id}/status", response_model=Envelope[IdEnabled], summary="角色启停")
 async def set_role_status(
     role_id: str,
     body: SetRoleStatusBody,
     session: SessionDep,
     principal: PrincipalDep,
 ):
+    """启用或停用角色，并刷新持有该角色的用户授权。"""
     role = await _get_role_or_404(session, role_id)
     role.enabled = body.enabled
     _touch(role, principal["login_account"])

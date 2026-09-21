@@ -1,3 +1,5 @@
+"""菜单树查询（权限角色查询页）。"""
+
 from __future__ import annotations
 
 from typing import Annotated, Any
@@ -7,6 +9,7 @@ from sqlalchemy import select
 
 from app.core.envelope import Envelope, success
 from app.modules.system_admin.deps import MENU_ROLE_QUERY, MENU_ROLES, SessionDep, require_menu
+from app.modules.system_admin.domain.enums import MENU_TYPE_DIRECTORY
 from app.modules.system_admin.domain.models import MenuNode, Role, RoleMenu
 from app.modules.system_admin.schemas.common import MenuTree
 
@@ -46,14 +49,19 @@ def _to_dict(
         "children": children,
     }
     if include_assigned_roles:
-        if node.type == "目录":
+        if node.type == MENU_TYPE_DIRECTORY:
             item["assigned_roles"] = []
         else:
             item["assigned_roles"] = roles_by_menu.get(str(node.id), [])
     return item
 
 
-@router.get("/menu-nodes", response_model=Envelope[MenuTree], response_model_exclude_none=True)
+@router.get(
+    "/menu-nodes",
+    response_model=Envelope[MenuTree],
+    response_model_exclude_none=True,
+    summary="查询菜单树",
+)
 async def list_menu_nodes(
     session: SessionDep,
     _principal: PrincipalDep,
@@ -61,6 +69,7 @@ async def list_menu_nodes(
     name: str | None = Query(default=None),
     include_assigned_roles: bool = Query(default=False),
 ):
+    """返回完整菜单树；可按业务域、名称过滤，可选带回每个节点已分配角色。"""
     nodes = list((await session.execute(select(MenuNode))).scalars().all())
     by_id = {n.id: n for n in nodes}
 

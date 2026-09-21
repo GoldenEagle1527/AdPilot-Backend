@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.modules.system_admin.domain.enums import ROLE_KIND_MEMBER, ROLE_KIND_OWNER
 from app.modules.system_admin.domain.password import DICT_CODE_DEFAULT_PASSWORD, hash_password
 
 # 参考角色名（权限清单-参考.md）；投放等只是树上的数据。
@@ -23,7 +24,7 @@ DICT_SEED: list[tuple[int, str, str, str, str]] = [
     ),
 ]
 
-# id, path, type, business_domain, tenant_kind, assigned_role_names
+# 菜单树种子：名称/路径/类型是业务数据（类型取值见 domain.enums）。
 # 路径与 权限清单-参考.md 102 行一致。
 _MENU_RAW: list[tuple[int, str, str, str | None, str | None, tuple[str, ...]]] = [
     (1, "总览", "目录", None, None, ()),
@@ -487,9 +488,9 @@ LOCAL_DEPARTMENTS: list[dict[str, object]] = [
 
 # login_account, password, id, nickname, enabled, department_id, role_kind, role_id
 _LOCAL_USERS: list[tuple[str, str, int, str, bool, int, str, int | None]] = [
-    ("admin", "admin123", 1, "管理员", True, 1, "负责人", 5),
-    ("disabled", "disabled123", 2, "已停用", False, 1, "成员", None),
-    ("pitcher", "pitcher123", 3, "短剧投手", True, 2, "成员", 6),
+    ("admin", "admin123", 1, "管理员", True, 1, ROLE_KIND_OWNER, 5),
+    ("disabled", "disabled123", 2, "已停用", False, 1, ROLE_KIND_MEMBER, None),
+    ("pitcher", "pitcher123", 3, "短剧投手", True, 2, ROLE_KIND_MEMBER, 6),
 ]
 
 

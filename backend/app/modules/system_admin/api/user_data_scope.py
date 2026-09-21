@@ -1,3 +1,5 @@
+"""用户数据范围：查询已勾部门，勾选后服务端展开子孙。"""
+
 from __future__ import annotations
 
 from typing import Annotated
@@ -18,23 +20,33 @@ router = APIRouter(prefix="/api/v1/system-admin", tags=["system-admin"])
 PrincipalDep = Annotated[dict[str, str], Depends(require_menu(MENU_USERS))]
 
 
-@router.get("/users/{user_id}/data-scope", response_model=Envelope[DepartmentIds])
+@router.get(
+    "/users/{user_id}/data-scope",
+    response_model=Envelope[DepartmentIds],
+    summary="用户已勾选数据范围",
+)
 async def get_user_data_scope(
     user_id: str,
     session: SessionDep,
     _principal: PrincipalDep,
 ) -> dict:
+    """返回已存储的数据范围部门 id（含展开后的子孙）。"""
     user = await get_user(session, user_id)
     return success({"department_ids": await stored_data_scope_ids(session, user)})
 
 
-@router.put("/users/{user_id}/data-scope", response_model=Envelope[DepartmentIds])
+@router.put(
+    "/users/{user_id}/data-scope",
+    response_model=Envelope[DepartmentIds],
+    summary="设置用户数据范围",
+)
 async def set_user_data_scope(
     user_id: str,
     body: SetUserDataScopeRequest,
     session: SessionDep,
     _principal: PrincipalDep,
 ) -> dict:
+    """勾选部门并由服务端展开子孙；空列表表示仅本人。"""
     user = await get_user(session, user_id)
     unique_ids = list(dict.fromkeys(body.department_ids))
     if unique_ids:

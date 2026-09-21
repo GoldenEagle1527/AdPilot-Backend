@@ -1,3 +1,5 @@
+"""部门/用户标签允许的对外名称（业务取值，不是代码标识符）。"""
+
 from __future__ import annotations
 
 DEPARTMENT_TAG_NAMES: tuple[str, ...] = ("投放部", "投放组", "素材部", "素材组")

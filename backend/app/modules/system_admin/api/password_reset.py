@@ -1,3 +1,5 @@
+"""管理员重置用户密码。"""
+
 from __future__ import annotations
 
 from typing import Annotated
@@ -16,13 +18,18 @@ router = APIRouter(prefix="/api/v1/system-admin", tags=["system-admin"])
 PrincipalDep = Annotated[dict[str, str], Depends(require_menu(MENU_USERS))]
 
 
-@router.post("/users/{user_id}/password-reset", response_model=Envelope[PasswordResetData])
+@router.post(
+    "/users/{user_id}/password-reset",
+    response_model=Envelope[PasswordResetData],
+    summary="管理员重置用户密码",
+)
 async def reset_user_password(
     user_id: str,
     body: ResetPasswordRequest,
     session: SessionDep,
     _principal: PrincipalDep,
 ) -> dict:
+    """写入新密码；两次输入须一致。"""
     if body.password != body.password_confirm:
         raise ApiError(422, "VALIDATION_ERROR", "两次输入的密码不一致")
     user = await get_user(session, user_id)
