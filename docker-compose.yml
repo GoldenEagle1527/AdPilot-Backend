@@ -11,7 +11,7 @@ services:
       - "8300:8300"
     volumes:
       - ./backend/app:/app/app
-      - ./backend/app/main.py:/app/main.py
+      - ./backend/main.py:/app/main.py
       - ./deployment:/app/deployment:ro
       - ./backend/alembic.ini:/app/alembic.ini:ro
     restart: unless-stopped
