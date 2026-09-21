@@ -1,24 +1,47 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from datetime import datetime
 
-from sqlalchemy import text
+from sqlalchemy import DateTime, Identity, Integer, func, text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
-from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from app.core.config import Settings, get_settings
+from app.core.times import beijing_now
 
 _engine: AsyncEngine | None = None
 _session_factory: async_sessionmaker[AsyncSession] | None = None
 
+_TS = DateTime(timezone=True)
 
-class Base(DeclarativeBase):
-    pass
+
+class BaseModel(DeclarativeBase):
+    """业务表公共列：自增主键、软删除、创建/更新时间（北京时间）。"""
+
+    __abstract__ = True
+
+    id: Mapped[int] = mapped_column(Integer, Identity(), primary_key=True, comment="库内自增主键")
+    is_deleted: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0", comment="是否删除：0 否、1 是"
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(_TS, nullable=True, comment="删除时间，未删为空")
+    created_date: Mapped[datetime] = mapped_column(
+        _TS, nullable=False, server_default=func.now(), comment="创建时间（北京）"
+    )
+    updated_date: Mapped[datetime] = mapped_column(
+        _TS, nullable=False, server_default=func.now(), onupdate=func.now(), comment="更新时间（北京）"
+    )
+
+    def mark_deleted(self) -> None:
+        """标成软删除。"""
+        self.is_deleted = 1
+        self.deleted_at = beijing_now()
 
 
 def init_engine(settings: Settings | None = None) -> AsyncEngine:

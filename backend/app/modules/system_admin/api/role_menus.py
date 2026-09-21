@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
@@ -10,6 +9,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.envelope import ApiError, Envelope, success
+from app.core.times import beijing_now
 from app.modules.system_admin.deps import MENU_ROLES, SessionDep, require_menu
 from app.modules.system_admin.domain.access import (
     assert_user_manager_remains,
@@ -83,7 +83,7 @@ async def set_role_menus(
     await session.execute(delete(RoleMenu).where(RoleMenu.role_id == role.id))
     session.add_all([RoleMenu(role_id=role.id, menu_id=int(mid)) for mid in menu_ids])
     role.updated_by = principal["login_account"]
-    role.updated_at = datetime.now(timezone.utc)
+    role.updated_date = beijing_now()
     session.add(role)
     await assert_user_manager_remains(session)
     await session.commit()

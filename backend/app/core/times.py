@@ -1,12 +1,20 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+BEIJING = ZoneInfo("Asia/Shanghai")
 
 
-def iso8601_z(value: datetime) -> str:
-    """对外时间：ISO-8601 UTC，带 `Z`。"""
+def beijing_now() -> datetime:
+    """当前北京时间。"""
+    return datetime.now(BEIJING)
+
+
+def beijing_iso(value: datetime) -> str:
+    """把时间转成北京 ISO 串，带 +08:00。"""
     if value.tzinfo is None:
-        value = value.replace(tzinfo=timezone.utc)
+        value = value.replace(tzinfo=BEIJING)
     else:
-        value = value.astimezone(timezone.utc)
-    return value.isoformat().replace("+00:00", "Z")
+        value = value.astimezone(BEIJING)
+    return value.replace(microsecond=0).isoformat()

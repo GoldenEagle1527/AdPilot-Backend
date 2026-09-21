@@ -1,0 +1,15 @@
+---
+description: 每个方法必须写一句话说明用途
+alwaysApply: true
+---
+
+# 方法必须标注用途
+
+写或改 Python 时，每个类、方法、模块级函数都要有一句话 docstring（中文），说明它干什么。不要只写参数复述。私有函数、测试辅助函数同样要标。`__init__` 只在有非显而易见副作用时标。
+
+示例：
+
+```python
+def list_filters(self, ...) -> list[ColumnElement[bool]]:
+    """按列表查询条件拼 SQLAlchemy 过滤表达式。传入 department_id 则恒空。"""
+```

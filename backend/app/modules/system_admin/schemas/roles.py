@@ -4,7 +4,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.core.times import iso8601_z
+from app.core.times import beijing_iso
 from app.modules.system_admin.schemas.common import AssignedUser, RoleName
 
 
@@ -60,8 +60,8 @@ def role_item_dict(
         name=role.name,
         remark=role.remark,
         enabled=role.enabled,
-        created_at=iso8601_z(role.created_at),
-        updated_at=iso8601_z(role.updated_at),
+        created_at=beijing_iso(role.created_date),
+        updated_at=beijing_iso(role.updated_date),
         updated_by=role.updated_by,
         assigned_user_count=len(users),
         assigned_department_count=len(depts),

@@ -4,7 +4,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.core.times import iso8601_z
+from app.core.times import beijing_iso
 from app.modules.system_admin.domain import Department, DepartmentTag, Role
 from app.modules.system_admin.schemas.common import RoleName
 
@@ -26,7 +26,7 @@ def department_node(dept: Department, *, children: list[dict] | None = None) -> 
         "sort": dept.sort,
         "enabled": bool(dept.enabled),
         "tenant": dept.tenant,
-        "created_at": iso8601_z(dept.created_at),
+        "created_at": beijing_iso(dept.created_date),
         "tags": tags,
         "roles": roles,
         "children": [] if children is None else children,
@@ -38,7 +38,7 @@ def role_brief(role: Role, assigned: bool, assigned_at: datetime | None) -> dict
         "id": str(role.id),
         "name": role.name,
         "assigned": assigned,
-        "assigned_at": iso8601_z(assigned_at) if assigned_at is not None else None,
+        "assigned_at": beijing_iso(assigned_at) if assigned_at is not None else None,
     }
 
 
@@ -52,12 +52,12 @@ def filter_departments(
         pool = [d for d in depts if d.enabled == enabled]
     else:
         pool = list(depts)
-    pool = [d for d in pool if d.deleted_at is None]
+    pool = [d for d in pool if not d.is_deleted]
 
     by_id = {str(d.id): d for d in depts}
     children_of: dict[str | None, list[Department]] = {}
     for dept in depts:
-        if dept.deleted_at is not None:
+        if dept.is_deleted:
             continue
         parent_key = None if dept.parent_id is None else str(dept.parent_id)
         children_of.setdefault(parent_key, []).append(dept)
@@ -65,7 +65,7 @@ def filter_departments(
     if department_id:
         needle_id = department_id.strip()
         target = by_id.get(needle_id)
-        if target is None or target.deleted_at is not None:
+        if target is None or target.is_deleted:
             return []
         keep: set[str] = {needle_id}
         stack = [needle_id]

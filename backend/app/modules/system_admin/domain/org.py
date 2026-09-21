@@ -9,11 +9,13 @@ from app.modules.system_admin.domain.models import Department, User, UserDataSco
 
 
 def user_not_deleted():
-    return User.deleted_at.is_(None)
+    """未软删的用户。"""
+    return User.is_deleted == 0
 
 
 def department_not_deleted():
-    return Department.deleted_at.is_(None)
+    """未软删的部门。"""
+    return Department.is_deleted == 0
 
 
 async def department_subtree_ids(
@@ -23,7 +25,7 @@ async def department_subtree_ids(
     if parsed is None:
         return []
     root = await session.get(Department, int(parsed))
-    if root is None or root.deleted_at is not None:
+    if root is None or root.is_deleted:
         return []
     if enabled_only and not root.enabled:
         return []
@@ -32,7 +34,7 @@ async def department_subtree_ids(
         root_filters.append(Department.enabled.is_(True))
     tree = select(Department.id).where(*root_filters).cte(name="dept_tree", recursive=True)
     child = aliased(Department)
-    child_filters = [child.parent_id == tree.c.id, child.deleted_at.is_(None)]
+    child_filters = [child.parent_id == tree.c.id, child.is_deleted == 0]
     if enabled_only:
         child_filters.append(child.enabled.is_(True))
     tree = tree.union_all(select(child.id).where(*child_filters))

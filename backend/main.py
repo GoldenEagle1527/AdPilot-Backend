@@ -13,24 +13,22 @@ from app.core.db import dispose_engine, init_engine
 from app.core.envelope import register_exception_handlers
 from app.core.health import router as health_router
 from app.core.redis_client import close_redis, init_redis
-from app.modules.material import router as material_router
-from app.modules.material.domain.sync import start_sync, stop_sync
 from app.modules.system_admin import router as system_admin_router
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    """启动时接库和 Redis，关掉时释放连接。"""
     settings = get_settings()
     init_engine(settings)
     init_redis(settings)
-    start_sync()
     yield
-    await stop_sync()
     await close_redis()
     await dispose_engine()
 
 
 def create_app() -> FastAPI:
+    """组装 FastAPI：信封、CORS、登录与各业务路由。"""
     settings = get_settings()
     app = FastAPI(
         title="AdPilot API",
@@ -45,7 +43,6 @@ def create_app() -> FastAPI:
     app.include_router(health_router)
     app.include_router(auth_router)
     app.include_router(system_admin_router)
-    app.include_router(material_router)
     return app
 
 
@@ -53,12 +50,12 @@ app = create_app()
 
 
 def run() -> None:
+    """用配置里的 host/port 起 uvicorn。"""
     settings = get_settings()
     uvicorn.run(
-        "app.main:app",
+        "main:app",
         host=settings.listen_host,
         port=settings.listen_port,
-        workers=settings.uvicorn_workers,
     )
 
 

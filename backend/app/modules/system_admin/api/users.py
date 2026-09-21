@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
@@ -14,7 +13,7 @@ from sqlalchemy.orm import selectinload
 from app.core.auth import drop_user_sessions
 from app.core.envelope import ApiError, Envelope, success
 from app.core.pagination import PageData, PageParams, page_data, page_params
-from app.core.times import iso8601_z
+from app.core.times import beijing_iso
 from app.modules.system_admin.deps import MENU_USERS, SessionDep, require_menu
 from app.modules.system_admin.domain.access import (
     assert_user_manager_remains,
@@ -48,7 +47,7 @@ async def get_department(
 ) -> Department:
     department_id = require_int_id(department_id, "部门不存在")
     department = await session.get(Department, int(department_id))
-    if department is None or department.deleted_at is not None:
+    if department is None or department.is_deleted:
         raise ApiError(404, "NOT_FOUND", "部门不存在")
     if require_enabled and not department.enabled:
         raise ApiError(409, "DEPARTMENT_DISABLED", "部门已停用")
@@ -101,13 +100,13 @@ def serialize_user(user: User, department_roles: list[Role] | None = None) -> di
         "role_kind": user.role_kind,
         "remark": user.remark,
         "tenant": user.tenant,
-        "created_at": iso8601_z(user.created_at),
+        "created_at": beijing_iso(user.created_date),
         "tags": _named(sorted(user.tags, key=lambda tag: tag.id)),
         "user_roles": _named(sorted(user.roles, key=lambda role: role.id)),
         "department_roles": _named(roles),
         "data_scope": _named(
             sorted(
-                [dept for dept in user.data_scope_departments if dept.deleted_at is None],
+                [dept for dept in user.data_scope_departments if not dept.is_deleted],
                 key=lambda dept: dept.id,
             )
         ),
@@ -166,7 +165,7 @@ async def list_users(
         select(User)
         .options(*_USER_LOAD)
         .where(*filters)
-        .order_by(User.created_at.desc(), User.id)
+        .order_by(User.created_date.desc(), User.id)
         .offset(params.offset)
         .limit(params.page_size)
     )
@@ -272,7 +271,7 @@ async def delete_user(
     user = await get_user(session, user_id)
     if principal["id"] == str(user.id):
         raise ApiError(409, "CANNOT_DELETE_SELF", "不能删除当前登录账号")
-    user.deleted_at = datetime.now(timezone.utc)
+    user.mark_deleted()
     await assert_user_manager_remains(session)
     await session.commit()
     await drop_user_sessions(str(user.id))

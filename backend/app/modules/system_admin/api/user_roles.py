@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.envelope import ApiError, Envelope, success
-from app.core.times import iso8601_z
+from app.core.times import beijing_iso
 from app.modules.system_admin.api.users import department_roles_by_dept, get_user
 from app.modules.system_admin.domain.ids import require_int_id
 from app.modules.system_admin.deps import MENU_USERS, SessionDep, require_menu
@@ -38,7 +38,7 @@ async def user_roles_payload(session: AsyncSession, user: User) -> dict:
             "id": str(role.id),
             "name": role.name,
             "assigned": role.id in assigned_at,
-            "assigned_at": iso8601_z(assigned_at[role.id]) if role.id in assigned_at else None,
+            "assigned_at": beijing_iso(assigned_at[role.id]) if role.id in assigned_at else None,
         }
         for role in roles
     ]

@@ -7,7 +7,6 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
-    Identity,
     Integer,
     String,
     UniqueConstraint,
@@ -16,7 +15,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.modules.system_admin.domain.base import Base
+from app.modules.system_admin.domain.base import BaseModel
 from app.modules.system_admin.domain.enums import (
     MENU_TYPE_COMPONENT,
     MENU_TYPE_DIRECTORY,
@@ -25,14 +24,14 @@ from app.modules.system_admin.domain.enums import (
     ROLE_KIND_OWNER,
 )
 
-_PK = Integer()
 _TS = DateTime(timezone=True)
 
 
-class Department(Base):
+class Department(BaseModel):
+    """组织部门。"""
+
     __tablename__ = "departments"
 
-    id: Mapped[int] = mapped_column(_PK, Identity(), primary_key=True)
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     parent_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("departments.id", ondelete="RESTRICT"), nullable=True
@@ -40,8 +39,6 @@ class Department(Base):
     sort: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
     tenant: Mapped[str] = mapped_column(String(64), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(_TS, nullable=False, server_default=func.now())
-    deleted_at: Mapped[datetime | None] = mapped_column(_TS, nullable=True)
 
     parent: Mapped[Department | None] = relationship(
         remote_side="Department.id", back_populates="children"
@@ -51,52 +48,47 @@ class Department(Base):
         secondary="department_tag_links", back_populates="departments"
     )
     users: Mapped[list[User]] = relationship(back_populates="department")
-    roles: Mapped[list[Role]] = relationship(
-        "Role", secondary="department_roles", viewonly=True
-    )
+    roles: Mapped[list[Role]] = relationship("Role", secondary="department_roles", viewonly=True)
 
 
-class DepartmentTag(Base):
+class DepartmentTag(BaseModel):
+    """部门标签目录项。"""
+
     __tablename__ = "department_tags"
 
-    id: Mapped[int] = mapped_column(_PK, Identity(), primary_key=True)
     name: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
-    created_at: Mapped[datetime] = mapped_column(_TS, nullable=False, server_default=func.now())
 
     departments: Mapped[list[Department]] = relationship(
         secondary="department_tag_links", back_populates="tags"
     )
 
 
-class DepartmentTagLink(Base):
+class DepartmentTagLink(BaseModel):
+    """部门与标签的关联。"""
+
     __tablename__ = "department_tag_links"
     __table_args__ = (UniqueConstraint("department_id", "tag_id", name="uq_department_tag"),)
 
-    department_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("departments.id", ondelete="CASCADE"), primary_key=True
-    )
-    tag_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("department_tags.id", ondelete="CASCADE"), primary_key=True
-    )
+    department_id: Mapped[int] = mapped_column(Integer, ForeignKey("departments.id", ondelete="CASCADE"))
+    tag_id: Mapped[int] = mapped_column(Integer, ForeignKey("department_tags.id", ondelete="CASCADE"))
 
 
-class Role(Base):
+class Role(BaseModel):
+    """角色。"""
+
     __tablename__ = "roles"
 
-    id: Mapped[int] = mapped_column(_PK, Identity(), primary_key=True)
     name: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
     remark: Mapped[str | None] = mapped_column(String(200), nullable=True)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
-    created_at: Mapped[datetime] = mapped_column(_TS, nullable=False, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(
-        _TS, nullable=False, server_default=func.now(), onupdate=func.now()
-    )
     updated_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     menus: Mapped[list[MenuNode]] = relationship(secondary="role_menus", back_populates="roles")
 
 
-class User(Base):
+class User(BaseModel):
+    """登录用户。"""
+
     __tablename__ = "users"
     __table_args__ = (
         CheckConstraint(
@@ -105,7 +97,6 @@ class User(Base):
         ),
     )
 
-    id: Mapped[int] = mapped_column(_PK, Identity(), primary_key=True)
     nickname: Mapped[str] = mapped_column(String(64), nullable=False)
     login_account: Mapped[str] = mapped_column(
         String(64), nullable=False, unique=True, comment="创建后不可改"
@@ -122,8 +113,6 @@ class User(Base):
     )
     remark: Mapped[str | None] = mapped_column(String(200), nullable=True)
     tenant: Mapped[str] = mapped_column(String(64), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(_TS, nullable=False, server_default=func.now())
-    deleted_at: Mapped[datetime | None] = mapped_column(_TS, nullable=True)
 
     department: Mapped[Department] = relationship(back_populates="users")
     tags: Mapped[list[UserTag]] = relationship(secondary="user_tag_links", back_populates="users")
@@ -131,29 +120,29 @@ class User(Base):
     data_scope_departments: Mapped[list[Department]] = relationship(secondary="user_data_scopes")
 
 
-class UserTag(Base):
+class UserTag(BaseModel):
+    """用户标签目录项。"""
+
     __tablename__ = "user_tags"
 
-    id: Mapped[int] = mapped_column(_PK, Identity(), primary_key=True)
     name: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
-    created_at: Mapped[datetime] = mapped_column(_TS, nullable=False, server_default=func.now())
 
     users: Mapped[list[User]] = relationship(secondary="user_tag_links", back_populates="tags")
 
 
-class UserTagLink(Base):
+class UserTagLink(BaseModel):
+    """用户与标签的关联。"""
+
     __tablename__ = "user_tag_links"
     __table_args__ = (UniqueConstraint("user_id", "tag_id", name="uq_user_tag"),)
 
-    user_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
-    )
-    tag_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("user_tags.id", ondelete="CASCADE"), primary_key=True
-    )
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
+    tag_id: Mapped[int] = mapped_column(Integer, ForeignKey("user_tags.id", ondelete="CASCADE"))
 
 
-class MenuNode(Base):
+class MenuNode(BaseModel):
+    """菜单树节点。"""
+
     __tablename__ = "menu_nodes"
     __table_args__ = (
         CheckConstraint(
@@ -162,7 +151,6 @@ class MenuNode(Base):
         ),
     )
 
-    id: Mapped[int] = mapped_column(_PK, Identity(), primary_key=True)
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     type: Mapped[str] = mapped_column(String(16), nullable=False)
     parent_id: Mapped[int | None] = mapped_column(
@@ -178,68 +166,55 @@ class MenuNode(Base):
     roles: Mapped[list[Role]] = relationship(secondary="role_menus", back_populates="menus")
 
 
-class DepartmentRole(Base):
+class DepartmentRole(BaseModel):
+    """部门与角色的关联。"""
+
     __tablename__ = "department_roles"
     __table_args__ = (UniqueConstraint("department_id", "role_id", name="uq_department_role"),)
 
-    department_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("departments.id", ondelete="CASCADE"), primary_key=True
-    )
-    role_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("roles.id", ondelete="CASCADE"), primary_key=True
-    )
+    department_id: Mapped[int] = mapped_column(Integer, ForeignKey("departments.id", ondelete="CASCADE"))
+    role_id: Mapped[int] = mapped_column(Integer, ForeignKey("roles.id", ondelete="CASCADE"))
     assigned_at: Mapped[datetime] = mapped_column(_TS, nullable=False, server_default=func.now())
 
 
-class UserRole(Base):
+class UserRole(BaseModel):
+    """用户与角色的关联。"""
+
     __tablename__ = "user_roles"
     __table_args__ = (UniqueConstraint("user_id", "role_id", name="uq_user_role"),)
 
-    user_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
-    )
-    role_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("roles.id", ondelete="CASCADE"), primary_key=True
-    )
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
+    role_id: Mapped[int] = mapped_column(Integer, ForeignKey("roles.id", ondelete="CASCADE"))
     assigned_at: Mapped[datetime] = mapped_column(_TS, nullable=False, server_default=func.now())
 
 
-class UserDataScope(Base):
+class UserDataScope(BaseModel):
+    """用户可见部门范围。"""
+
     __tablename__ = "user_data_scopes"
     __table_args__ = (UniqueConstraint("user_id", "department_id", name="uq_user_data_scope"),)
 
-    user_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
-    )
-    department_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("departments.id", ondelete="CASCADE"), primary_key=True
-    )
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
+    department_id: Mapped[int] = mapped_column(Integer, ForeignKey("departments.id", ondelete="CASCADE"))
 
 
-class RoleMenu(Base):
+class RoleMenu(BaseModel):
+    """角色与菜单的关联。"""
+
     __tablename__ = "role_menus"
     __table_args__ = (UniqueConstraint("role_id", "menu_id", name="uq_role_menu"),)
 
-    role_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("roles.id", ondelete="CASCADE"), primary_key=True
-    )
-    menu_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("menu_nodes.id", ondelete="CASCADE"), primary_key=True
-    )
+    role_id: Mapped[int] = mapped_column(Integer, ForeignKey("roles.id", ondelete="CASCADE"))
+    menu_id: Mapped[int] = mapped_column(Integer, ForeignKey("menu_nodes.id", ondelete="CASCADE"))
 
 
-class DictItem(Base):
+class DictItem(BaseModel):
     """字典配置。至少承载默认密码（Q-PERM-5），不写死 135。"""
 
     __tablename__ = "dict_items"
 
-    id: Mapped[int] = mapped_column(_PK, Identity(), primary_key=True)
     dict_code: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     value: Mapped[str] = mapped_column(String(255), nullable=False)
     remark: Mapped[str | None] = mapped_column(String(200), nullable=True)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
-    created_at: Mapped[datetime] = mapped_column(_TS, nullable=False, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(
-        _TS, nullable=False, server_default=func.now(), onupdate=func.now()
-    )

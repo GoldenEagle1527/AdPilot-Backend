@@ -60,12 +60,12 @@ class TagCatalogTests(unittest.TestCase):
 
 
 class _Dept:
-    def __init__(self, id: str, name: str, parent_id: str | None = None, *, enabled: bool = True, deleted_at=None):
+    def __init__(self, id: str, name: str, parent_id: str | None = None, *, enabled: bool = True, is_deleted: int = 0):
         self.id = id
         self.name = name
         self.parent_id = parent_id
         self.enabled = enabled
-        self.deleted_at = deleted_at
+        self.is_deleted = is_deleted
         self.sort = 0
         self.tags = []
         self.roles = []
@@ -77,7 +77,7 @@ class DepartmentFilterTests(unittest.TestCase):
             _Dept("1", "投放部"),
             _Dept("2", "投放一部", "1"),
             _Dept("3", "素材部"),
-            _Dept("4", "已删", deleted_at="x"),
+            _Dept("4", "已删", is_deleted=1),
         ]
 
     def test_exact_id_keeps_ancestors_and_children(self) -> None:

@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import socket
 import unittest
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 
 import jwt
 from redis.asyncio import Redis
@@ -14,7 +14,8 @@ except RuntimeError:
     TestClient = None  # type: ignore[misc, assignment]
 
 from app.core.config import get_settings
-from app.main import app
+from app.core.times import beijing_now
+from main import app
 
 
 def _compose_hosts_resolvable() -> bool:
@@ -157,7 +158,7 @@ class LoginHttpTests(unittest.TestCase):
         self.assertEqual(me.json()["error"]["code"], "UNAUTHORIZED")
 
     def test_wrong_secret_jwt_is_unauthorized(self) -> None:
-        now = datetime.now(timezone.utc)
+        now = beijing_now()
         forged = jwt.encode(
             {
                 "sub": "1",

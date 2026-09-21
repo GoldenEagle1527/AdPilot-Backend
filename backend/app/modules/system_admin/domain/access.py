@@ -103,7 +103,7 @@ async def publish_acl_for_users(session: AsyncSession, user_ids: Iterable[str]) 
         if parsed is None:
             continue
         user = await session.get(User, int(parsed))
-        if user is None or user.deleted_at is not None:
+        if user is None or user.is_deleted:
             await drop_user_sessions(parsed)
             continue
         await rewrite_user_sessions(parsed, await session_principal(session, user))

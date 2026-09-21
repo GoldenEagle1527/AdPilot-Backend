@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
 from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
@@ -79,7 +77,7 @@ async def _would_cycle(session: SessionDep, dept_id: str, parent_id: str | None)
         if parsed is None:
             return False
         parent = await session.get(Department, int(parsed))
-        if parent is None or parent.deleted_at is not None:
+        if parent is None or parent.is_deleted:
             return False
         cursor = None if parent.parent_id is None else str(parent.parent_id)
     return False
@@ -198,7 +196,7 @@ async def delete_department(
     )
     if member_n:
         raise ApiError(409, "HAS_MEMBERS", "部门下仍有员工，请先把员工挪到其他部门")
-    dept.deleted_at = datetime.now(timezone.utc)
+    dept.mark_deleted()
     session.add(dept)
     await session.commit()
     return success({"id": str(dept.id), "deleted": True})

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from typing import Annotated, Any
 
 import jwt
@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.db import get_session
+from app.core.times import beijing_now
 from app.core.envelope import ApiError, Envelope, success
 from app.core.redis_client import get_redis
 
@@ -117,7 +118,7 @@ async def require_token(
 
 
 def _encode_access_jwt(*, user_id: str, principal: dict[str, Any], jti: str, ttl: int) -> str:
-    now = datetime.now(timezone.utc)
+    now = beijing_now()
     claims = {
         "sub": user_id,
         "nickname": str(principal["nickname"]),

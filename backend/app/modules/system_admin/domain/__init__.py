@@ -1,4 +1,4 @@
-from app.modules.system_admin.domain.base import Base
+from app.modules.system_admin.domain.base import BaseModel
 from app.modules.system_admin.domain.models import (
     Department,
     DepartmentRole,
@@ -23,7 +23,7 @@ from app.modules.system_admin.domain.password import (
 )
 
 __all__ = [
-    "Base",
+    "BaseModel",
     "DICT_CODE_DEFAULT_PASSWORD",
     "Department",
     "DepartmentRole",

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime, timezone
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query
@@ -12,6 +11,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.envelope import ApiError, Envelope, success
+from app.core.times import beijing_now
 from app.core.pagination import PageData, PageParams, page_data, page_params
 from app.modules.system_admin.deps import MENU_ROLES, SessionDep, require_menu
 from app.modules.system_admin.domain.access import (
@@ -92,7 +92,7 @@ async def _get_role_or_404(session: AsyncSession, role_id: str) -> Role:
 
 def _touch(role: Role, login_account: str) -> None:
     role.updated_by = login_account
-    role.updated_at = datetime.now(timezone.utc)
+    role.updated_date = beijing_now()
 
 
 @router.get("/roles", response_model=Envelope[PageData[RoleListItem]], summary="分页查询角色")
@@ -112,7 +112,7 @@ async def list_roles(
         count_stmt = count_stmt.where(*filters)
     total = int(await session.scalar(count_stmt) or 0)
     stmt = (
-        stmt.order_by(Role.created_at.desc(), Role.id.desc())
+        stmt.order_by(Role.created_date.desc(), Role.id.desc())
         .offset(params.offset)
         .limit(params.page_size)
     )

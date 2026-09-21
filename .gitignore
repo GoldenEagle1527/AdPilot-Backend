@@ -17,8 +17,11 @@ build/
 .env
 .env.*
 !.env.example
-deployment/dev.yaml
-!deployment/dev.yaml.example
+# 本机/环境密钥不入库；只保留 *.example
+deployment/*
+!deployment/*.example
+
+backend/alembic/versions/
 
 # Cursor / local indexes
 .cursor/mcp.json

@@ -1,3 +1,3 @@
-from app.core.db import Base
+from app.core.db import BaseModel
 
-__all__ = ["Base"]
+__all__ = ["BaseModel"]
