@@ -21,3 +21,4 @@ class ComposeHostFallbackTests(unittest.TestCase):
         self.assertIn(settings.redis.host, {"redis", "127.0.0.1"})
         self.assertEqual(settings.postgres.port, 5432)
         self.assertEqual(settings.redis.port, 6379)
+        self.assertGreaterEqual(len(settings.jwt_secret), 32)

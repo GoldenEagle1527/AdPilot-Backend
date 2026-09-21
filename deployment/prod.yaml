@@ -18,6 +18,7 @@ redis:
 
 api_base: "http://BACKEND_LAN_HOST:8000"
 token_ttl_seconds: 86400
+jwt_secret: "replace-prod-jwt-secret-min-32-characters"
 uvicorn_workers: 2
 db_pool_size: 10
 db_pool_max_overflow: 10
