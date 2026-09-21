@@ -56,7 +56,7 @@ def role_item_dict(
     users = assigned_users or []
     depts = assigned_departments or []
     return RoleListItem(
-        id=role.id,
+        id=str(role.id),
         name=role.name,
         remark=role.remark,
         enabled=role.enabled,

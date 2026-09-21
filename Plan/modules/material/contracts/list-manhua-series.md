@@ -1,7 +1,7 @@
 # 契约：list-manhua-series
 
 业务id：material
-文档版本：1
+文档版本：2
 方法：GET
 路径：/api/v1/material/manhua-series
 作用：分页列出已从常读同步落库的短剧/漫剧；筛选在本地完成。不做数据范围过滤。
@@ -45,7 +45,7 @@
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| id | string | 本库主键 |
+| id | string | 本库主键（整数自增，JSON 仍为十进制字符串） |
 | playlet_id | string | 常读 `playlet_id`（抖音专辑 ID）。产品文档里的 `thplaylet_id` 指这个 |
 | book_id | string | 常读 `book_id` |
 | category_text | string | 分类，供 tab |
@@ -75,4 +75,5 @@
 
 | 日期 | 文档版本 | 破坏？ | 变更 | 作者 |
 | --- | --- | --- | --- | --- |
+| 2026-09-21 | 2 | 否 | 主键改为库内整数自增；JSON 仍是 string | |
 | 2026-09-20 | 1 | 否 | 初稿 | 调度者 |

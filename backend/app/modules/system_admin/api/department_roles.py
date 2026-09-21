@@ -65,7 +65,7 @@ async def set_department_roles(
         found = set(
             (await session.scalars(select(Role.id).where(Role.id.in_(unique_ids)))).all()
         )
-        if any(rid not in found for rid in unique_ids):
+        if any(str(rid) not in {str(item) for item in found} for rid in unique_ids):
             raise ApiError(404, "NOT_FOUND", "角色不存在")
     await session.execute(delete(DepartmentRole).where(DepartmentRole.department_id == id))
     for role_id in unique_ids:
