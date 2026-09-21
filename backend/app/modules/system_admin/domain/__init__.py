@@ -1,4 +1,3 @@
-from app.core.ids import new_id
 from app.modules.system_admin.domain.base import Base
 from app.modules.system_admin.domain.models import (
     Department,
@@ -42,6 +41,5 @@ __all__ = [
     "hash_password",
     "hash_password_or_default",
     "load_default_password",
-    "new_id",
     "verify_password",
 ]

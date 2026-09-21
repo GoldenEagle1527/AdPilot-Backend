@@ -54,8 +54,8 @@ async def _assignments(
         )
     ).all()
     for role_id, user_id, login_account, nickname in user_rows:
-        users_map[role_id].append(
-            AssignedUser(id=user_id, login_account=login_account, nickname=nickname)
+        users_map[str(role_id)].append(
+            AssignedUser(id=str(user_id), login_account=login_account, nickname=nickname)
         )
     dept_rows = (
         await session.execute(
@@ -66,13 +66,13 @@ async def _assignments(
         )
     ).all()
     for role_id, dept_id, dept_name in dept_rows:
-        depts_map[role_id].append(RoleName(id=dept_id, name=dept_name))
+        depts_map[str(role_id)].append(RoleName(id=str(dept_id), name=dept_name))
     return users_map, depts_map
 
 
 async def _role_payload(session: AsyncSession, role: Role) -> dict[str, Any]:
-    users_map, depts_map = await _assignments(session, [role.id])
-    return role_item_dict(role, users_map.get(role.id, []), depts_map.get(role.id, []))
+    users_map, depts_map = await _assignments(session, [str(role.id)])
+    return role_item_dict(role, users_map.get(str(role.id), []), depts_map.get(str(role.id), []))
 
 
 async def _get_role_or_404(session: AsyncSession, role_id: str) -> Role:
@@ -110,7 +110,7 @@ async def list_roles(
     roles = list((await session.execute(stmt)).scalars().all())
     users_map, depts_map = await _assignments(session, [role.id for role in roles])
     items = [
-        role_item_dict(role, users_map.get(role.id, []), depts_map.get(role.id, []))
+        role_item_dict(role, users_map.get(str(role.id), []), depts_map.get(str(role.id), []))
         for role in roles
     ]
     return success(page_data(items, total, params))
@@ -171,4 +171,4 @@ async def set_role_status(
     _touch(role, principal["login_account"])
     await session.commit()
     await publish_acl_for_users(session, await user_ids_holding_role(session, role.id))
-    return success({"id": role.id, "enabled": role.enabled})
+    return success({"id": str(role.id), "enabled": role.enabled})

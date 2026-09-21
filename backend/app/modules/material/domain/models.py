@@ -2,13 +2,11 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Integer, String, UniqueConstraint, func
+from sqlalchemy import BigInteger, Boolean, DateTime, Identity, Integer, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
-from app.core.ids import new_id
 
-_ID = String(32)
 _TS = DateTime(timezone=True)
 
 
@@ -16,7 +14,7 @@ class ManhuaSeries(Base):
     __tablename__ = "manhua_series"
     __table_args__ = (UniqueConstraint("playlet_id", "book_name", name="uq_manhua_series_playlet_book"),)
 
-    id: Mapped[str] = mapped_column(_ID, primary_key=True, default=new_id)
+    id: Mapped[int] = mapped_column(Integer, Identity(), primary_key=True)
     thumb_url: Mapped[str] = mapped_column(String(1024), nullable=False, default="")
     book_id: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     playlet_id: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
