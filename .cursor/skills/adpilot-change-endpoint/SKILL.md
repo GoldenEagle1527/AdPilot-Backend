@@ -14,7 +14,7 @@ description: Changes an existing AdPilot HTTP API while updating Plan contracts,
    是 → 先把**改前**契约全文复制到 `contracts/_history/<endpoint>-v<旧文档版本>.md`。
 2. 改正文：文档版本 +1；路径只在破坏性时升 `/api/v2`。变更历史**最上行**追加日期/版本/是否破坏/改了什么。
 3. 更新 `contracts/最新表.md` 那一行的版本与日期。
-4. 改 router / schema。分页、信封、`enabled`、id=string、时间 `Z` 不要私改。
+4. 改 router / schema。分页、信封、`enabled`、id 对外 string、时间 `Z` 不要私改。
 5. 补或更新 `response_model`，使 OpenAPI 与行为一致。只改内部实现且 OpenAPI 不变则不必发对接。
 6. 对外 HTTP 有可见变化则发群：
 

@@ -33,13 +33,13 @@ async def get_session_me(session: SessionDep, principal: PrincipalDep) -> dict:
     user = await _require_local_user(session, principal)
     dept_name = user.department.name if user.department is not None else ""
     payload = SessionMe(
-        id=user.id,
+        id=str(user.id),
         nickname=user.nickname,
         login_account=user.login_account,
         short_name=user.short_name,
         phone=user.phone,
         enabled=user.enabled,
-        department_id=user.department_id,
+        department_id=str(user.department_id),
         department_name=dept_name,
         role_kind=user.role_kind,
         tenant=user.tenant,
@@ -70,6 +70,6 @@ async def get_session_data_scope(session: SessionDep, principal: PrincipalDep) -
         SessionDataScope(
             department_ids=department_ids,
             self_only=self_only,
-            user_id=user.id,
+            user_id=str(user.id),
         ).model_dump()
     )

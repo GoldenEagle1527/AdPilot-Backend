@@ -41,6 +41,14 @@ def upgrade() -> None:
     user_n = bind.execute(sa.text("SELECT count(*) FROM user_tags")).scalar()
     if not user_n:
         op.bulk_insert(tables["user_tags"], USER_TAG_SEED)
+    for table in ("department_tags", "user_tags"):
+        op.execute(
+            sa.text(
+                f"SELECT setval(pg_get_serial_sequence('{table}', 'id'), "
+                f"COALESCE((SELECT MAX(id) FROM {table}), 1), "
+                f"(SELECT EXISTS (SELECT 1 FROM {table})))"
+            )
+        )
 
 
 def downgrade() -> None:

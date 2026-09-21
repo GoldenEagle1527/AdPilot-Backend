@@ -47,7 +47,7 @@ async def get_role_menus(
     rows = (
         await session.execute(select(RoleMenu.menu_id).where(RoleMenu.role_id == role_id))
     ).scalars().all()
-    return success({"menu_ids": list(rows)})
+    return success({"menu_ids": [str(item) for item in rows]})
 
 
 @router.put("/roles/{role_id}/menus", response_model=Envelope[MenuIds])
@@ -60,12 +60,13 @@ async def set_role_menus(
     role = await _require_role(session, role_id)
     menu_ids = _unique_keep_order(body.menu_ids)
     if menu_ids:
-        found = set(
-            (
+        found = {
+            str(item)
+            for item in (
                 await session.execute(select(MenuNode.id).where(MenuNode.id.in_(menu_ids)))
             ).scalars().all()
-        )
-        if found != set(menu_ids):
+        }
+        if found != {str(item) for item in menu_ids}:
             raise ApiError(404, "NOT_FOUND", "菜单节点不存在")
     await session.execute(delete(RoleMenu).where(RoleMenu.role_id == role_id))
     session.add_all([RoleMenu(role_id=role_id, menu_id=mid) for mid in menu_ids])

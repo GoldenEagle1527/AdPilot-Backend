@@ -20,17 +20,17 @@ PrincipalDep = Annotated[dict[str, str], Depends(require_menu(MENU_USERS))]
 
 
 def _tag(item: UserTag) -> dict[str, str]:
-    return {"id": item.id, "name": item.name}
+    return {"id": str(item.id), "name": item.name}
 
 
 async def _tags_by_ids(session, tag_ids: list[str]) -> list[UserTag]:
     unique_ids = list(dict.fromkeys(tag_ids))
     result = await session.execute(select(UserTag).where(UserTag.id.in_(unique_ids)))
-    tags = {tag.id: tag for tag in result.scalars().all()}
-    missing = [tag_id for tag_id in unique_ids if tag_id not in tags]
+    tags = {str(tag.id): tag for tag in result.scalars().all()}
+    missing = [tag_id for tag_id in unique_ids if str(tag_id) not in tags]
     if missing:
         raise ApiError(404, "NOT_FOUND", "标签不存在")
-    return [tags[tag_id] for tag_id in unique_ids]
+    return [tags[str(tag_id)] for tag_id in unique_ids]
 
 
 @router.get("/user-tags", response_model=Envelope[TagList])
@@ -72,14 +72,14 @@ async def add_user_tags(
     tags = await _tags_by_ids(session, body.tag_ids)
     for user_id in list(dict.fromkeys(body.user_ids)):
         user = await get_user(session, user_id)
-        have = {t.id for t in user.tags}
-        user.tags = list(user.tags) + [t for t in tags if t.id not in have]
+        have = {str(t.id) for t in user.tags}
+        user.tags = list(user.tags) + [t for t in tags if str(t.id) not in have]
     await session.commit()
     items = []
     for user_id in list(dict.fromkeys(body.user_ids)):
         user = await get_user(session, user_id)
         items.append(
-            {"id": user.id, "tags": [_tag(tag) for tag in sorted(user.tags, key=lambda t: t.id)]}
+            {"id": str(user.id), "tags": [_tag(tag) for tag in sorted(user.tags, key=lambda t: t.id)]}
         )
     return success({"items": items})
 
@@ -96,7 +96,7 @@ async def set_user_tags(
     user.tags = await _tags_by_ids(session, unique_ids) if unique_ids else []
     await session.commit()
     user = await get_user(session, user_id)
-    return success({"id": user.id, "tags": [_tag(tag) for tag in sorted(user.tags, key=lambda t: t.id)]})
+    return success({"id": str(user.id), "tags": [_tag(tag) for tag in sorted(user.tags, key=lambda t: t.id)]})
 
 
 @router.delete("/users/{user_id}/tags/{tag_id}", response_model=Envelope[IdTags])
@@ -107,7 +107,7 @@ async def remove_user_tag(
     _principal: PrincipalDep,
 ) -> dict:
     user = await get_user(session, user_id)
-    user.tags = [tag for tag in user.tags if tag.id != tag_id]
+    user.tags = [tag for tag in user.tags if str(tag.id) != str(tag_id)]
     await session.commit()
     user = await get_user(session, user_id)
-    return success({"id": user.id, "tags": [_tag(tag) for tag in sorted(user.tags, key=lambda t: t.id)]})
+    return success({"id": str(user.id), "tags": [_tag(tag) for tag in sorted(user.tags, key=lambda t: t.id)]})
