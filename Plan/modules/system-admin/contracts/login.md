@@ -1,10 +1,10 @@
 # 契约：login
 
 业务id：auth
-文档版本：3
+文档版本：4
 方法：POST
 路径：/api/v1/auth/login
-作用：密码登录。查 `users` 表（账号或手机号），签发 HS256 JWT；会话按 `jti` 写入 Redis。HTTP 路由在 core，验密走 `system_admin` 窄口。
+作用：密码登录。查 `users` 表（仅 `login_account`），签发 HS256 JWT；会话按 `jti` 写入 Redis。HTTP 路由在 core，验密走 `system_admin` 窄口。本阶段不支持手机号登录。
 
 作者：调度者
 状态：accepted
@@ -16,7 +16,7 @@
 
 | 字段 | 位置（path/query/body/header） | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- | --- |
-| login_account | body | string | 是 | 用户名或手机号 |
+| login_account | body | string | 是 | 登录账号，不是手机号 |
 | password | body | string | 是 | |
 
 ## 响应
@@ -55,6 +55,7 @@ JWT 身份 claims：`sub`（用户 id）、`login_account`、`nickname`、`tenan
 
 | 日期 | 文档版本 | 破坏？ | 变更 | 作者 |
 | --- | --- | --- | --- | --- |
+| 2026-09-21 | 4 | 否 | 登录只认 `login_account`，不再用手机号命中用户 | 姜英睿 |
 | 2026-09-21 | 3 | 否 | Token 改为 JWT；Redis 按 jti 存会话。HTTP 字段不变 | 调度者 |
 | 2026-09-20 | 2 | 否 | 查库验密；Token 进 Redis。新建用户可登录 | 调度者 |
 | 2026-09-20 | 1 | 否 | 初稿 | 调度者 |

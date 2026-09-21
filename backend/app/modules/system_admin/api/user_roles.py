@@ -11,8 +11,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.envelope import ApiError, Envelope, success
 from app.core.times import iso8601_z
 from app.modules.system_admin.api.users import department_roles_by_dept, get_user
+from app.modules.system_admin.domain.ids import require_int_id
 from app.modules.system_admin.deps import MENU_USERS, SessionDep, require_menu
-from app.modules.system_admin.domain.access import publish_acl_for_users
+from app.modules.system_admin.domain.access import (
+    assert_self_keeps_user_menu,
+    assert_user_manager_remains,
+    publish_acl_for_users,
+)
 from app.modules.system_admin.domain.models import Role, User, UserRole
 from app.modules.system_admin.schemas.common import UserRolesData
 from app.modules.system_admin.schemas.users import SetUserRolesRequest
@@ -66,9 +71,9 @@ async def set_user_roles(
 ) -> dict:
     """只替换用户角色，不改部门角色；随后刷新授权。"""
     user = await get_user(session, user_id)
-    unique_ids = list(dict.fromkeys(body.role_ids))
+    unique_ids = [require_int_id(item, "角色不存在") for item in dict.fromkeys(body.role_ids)]
     if unique_ids:
-        result = await session.execute(select(Role).where(Role.id.in_(unique_ids)))
+        result = await session.execute(select(Role).where(Role.id.in_([int(item) for item in unique_ids])))
         roles = {str(role.id): role for role in result.scalars().all()}
         missing = [role_id for role_id in unique_ids if str(role_id) not in roles]
         if missing:
@@ -76,7 +81,10 @@ async def set_user_roles(
         user.roles = [roles[str(role_id)] for role_id in unique_ids]
     else:
         user.roles = []
+    if _principal["id"] == str(user.id):
+        await assert_self_keeps_user_menu(session, str(user.id))
+    await assert_user_manager_remains(session)
     await session.commit()
-    await publish_acl_for_users(session, [user_id])
+    await publish_acl_for_users(session, [str(user.id)])
     user = await get_user(session, user_id)
     return success(await user_roles_payload(session, user))

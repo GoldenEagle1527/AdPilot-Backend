@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 from app.core.envelope import ApiError, Envelope, success
 from app.modules.system_admin.deps import MENU_DEPARTMENTS, SessionDep, require_menu
 from app.modules.system_admin.domain import Department, DepartmentTag
+from app.modules.system_admin.domain.ids import require_int_id
 from app.modules.system_admin.domain.org import department_not_deleted
 from app.modules.system_admin.domain.tags import require_department_tag_name
 from app.modules.system_admin.schemas.common import BatchTagResult, IdTags, Tag, TagList
@@ -30,9 +31,10 @@ def _principal(user: dict[str, str] = Depends(require_menu(MENU_DEPARTMENTS))) -
 
 
 async def _get_department(session: SessionDep, department_id: str) -> Department:
+    department_id = require_int_id(department_id, "部门不存在")
     result = await session.scalars(
         select(Department)
-        .where(Department.id == department_id, department_not_deleted())
+        .where(Department.id == int(department_id), department_not_deleted())
         .options(_DEPT_TAGS)
     )
     dept = result.first()
@@ -42,7 +44,7 @@ async def _get_department(session: SessionDep, department_id: str) -> Department
 
 
 async def _tags_by_ids(session: SessionDep, tag_ids: list[str]) -> list[DepartmentTag]:
-    unique_ids = list(dict.fromkeys(tag_ids))
+    unique_ids = [require_int_id(item, "标签不存在") for item in dict.fromkeys(tag_ids)]
     found = list(
         (await session.scalars(select(DepartmentTag).where(DepartmentTag.id.in_(unique_ids)))).all()
     )

@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import unittest
 
+from app.core.envelope import ApiError
 from app.modules.system_admin.deps import require_menu
 from app.modules.system_admin.domain.access import MENU_DEPARTMENTS, MENU_USERS, build_menu_tree
+from app.modules.system_admin.domain.ids import parse_int_id, require_int_id
 from app.modules.system_admin.domain.seed_data import (
     LOCAL_DEPARTMENTS,
     local_user_role_seed_rows,
@@ -84,6 +86,24 @@ class DepartmentFilterTests(unittest.TestCase):
 
     def test_deleted_id_is_empty(self) -> None:
         self.assertEqual(filter_departments(self.tree, None, None, "4"), [])
+
+
+class IntIdTests(unittest.TestCase):
+    def test_parse_accepts_positive_decimal(self) -> None:
+        self.assertEqual(parse_int_id("12"), "12")
+        self.assertEqual(parse_int_id(7), "7")
+
+    def test_parse_rejects_junk(self) -> None:
+        self.assertIsNone(parse_int_id("abc"))
+        self.assertIsNone(parse_int_id("01"))
+        self.assertIsNone(parse_int_id("0"))
+        self.assertIsNone(parse_int_id(True))
+
+    def test_require_int_id_is_not_found(self) -> None:
+        with self.assertRaises(ApiError) as ctx:
+            require_int_id("abc", "用户不存在")
+        self.assertEqual(ctx.exception.status_code, 404)
+        self.assertEqual(ctx.exception.code, "NOT_FOUND")
 
 
 if __name__ == "__main__":

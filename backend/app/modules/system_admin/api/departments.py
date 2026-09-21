@@ -11,6 +11,12 @@ from sqlalchemy.orm import selectinload
 from app.core.envelope import ApiError, Envelope, success
 from app.modules.system_admin.deps import MENU_DEPARTMENTS, SessionDep, require_menu
 from app.modules.system_admin.domain import Department, User
+from app.modules.system_admin.domain.access import (
+    assert_user_manager_remains,
+    publish_acl_for_users,
+    user_ids_in_department,
+)
+from app.modules.system_admin.domain.ids import parse_int_id, require_int_id
 from app.modules.system_admin.domain.org import department_not_deleted, user_not_deleted
 from app.modules.system_admin.schemas.common import DeletedId, DepartmentNode, DepartmentTree, IdEnabled
 from app.modules.system_admin.schemas.departments import (
@@ -32,9 +38,10 @@ def _principal(user: dict[str, str] = Depends(require_menu(MENU_DEPARTMENTS))) -
 
 
 async def _get_department(session: SessionDep, department_id: str) -> Department:
+    department_id = require_int_id(department_id, "部门不存在")
     result = await session.scalars(
         select(Department)
-        .where(Department.id == department_id, department_not_deleted())
+        .where(Department.id == int(department_id), department_not_deleted())
         .options(*_DEPT_LOAD)
     )
     dept = result.first()
@@ -46,11 +53,14 @@ async def _get_department(session: SessionDep, department_id: str) -> Department
 async def _require_parent(session: SessionDep, parent_id: str | None) -> None:
     if parent_id is None:
         return
+    parent_id = require_int_id(parent_id, "父部门不存在")
     parent = await session.scalar(
-        select(Department).where(Department.id == parent_id, department_not_deleted())
+        select(Department).where(Department.id == int(parent_id), department_not_deleted())
     )
     if parent is None:
         raise ApiError(404, "NOT_FOUND", "父部门不存在")
+    if not parent.enabled:
+        raise ApiError(409, "DEPARTMENT_DISABLED", "部门已停用")
 
 
 async def _would_cycle(session: SessionDep, dept_id: str, parent_id: str | None) -> bool:
@@ -65,7 +75,10 @@ async def _would_cycle(session: SessionDep, dept_id: str, parent_id: str | None)
         if cursor in seen:
             return True
         seen.add(cursor)
-        parent = await session.get(Department, cursor)
+        parsed = parse_int_id(cursor)
+        if parsed is None:
+            return False
+        parent = await session.get(Department, int(parsed))
         if parent is None or parent.deleted_at is not None:
             return False
         cursor = None if parent.parent_id is None else str(parent.parent_id)
@@ -101,7 +114,7 @@ async def create_department(
     tenant = body.tenant if body.tenant is not None else user["tenant"]
     dept = Department(
         name=body.name,
-        parent_id=body.parent_id,
+        parent_id=None if body.parent_id is None else int(require_int_id(body.parent_id, "父部门不存在")),
         sort=body.sort,
         enabled=True,
         tenant=tenant,
@@ -126,7 +139,9 @@ async def update_department(
     if await _would_cycle(session, id, body.parent_id):
         raise ApiError(409, "CYCLE_NOT_ALLOWED", "不能将父部门设为自身或子孙")
     dept.name = body.name
-    dept.parent_id = body.parent_id
+    dept.parent_id = (
+        None if body.parent_id is None else int(require_int_id(body.parent_id, "父部门不存在"))
+    )
     dept.sort = body.sort
     session.add(dept)
     await session.commit()
@@ -145,11 +160,13 @@ async def set_department_status(
     session: SessionDep,
     _user: dict[str, str] = Depends(_principal),
 ):
-    """启用或停用部门。"""
+    """启用或停用部门，并刷新该部门用户授权。"""
     dept = await _get_department(session, id)
     dept.enabled = body.enabled
     session.add(dept)
+    await assert_user_manager_remains(session)
     await session.commit()
+    await publish_acl_for_users(session, await user_ids_in_department(session, str(dept.id)))
     return success({"id": str(dept.id), "enabled": bool(dept.enabled)})
 
 
@@ -165,7 +182,7 @@ async def delete_department(
         await session.scalar(
             select(func.count())
             .select_from(Department)
-            .where(Department.parent_id == id, department_not_deleted())
+            .where(Department.parent_id == dept.id, department_not_deleted())
         )
         or 0
     )
@@ -173,7 +190,9 @@ async def delete_department(
         raise ApiError(409, "HAS_CHILDREN", "请先删除或挪走子部门")
     member_n = int(
         await session.scalar(
-            select(func.count()).select_from(User).where(User.department_id == id, user_not_deleted())
+            select(func.count())
+            .select_from(User)
+            .where(User.department_id == dept.id, user_not_deleted())
         )
         or 0
     )

@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.core.envelope import ApiError, Envelope, success
 from app.modules.system_admin.api.users import get_user
+from app.modules.system_admin.domain.ids import require_int_id
 from app.modules.system_admin.deps import MENU_USERS, SessionDep, require_menu
 from app.modules.system_admin.domain.models import UserTag
 from app.modules.system_admin.domain.tags import require_user_tag_name
@@ -26,7 +27,7 @@ def _tag(item: UserTag) -> dict[str, str]:
 
 
 async def _tags_by_ids(session, tag_ids: list[str]) -> list[UserTag]:
-    unique_ids = list(dict.fromkeys(tag_ids))
+    unique_ids = [require_int_id(item, "标签不存在") for item in dict.fromkeys(tag_ids)]
     result = await session.execute(select(UserTag).where(UserTag.id.in_(unique_ids)))
     tags = {str(tag.id): tag for tag in result.scalars().all()}
     missing = [tag_id for tag_id in unique_ids if str(tag_id) not in tags]
