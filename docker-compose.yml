@@ -1,4 +1,4 @@
-# 只起应用。PostgreSQL / Redis 用本机或服务器上已有的，地址写 deployment/dev.yaml。
+# 只起应用。PostgreSQL / Redis 用服务器上已有的，地址写 deployment/prod.yaml。
 services:
   api:
     build:
@@ -6,7 +6,7 @@ services:
       dockerfile: dockerfile/backend.Dockerfile
     container_name: adpilot-api
     environment:
-      ADPILOT_ENV: dev
+      ADPILOT_ENV: prod
     ports:
       - "8300:8300"
     volumes:
