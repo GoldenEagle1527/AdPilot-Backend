@@ -10,13 +10,13 @@ x-adpilot: &adpilot
     - ./deployment:/app/deployment:ro
   restart: unless-stopped
 
+# 宿主机网络：容器才能连本机上的库和 Redis。不要写 ports，host 模式下会被丢掉。
 services:
   api:
     <<: *adpilot
     container_name: adpilot-api
+    network_mode: host
     command: ["python", "main.py"]
-    ports:
-      - "8300:8300"
     volumes:
       - ./backend/app:/app/app
       - ./backend/main.py:/app/main.py
