@@ -39,3 +39,4 @@ Thumbs.db
 *.log
 celerybeat-schedule
 celerybeat-schedule.*
+docker-compose.yml
