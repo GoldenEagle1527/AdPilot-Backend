@@ -1,14 +1,14 @@
 # 只起应用。PostgreSQL / Redis 用服务器上已有的，地址写 deployment/prod.yaml。
+# 宿主机网络：容器才能连本机上的库和 Redis。不要写 ports，host 模式下会被丢掉。
 services:
   api:
     build:
       context: .
       dockerfile: dockerfile/backend.Dockerfile
     container_name: adpilot-api
+    network_mode: host
     environment:
       ADPILOT_ENV: prod
-    ports:
-      - "8300:8300"
     volumes:
       - ./backend/app:/app/app
       - ./backend/main.py:/app/main.py
