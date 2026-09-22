@@ -32,7 +32,7 @@ async def _tags_by_ids(session, tag_ids: list[str]) -> list[UserTag]:
     tags = {str(tag.id): tag for tag in result.scalars().all()}
     missing = [tag_id for tag_id in unique_ids if str(tag_id) not in tags]
     if missing:
-        raise ApiError(404, "NOT_FOUND", "标签不存在")
+        raise ApiError(404, "标签不存在")
     return [tags[str(tag_id)] for tag_id in unique_ids]
 
 
@@ -53,17 +53,17 @@ async def create_user_tag(
     try:
         name = require_user_tag_name(body.name)
     except ValueError as exc:
-        raise ApiError(422, "TAG_NOT_ALLOWED", str(exc)) from exc
+        raise ApiError(422, str(exc)) from exc
     existing = await session.execute(select(UserTag.id).where(UserTag.name == name))
     if existing.scalar_one_or_none() is not None:
-        raise ApiError(409, "CONFLICT", "同名已存在")
+        raise ApiError(409, "同名已存在")
     tag = UserTag(name=name)
     session.add(tag)
     try:
         await session.commit()
     except IntegrityError as exc:
         await session.rollback()
-        raise ApiError(409, "CONFLICT", "同名已存在") from exc
+        raise ApiError(409, "同名已存在") from exc
     await session.refresh(tag)
     return success(_tag(tag))
 

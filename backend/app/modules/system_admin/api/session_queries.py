@@ -26,7 +26,7 @@ PrincipalDep = Annotated[dict[str, str], Depends(current_principal)]
 async def _require_local_user(session, principal: dict[str, str]):
     user = await user_by_login(session, principal["login_account"])
     if user is None or not user.enabled:
-        raise ApiError(403, "FORBIDDEN", "已登录但无对应本地用户")
+        raise ApiError(403, "已登录但无对应本地用户")
     return user
 
 

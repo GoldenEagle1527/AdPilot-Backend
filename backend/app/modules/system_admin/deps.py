@@ -40,14 +40,14 @@ def require_menu(*menu_ids: str):
         if not isinstance(granted, list) or enabled is None:
             user = await user_by_login(session, str(principal["login_account"]))
             if user is None or not user.enabled:
-                raise ApiError(403, "FORBIDDEN", "已登录但无对应菜单或组件")
+                raise ApiError(403, "已登录但无对应菜单或组件")
             granted = list(await effective_menu_ids(session, user))
             enabled = True
         if enabled is False:
-            raise ApiError(403, "FORBIDDEN", "已登录但无对应菜单或组件")
+            raise ApiError(403, "已登录但无对应菜单或组件")
         granted_set = granted if isinstance(granted, set) else set(granted)
         if needed.isdisjoint(granted_set):
-            raise ApiError(403, "FORBIDDEN", "已登录但无对应菜单或组件")
+            raise ApiError(403, "已登录但无对应菜单或组件")
         return principal
 
     return _check

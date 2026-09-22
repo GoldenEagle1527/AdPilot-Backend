@@ -149,14 +149,14 @@ async def user_ids_holding_menu(session: AsyncSession, menu_id: str) -> set[str]
 async def assert_user_manager_remains(session: AsyncSession) -> None:
     await session.flush()
     if not await user_ids_holding_menu(session, MENU_USERS):
-        raise ApiError(409, "LAST_ADMIN_REQUIRED", "至少保留一名可管理用户的账号")
+        raise ApiError(409, "至少保留一名可管理用户的账号")
 
 
 async def assert_self_keeps_user_menu(session: AsyncSession, user_id: str) -> None:
     await session.flush()
     holders = await user_ids_holding_menu(session, MENU_USERS)
     if str(user_id) not in holders:
-        raise ApiError(409, "CANNOT_STRIP_OWN_ADMIN", "不能去掉自己的用户管理权限")
+        raise ApiError(409, "不能去掉自己的用户管理权限")
 
 
 async def effective_menu_ids(session: AsyncSession, user: User) -> set[str]:

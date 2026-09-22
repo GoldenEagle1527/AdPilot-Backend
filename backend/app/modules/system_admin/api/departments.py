@@ -44,7 +44,7 @@ async def _get_department(session: SessionDep, department_id: str) -> Department
     )
     dept = result.first()
     if dept is None:
-        raise ApiError(404, "NOT_FOUND", "部门不存在")
+        raise ApiError(404, "部门不存在")
     return dept
 
 
@@ -56,9 +56,9 @@ async def _require_parent(session: SessionDep, parent_id: str | None) -> None:
         select(Department).where(Department.id == int(parent_id), department_not_deleted())
     )
     if parent is None:
-        raise ApiError(404, "NOT_FOUND", "父部门不存在")
+        raise ApiError(404, "父部门不存在")
     if not parent.enabled:
-        raise ApiError(409, "DEPARTMENT_DISABLED", "部门已停用")
+        raise ApiError(409, "部门已停用")
 
 
 async def _would_cycle(session: SessionDep, dept_id: str, parent_id: str | None) -> bool:
@@ -135,7 +135,7 @@ async def update_department(
     dept = await _get_department(session, id)
     await _require_parent(session, body.parent_id)
     if await _would_cycle(session, id, body.parent_id):
-        raise ApiError(409, "CYCLE_NOT_ALLOWED", "不能将父部门设为自身或子孙")
+        raise ApiError(409, "不能将父部门设为自身或子孙")
     dept.name = body.name
     dept.parent_id = (
         None if body.parent_id is None else int(require_int_id(body.parent_id, "父部门不存在"))
@@ -185,7 +185,7 @@ async def delete_department(
         or 0
     )
     if child_n:
-        raise ApiError(409, "HAS_CHILDREN", "请先删除或挪走子部门")
+        raise ApiError(409, "请先删除或挪走子部门")
     member_n = int(
         await session.scalar(
             select(func.count())
@@ -195,7 +195,7 @@ async def delete_department(
         or 0
     )
     if member_n:
-        raise ApiError(409, "HAS_MEMBERS", "部门下仍有员工，请先把员工挪到其他部门")
+        raise ApiError(409, "部门下仍有员工，请先把员工挪到其他部门")
     dept.mark_deleted()
     session.add(dept)
     await session.commit()

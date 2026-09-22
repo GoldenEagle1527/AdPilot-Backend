@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Generic, Sequence, TypeVar
 
 from fastapi import Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 T = TypeVar("T")
 
@@ -18,7 +18,9 @@ class PageParams(BaseModel):
 
 
 class PageData(BaseModel, Generic[T]):
-    items: list[T]
+    """分页响应体。列表字段名对外是 list。"""
+
+    items: Sequence[T] = Field(serialization_alias="list", validation_alias="list")
     total: int
     page: int
     page_size: int
@@ -37,7 +39,7 @@ def page_data(
     params: PageParams,
 ) -> dict[str, object]:
     return {
-        "items": list(items),
+        "list": list(items),
         "total": total,
         "page": params.page,
         "page_size": params.page_size,

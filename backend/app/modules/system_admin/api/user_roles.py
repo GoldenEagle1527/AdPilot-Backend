@@ -77,7 +77,7 @@ async def set_user_roles(
         roles = {str(role.id): role for role in result.scalars().all()}
         missing = [role_id for role_id in unique_ids if str(role_id) not in roles]
         if missing:
-            raise ApiError(404, "NOT_FOUND", "角色不存在")
+            raise ApiError(404, "角色不存在")
         user.roles = [roles[str(role_id)] for role_id in unique_ids]
     else:
         user.roles = []

@@ -67,9 +67,9 @@ async def set_user_data_scope(
         departments = {str(dept.id): dept for dept in result.scalars().all()}
         missing = [dept_id for dept_id in unique_ids if str(dept_id) not in departments]
         if missing:
-            raise ApiError(404, "NOT_FOUND", "部门不存在")
+            raise ApiError(404, "部门不存在")
         if any(not dept.enabled for dept in departments.values()):
-            raise ApiError(409, "DEPARTMENT_DISABLED", "部门已停用")
+            raise ApiError(409, "部门已停用")
         expanded = await expand_department_ids(session, unique_ids, enabled_only=True)
         found = await session.execute(
             select(Department).where(

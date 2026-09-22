@@ -32,7 +32,7 @@ async def reset_user_password(
 ) -> dict:
     """写入新密码；两次输入须一致。"""
     if body.password != body.password_confirm:
-        raise ApiError(422, "VALIDATION_ERROR", "两次输入的密码不一致")
+        raise ApiError(422, "两次输入的密码不一致")
     user = await get_user(session, user_id)
     user.password_hash = await hash_password_async(body.password)
     await session.commit()

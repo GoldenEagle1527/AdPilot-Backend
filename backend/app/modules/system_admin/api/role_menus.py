@@ -30,7 +30,7 @@ async def _require_role(session: AsyncSession, role_id: str) -> Role:
     role_id = require_int_id(role_id, "角色不存在")
     role = await session.get(Role, int(role_id))
     if role is None:
-        raise ApiError(404, "NOT_FOUND", "角色不存在")
+        raise ApiError(404, "角色不存在")
     return role
 
 
@@ -79,7 +79,7 @@ async def set_role_menus(
             ).scalars().all()
         }
         if found != {str(item) for item in menu_ids}:
-            raise ApiError(404, "NOT_FOUND", "菜单节点不存在")
+            raise ApiError(404, "菜单节点不存在")
     await session.execute(delete(RoleMenu).where(RoleMenu.role_id == role.id))
     session.add_all([RoleMenu(role_id=role.id, menu_id=int(mid)) for mid in menu_ids])
     role.updated_by = principal["login_account"]

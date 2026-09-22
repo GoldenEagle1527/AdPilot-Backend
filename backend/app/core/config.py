@@ -46,6 +46,21 @@ class RedisSettings(BaseModel):
     password: str | None = None
 
 
+class DingTalkSettings(BaseModel):
+    """钉钉自定义机器人 webhook，用于错误通知。"""
+
+    webhook: str = ""
+
+
+class ChangduSettings(BaseModel):
+    """常读 OpenAPI 的列表地址、渠道、密钥和同步间隔。"""
+
+    base_url: str
+    distributor_id: int
+    secret_key: str = Field(min_length=1)
+    sync_interval_seconds: int = 1800
+
+
 class Settings(BaseModel):
     listen_host: str = "0.0.0.0"
     listen_port: int = 8000
@@ -57,6 +72,8 @@ class Settings(BaseModel):
     db_pool_size: int = 10
     db_pool_max_overflow: int = 10
     db_pool_timeout: int = 30
+    changdu: ChangduSettings
+    dingtalk: DingTalkSettings = Field(default_factory=DingTalkSettings)
 
     @property
     def async_database_url(self) -> str:

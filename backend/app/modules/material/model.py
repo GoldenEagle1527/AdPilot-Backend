@@ -2,17 +2,17 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Integer, String, UniqueConstraint, func
+from sqlalchemy import BigInteger, Boolean, DateTime, Index, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import BaseModel
 
 
 class ManhuaSeries(BaseModel):
-    """常读短剧/漫剧落库行。唯一键：playlet_id + book_name。"""
+    """常读短剧/漫剧落库行。按专辑 ID 和剧名查找，两列联合索引，允许重复。"""
 
     __tablename__ = "manhua_series"
-    __table_args__ = (UniqueConstraint("playlet_id", "book_name", name="uq_manhua_series_playlet_book"),)
+    __table_args__ = (Index("ix_manhua_series_playlet_book", "playlet_id", "book_name"),)
     thumb_url: Mapped[str] = mapped_column(String(1024), nullable=False, default="", comment="封面 URL")
     book_id: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, comment="常读 book_id")
     playlet_id: Mapped[int] = mapped_column(
@@ -22,7 +22,10 @@ class ManhuaSeries(BaseModel):
     episode_amount: Mapped[int] = mapped_column(Integer, nullable=False, default=0, comment="集数")
     gender: Mapped[int] = mapped_column(Integer, nullable=False, default=0, comment="常读性别码")
     category_text: Mapped[str] = mapped_column(
-        String(128), nullable=False, default="", comment="分类文案，如 IAA/IAP，供 tab"
+        String(512), nullable=False, default="", comment="常读题材，逗号分隔，如 玄幻脑洞,逆袭"
+    )
+    tab_text: Mapped[str] = mapped_column(
+        String(128), nullable=False, default="", comment="由 single_price 判断：不收费 IAA，收费 IAP"
     )
     publish_status: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, comment="常读出参：1 未发布、2 已发布、3 已下架"

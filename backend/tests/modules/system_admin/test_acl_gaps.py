@@ -147,7 +147,7 @@ class AclGapHttpTests(unittest.TestCase):
             json={"login_account": user["login_account"], "password": "AclGap@123"},
         )
         self.assertEqual(login.status_code, 403, login.text)
-        self.assertEqual(login.json()["error"]["code"], "ACCOUNT_DISABLED")
+        self.assertEqual(login.json()["message"], "账号停用")
         self.client.delete(
             f"/api/v1/system-admin/users/{user['id']}",
             headers=self._auth(admin),
@@ -179,7 +179,7 @@ class AclGapHttpTests(unittest.TestCase):
             json={"password": "x", "password_confirm": "x"},
         )
         self.assertEqual(reset.status_code, 404, reset.text)
-        self.assertEqual(reset.json()["error"]["code"], "NOT_FOUND")
+        self.assertEqual(reset.json()["code"], 404)
         dept = self.client.patch(
             "/api/v1/system-admin/departments/abc/status",
             headers=self._auth(admin),
@@ -202,7 +202,7 @@ class AclGapHttpTests(unittest.TestCase):
             json={"enabled": False},
         )
         self.assertEqual(disabled.status_code, 409, disabled.text)
-        self.assertEqual(disabled.json()["error"]["code"], "CANNOT_DISABLE_SELF")
+        self.assertEqual(disabled.json()["message"], "不能停用当前登录账号")
 
         stripped = self.client.put(
             f"/api/v1/system-admin/users/{admin_id}/roles",
@@ -210,7 +210,7 @@ class AclGapHttpTests(unittest.TestCase):
             json={"role_ids": []},
         )
         self.assertEqual(stripped.status_code, 409, stripped.text)
-        self.assertEqual(stripped.json()["error"]["code"], "CANNOT_STRIP_OWN_ADMIN")
+        self.assertEqual(stripped.json()["message"], "不能去掉自己的用户管理权限")
 
         last_role = self.client.patch(
             "/api/v1/system-admin/roles/5/status",
@@ -218,7 +218,7 @@ class AclGapHttpTests(unittest.TestCase):
             json={"enabled": False},
         )
         self.assertEqual(last_role.status_code, 409, last_role.text)
-        self.assertEqual(last_role.json()["error"]["code"], "LAST_ADMIN_REQUIRED")
+        self.assertEqual(last_role.json()["message"], "至少保留一名可管理用户的账号")
 
     def test_disabled_department_rejects_new_members(self) -> None:
         admin = self._admin_token()
@@ -247,7 +247,7 @@ class AclGapHttpTests(unittest.TestCase):
             },
         )
         self.assertEqual(user.status_code, 409, user.text)
-        self.assertEqual(user.json()["error"]["code"], "DEPARTMENT_DISABLED")
+        self.assertEqual(user.json()["message"], "部门已停用")
 
         child = self.client.post(
             "/api/v1/system-admin/departments",
@@ -255,7 +255,7 @@ class AclGapHttpTests(unittest.TestCase):
             json={"name": f"子{self._stamp}", "parent_id": dept_id, "sort": 0},
         )
         self.assertEqual(child.status_code, 409, child.text)
-        self.assertEqual(child.json()["error"]["code"], "DEPARTMENT_DISABLED")
+        self.assertEqual(child.json()["message"], "部门已停用")
 
         scope = self.client.put(
             "/api/v1/system-admin/users/1/data-scope",

@@ -31,7 +31,7 @@ async def _require_department(session: SessionDep, department_id: str) -> Depart
         select(Department).where(Department.id == int(department_id), department_not_deleted())
     )
     if dept is None:
-        raise ApiError(404, "NOT_FOUND", "部门不存在")
+        raise ApiError(404, "部门不存在")
     return dept
 
 
@@ -85,7 +85,7 @@ async def set_department_roles(
             (await session.scalars(select(Role.id).where(Role.id.in_([int(item) for item in unique_ids])))).all()
         )
         if any(str(rid) not in {str(item) for item in found} for rid in unique_ids):
-            raise ApiError(404, "NOT_FOUND", "角色不存在")
+            raise ApiError(404, "角色不存在")
     await session.execute(delete(DepartmentRole).where(DepartmentRole.department_id == int(id)))
     for role_id in unique_ids:
         session.add(DepartmentRole(department_id=int(id), role_id=int(role_id)))

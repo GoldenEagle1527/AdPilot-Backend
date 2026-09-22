@@ -1,12 +1,20 @@
-# 只起应用。PostgreSQL / Redis 用服务器上已有的，地址写 deployment/prod.yaml。
+# 只起应用。Celery Beat / Worker 先停着。PostgreSQL / Redis 用服务器上已有的，地址写 deployment/dev.yaml。
+x-adpilot: &adpilot
+  build:
+    context: .
+    dockerfile: dockerfile/backend.Dockerfile
+  environment:
+    ADPILOT_ENV: dev
+  volumes:
+    - ./backend/app:/app/app
+    - ./deployment:/app/deployment:ro
+  restart: unless-stopped
+
 services:
   api:
-    build:
-      context: .
-      dockerfile: dockerfile/backend.Dockerfile
+    <<: *adpilot
     container_name: adpilot-api
-    environment:
-      ADPILOT_ENV: prod
+    command: ["python", "main.py"]
     ports:
       - "8300:8300"
     volumes:
@@ -14,4 +22,26 @@ services:
       - ./backend/main.py:/app/main.py
       - ./deployment:/app/deployment:ro
       - ./backend/alembic.ini:/app/alembic.ini:ro
-    restart: unless-stopped
+
+  # celery-beat:
+  #   <<: *adpilot
+  #   container_name: adpilot-celery-beat
+  #   command:
+  #     - celery
+  #     - -A
+  #     - app.tasks.celery_app
+  #     - beat
+  #     - --loglevel=info
+
+  # celery-worker:
+  #   <<: *adpilot
+  #   container_name: adpilot-celery-worker
+  #   command:
+  #     - celery
+  #     - -A
+  #     - app.tasks.celery_app
+  #     - worker
+  #     - --loglevel=info
+  #     - -Q
+  #     - manhua_sync
+  #     - --concurrency=1

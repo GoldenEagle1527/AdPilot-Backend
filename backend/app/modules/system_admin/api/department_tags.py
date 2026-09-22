@@ -39,7 +39,7 @@ async def _get_department(session: SessionDep, department_id: str) -> Department
     )
     dept = result.first()
     if dept is None:
-        raise ApiError(404, "NOT_FOUND", "部门不存在")
+        raise ApiError(404, "部门不存在")
     return dept
 
 
@@ -51,7 +51,7 @@ async def _tags_by_ids(session: SessionDep, tag_ids: list[str]) -> list[Departme
     found_by_id = {str(t.id): t for t in found}
     missing = [tid for tid in unique_ids if str(tid) not in found_by_id]
     if missing:
-        raise ApiError(404, "NOT_FOUND", "标签不存在")
+        raise ApiError(404, "标签不存在")
     return [found_by_id[str(tid)] for tid in unique_ids]
 
 
@@ -75,17 +75,17 @@ async def create_department_tag(
     try:
         name = require_department_tag_name(body.name)
     except ValueError as exc:
-        raise ApiError(422, "TAG_NOT_ALLOWED", str(exc)) from exc
+        raise ApiError(422, str(exc)) from exc
     existing = await session.scalar(select(DepartmentTag.id).where(DepartmentTag.name == name))
     if existing is not None:
-        raise ApiError(409, "CONFLICT", "标签同名")
+        raise ApiError(409, "标签同名")
     tag = DepartmentTag(name=name)
     session.add(tag)
     try:
         await session.commit()
     except IntegrityError as exc:
         await session.rollback()
-        raise ApiError(409, "CONFLICT", "标签同名") from exc
+        raise ApiError(409, "标签同名") from exc
     await session.refresh(tag)
     return success(tag_item(tag))
 

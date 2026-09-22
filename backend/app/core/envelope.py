@@ -1,3 +1,5 @@
+"""全局响应信封。所有接口只返回 {code, message, data}，异常也在这里收口。"""
+
 from __future__ import annotations
 
 from typing import Any, Generic, TypeVar
@@ -11,78 +13,57 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 T = TypeVar("T")
 
 
-class ErrorBody(BaseModel):
-    code: str
-    message: str
-
-
 class Envelope(BaseModel, Generic[T]):
-    ok: bool
+    """统一响应体。成功 code 为 200，失败 code 与 HTTP 状态一致。"""
+
+    code: int
+    message: str
     data: T | None
-    error: ErrorBody | None
 
 
 class ApiError(Exception):
-    def __init__(self, status_code: int, code: str, message: str) -> None:
+    """业务失败。抛它就行，HTTP 状态即 code，message 给人看。"""
+
+    def __init__(self, status_code: int, message: str) -> None:
         self.status_code = status_code
-        self.code = code
         self.message = message
 
 
-def success(data: Any = None) -> dict[str, Any]:
-    return {"ok": True, "data": data, "error": None}
+def success(data: Any = None, message: str = "成功") -> dict[str, Any]:
+    """成功信封。"""
+    return {"code": 200, "message": message, "data": data}
 
 
-def failure(code: str, message: str) -> dict[str, Any]:
-    return {"ok": False, "data": None, "error": {"code": code, "message": message}}
+def failure(code: int, message: str) -> dict[str, Any]:
+    """失败信封。"""
+    return {"code": code, "message": message, "data": None}
 
 
-def _status_to_code(status_code: int) -> str:
-    mapping = {
-        401: "UNAUTHORIZED",
-        403: "FORBIDDEN",
-        404: "NOT_FOUND",
-        422: "VALIDATION_ERROR",
-        503: "SERVICE_UNAVAILABLE",
-    }
-    return mapping.get(status_code, "INTERNAL_ERROR" if status_code >= 500 else "HTTP_ERROR")
+def _json(code: int, message: str) -> JSONResponse:
+    """按失败信封出 JSONResponse。"""
+    return JSONResponse(status_code=code, content=failure(code, message))
 
 
 def register_exception_handlers(app: FastAPI) -> None:
+    """全局异常捕获：业务失败、入参校验、HTTP 异常、未捕获异常都收成同一套信封。"""
+
     @app.exception_handler(ApiError)
-    async def api_error_handler(_request: Request, exc: ApiError) -> JSONResponse:
-        return JSONResponse(
-            status_code=exc.status_code,
-            content=failure(exc.code, exc.message),
-        )
+    async def _api_error(_request: Request, exc: ApiError) -> JSONResponse:
+        return _json(exc.status_code, exc.message)
 
     @app.exception_handler(RequestValidationError)
-    async def validation_handler(
-        _request: Request, exc: RequestValidationError
-    ) -> JSONResponse:
+    async def _validation(_request: Request, exc: RequestValidationError) -> JSONResponse:
         first = exc.errors()[0] if exc.errors() else {}
         loc = ".".join(str(p) for p in first.get("loc", []) if p != "body")
         msg = str(first.get("msg", "字段校验失败"))
-        message = f"{loc}: {msg}" if loc else msg
-        return JSONResponse(
-            status_code=422,
-            content=failure("VALIDATION_ERROR", message),
-        )
+        return _json(422, f"{loc}: {msg}" if loc else msg)
 
     @app.exception_handler(StarletteHTTPException)
-    async def http_handler(_request: Request, exc: StarletteHTTPException) -> JSONResponse:
+    async def _http(_request: Request, exc: StarletteHTTPException) -> JSONResponse:
         detail = exc.detail
-        if isinstance(detail, dict) and "code" in detail and "message" in detail:
-            code = str(detail["code"])
-            message = str(detail["message"])
-        else:
-            code = _status_to_code(exc.status_code)
-            message = detail if isinstance(detail, str) else "请求失败"
-        return JSONResponse(status_code=exc.status_code, content=failure(code, message))
+        message = detail if isinstance(detail, str) else "请求失败"
+        return _json(exc.status_code, message)
 
     @app.exception_handler(Exception)
-    async def unhandled_handler(_request: Request, exc: Exception) -> JSONResponse:
-        return JSONResponse(
-            status_code=500,
-            content=failure("INTERNAL_ERROR", "服务端未处理异常"),
-        )
+    async def _unhandled(_request: Request, _exc: Exception) -> JSONResponse:
+        return _json(500, "服务端未处理异常")

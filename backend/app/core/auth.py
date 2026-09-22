@@ -110,10 +110,10 @@ async def require_token(
     token: Annotated[str | None, Depends(read_bearer_token)],
 ) -> dict[str, Any]:
     if not token:
-        raise ApiError(401, "UNAUTHORIZED", "未带或 Token 无效")
+        raise ApiError(401, "未带或 Token 无效")
     user = await get_token_user(token)
     if user is None:
-        raise ApiError(401, "UNAUTHORIZED", "未带或 Token 无效")
+        raise ApiError(401, "未带或 Token 无效")
     return user
 
 
@@ -190,9 +190,9 @@ async def login(
         session, body.login_account, body.password
     )
     if status == "disabled":
-        raise ApiError(403, "ACCOUNT_DISABLED", "账号停用")
+        raise ApiError(403, "账号停用")
     if status != "ok" or principal is None:
-        raise ApiError(401, "INVALID_CREDENTIALS", "账号或密码不对")
+        raise ApiError(401, "账号或密码不对")
 
     token = await issue_session(principal)
     user = LoginUser(

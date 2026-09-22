@@ -13,6 +13,7 @@ from app.core.db import dispose_engine, init_engine
 from app.core.envelope import register_exception_handlers
 from app.core.health import router as health_router
 from app.core.redis_client import close_redis, init_redis
+from app.modules.material import router as material_router
 from app.modules.system_admin import router as system_admin_router
 
 
@@ -32,7 +33,7 @@ def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(
         title="AdPilot API",
-        description="信封 `{ ok, data, error }`。除 login/health/ready 外带 `Authorization: Bearer`。",
+        description="信封 `{ code, message, data }`。除 login/health/ready 外带 `Authorization: Bearer`。",
         lifespan=lifespan,
         docs_url="/docs",
         openapi_url="/openapi.json",
@@ -43,6 +44,7 @@ def create_app() -> FastAPI:
     app.include_router(health_router)
     app.include_router(auth_router)
     app.include_router(system_admin_router)
+    app.include_router(material_router)
     return app
 
 

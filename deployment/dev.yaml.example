@@ -21,3 +21,12 @@ jwt_secret: "replace-dev-jwt-secret-min-32-characters"
 db_pool_size: 10
 db_pool_max_overflow: 10
 db_pool_timeout: 30
+
+changdu:
+  base_url: "https://openapi.changdupingtai.com/novelsale/openapi/content/aweme_series/list/v1/"
+  distributor_id: "0"
+  secret_key: "replace-me"
+  sync_interval_seconds: 1800
+
+dingtalk:
+  webhook: ""

@@ -48,9 +48,9 @@ async def get_department(
     department_id = require_int_id(department_id, "部门不存在")
     department = await session.get(Department, int(department_id))
     if department is None or department.is_deleted:
-        raise ApiError(404, "NOT_FOUND", "部门不存在")
+        raise ApiError(404, "部门不存在")
     if require_enabled and not department.enabled:
-        raise ApiError(409, "DEPARTMENT_DISABLED", "部门已停用")
+        raise ApiError(409, "部门已停用")
     return department
 
 
@@ -61,7 +61,7 @@ async def get_user(session: AsyncSession, user_id: str) -> User:
     )
     user = result.scalar_one_or_none()
     if user is None:
-        raise ApiError(404, "NOT_FOUND", "用户不存在")
+        raise ApiError(404, "用户不存在")
     return user
 
 
@@ -188,7 +188,7 @@ async def create_user(
         select(User.id).where(User.login_account == body.login_account)
     )
     if existing.scalar_one_or_none() is not None:
-        raise ApiError(409, "CONFLICT", "login_account 已存在")
+        raise ApiError(409, "login_account 已存在")
 
     user = User(
         nickname=body.nickname,
@@ -207,7 +207,7 @@ async def create_user(
         await session.commit()
     except IntegrityError as exc:
         await session.rollback()
-        raise ApiError(409, "CONFLICT", "login_account 已存在") from exc
+        raise ApiError(409, "login_account 已存在") from exc
     user = await get_user(session, user.id)
     roles = (await department_roles_by_dept(session, [user.department_id])).get(
         user.department_id, []
@@ -250,7 +250,7 @@ async def set_user_status(
     """启用或停用用户；停用会踢掉其登录会话。"""
     user = await get_user(session, user_id)
     if not body.enabled and principal["id"] == str(user.id):
-        raise ApiError(409, "CANNOT_DISABLE_SELF", "不能停用当前登录账号")
+        raise ApiError(409, "不能停用当前登录账号")
     user.enabled = body.enabled
     if not body.enabled:
         await assert_user_manager_remains(session)
@@ -271,7 +271,7 @@ async def delete_user(
     """软删用户并踢掉其登录会话；不能删当前登录账号。"""
     user = await get_user(session, user_id)
     if principal["id"] == str(user.id):
-        raise ApiError(409, "CANNOT_DELETE_SELF", "不能删除当前登录账号")
+        raise ApiError(409, "不能删除当前登录账号")
     user.mark_deleted()
     await assert_user_manager_remains(session)
     await session.commit()

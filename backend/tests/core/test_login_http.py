@@ -60,7 +60,7 @@ class LoginHttpTests(unittest.TestCase):
         )
         self.assertEqual(login.status_code, 200, login.text)
         body = login.json()
-        self.assertTrue(body["ok"])
+        self.assertEqual(body["code"], 200)
         token = body["data"]["token"]
         self.assertTrue(token)
 
@@ -70,7 +70,7 @@ class LoginHttpTests(unittest.TestCase):
         )
         self.assertEqual(me.status_code, 200, me.text)
         me_body = me.json()
-        self.assertTrue(me_body["ok"])
+        self.assertEqual(me_body["code"], 200)
         self.assertEqual(me_body["data"]["login_account"], "admin")
 
     def test_admin_can_list_users_via_cached_menu(self) -> None:
@@ -85,7 +85,8 @@ class LoginHttpTests(unittest.TestCase):
             headers={"Authorization": f"Bearer {token}"},
         )
         self.assertEqual(users.status_code, 200, users.text)
-        self.assertTrue(users.json()["ok"])
+        self.assertEqual(users.json()["code"], 200)
+        self.assertIsInstance(users.json()["data"]["list"], list)
 
         menus = self.client.get(
             "/api/v1/system-admin/session/menus",
@@ -114,8 +115,9 @@ class LoginHttpTests(unittest.TestCase):
         )
         self.assertEqual(login.status_code, 401)
         body = login.json()
-        self.assertFalse(body["ok"])
-        self.assertEqual(body["error"]["code"], "INVALID_CREDENTIALS")
+        self.assertEqual(body["code"], 401)
+        self.assertEqual(body["message"], "账号或密码不对")
+        self.assertIsNone(body["data"])
 
     def test_disabled_account(self) -> None:
         login = self.client.post(
@@ -124,8 +126,8 @@ class LoginHttpTests(unittest.TestCase):
         )
         self.assertEqual(login.status_code, 403)
         body = login.json()
-        self.assertFalse(body["ok"])
-        self.assertEqual(body["error"]["code"], "ACCOUNT_DISABLED")
+        self.assertEqual(body["code"], 403)
+        self.assertEqual(body["message"], "账号停用")
 
     def test_login_token_is_verifiable_jwt(self) -> None:
         login = self.client.post(
@@ -155,7 +157,7 @@ class LoginHttpTests(unittest.TestCase):
             headers={"Authorization": f"Bearer {tampered}"},
         )
         self.assertEqual(me.status_code, 401, me.text)
-        self.assertEqual(me.json()["error"]["code"], "UNAUTHORIZED")
+        self.assertEqual(me.json()["code"], 401)
 
     def test_wrong_secret_jwt_is_unauthorized(self) -> None:
         now = beijing_now()
@@ -177,7 +179,7 @@ class LoginHttpTests(unittest.TestCase):
             headers={"Authorization": f"Bearer {forged}"},
         )
         self.assertEqual(me.status_code, 401, me.text)
-        self.assertEqual(me.json()["error"]["code"], "UNAUTHORIZED")
+        self.assertEqual(me.json()["code"], 401)
 
     def test_revoked_jti_is_unauthorized(self) -> None:
         login = self.client.post(
@@ -207,7 +209,7 @@ class LoginHttpTests(unittest.TestCase):
             headers={"Authorization": f"Bearer {token}"},
         )
         self.assertEqual(me.status_code, 401, me.text)
-        self.assertEqual(me.json()["error"]["code"], "UNAUTHORIZED")
+        self.assertEqual(me.json()["code"], 401)
 
 
 if __name__ == "__main__":

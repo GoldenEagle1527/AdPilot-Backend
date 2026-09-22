@@ -86,7 +86,7 @@ async def _get_role_or_404(session: AsyncSession, role_id: str) -> Role:
     role_id = require_int_id(role_id, "角色不存在")
     role = await session.get(Role, int(role_id))
     if role is None:
-        raise ApiError(404, "NOT_FOUND", "角色不存在")
+        raise ApiError(404, "角色不存在")
     return role
 
 
@@ -143,7 +143,7 @@ async def create_role(
         await session.commit()
     except IntegrityError:
         await session.rollback()
-        raise ApiError(422, "VALIDATION_ERROR", "name: 角色名已存在")
+        raise ApiError(422, "name: 角色名已存在")
     await session.refresh(role)
     return success(role_item_dict(role, [], []))
 
@@ -165,7 +165,7 @@ async def update_role(
         await session.commit()
     except IntegrityError:
         await session.rollback()
-        raise ApiError(422, "VALIDATION_ERROR", "name: 角色名已存在")
+        raise ApiError(422, "name: 角色名已存在")
     await session.refresh(role)
     return success(await _role_payload(session, role))
 

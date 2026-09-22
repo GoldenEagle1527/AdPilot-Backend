@@ -45,5 +45,5 @@ async def ready():
         parts.append(redis_msg)
     return JSONResponse(
         status_code=503,
-        content=failure("SERVICE_UNAVAILABLE", "；".join(parts)),
+        content=failure(503, "；".join(parts)),
     )
