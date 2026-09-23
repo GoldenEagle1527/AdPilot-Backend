@@ -61,6 +61,16 @@ class ChangduSettings(BaseModel):
     sync_interval_seconds: int = 1800
 
 
+class OceanEngineSettings(BaseModel):
+    """巨量引擎开放平台地址与应用凭证。缺省走 mock，不要求真实密钥。"""
+
+    api_base: str = "https://api.oceanengine.com"
+    ad_base: str = "https://ad.oceanengine.com"
+    app_id: str = ""
+    secret: str = ""
+    mock: bool = True
+
+
 class Settings(BaseModel):
     listen_host: str = "0.0.0.0"
     listen_port: int = 8000
@@ -74,6 +84,7 @@ class Settings(BaseModel):
     db_pool_timeout: int = 30
     changdu: ChangduSettings
     dingtalk: DingTalkSettings = Field(default_factory=DingTalkSettings)
+    oceanengine: OceanEngineSettings = Field(default_factory=OceanEngineSettings)
 
     @property
     def async_database_url(self) -> str:
