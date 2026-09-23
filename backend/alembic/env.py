@@ -16,6 +16,7 @@ def load_models() -> None:
     """导入各业务 ORM，让表进入 BaseModel.metadata。"""
     import app.modules.system_admin.domain.models  # noqa: F401
     import app.modules.material.model  # noqa: F401
+    import app.modules.material_title.model  # noqa: F401
 
 
 config = context.config

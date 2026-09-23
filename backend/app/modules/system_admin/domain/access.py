@@ -38,6 +38,15 @@ async def user_by_login(session: AsyncSession, login_account: str) -> User | Non
     return result.scalar_one_or_none()
 
 
+async def nicknames_by_ids(session: AsyncSession, user_ids: Iterable[int]) -> dict[int, str]:
+    """按用户主键一次取昵称，供别的业务包回填上传者这类展示列。查不到的 id 不出现在结果里。"""
+    pks = {int(user_id) for user_id in user_ids}
+    if not pks:
+        return {}
+    rows = await session.execute(select(User.id, User.nickname).where(User.id.in_(pks)))
+    return {int(user_id): nickname for user_id, nickname in rows.all()}
+
+
 async def session_principal(session: AsyncSession, user: User) -> dict:
     """给 core 存进 Redis 的主体：身份 + 有效菜单。core 不解释菜单含义。"""
     menus = await effective_menu_ids(session, user)
