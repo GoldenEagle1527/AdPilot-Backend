@@ -11,7 +11,7 @@ from app.core.auth import require_token
 from app.core.db import get_session
 from app.core.envelope import Envelope, success
 from app.core.pagination import PageData
-from app.modules.material_video.schema import TagList, TagQuery, VideoCreate, VideoItem, VideoQuery
+from app.modules.material_video.schema import TagItem, TagQuery, VideoCreate, VideoItem, VideoQuery
 from app.modules.material_video.service import create_video, list_tags, list_videos
 
 router = APIRouter(prefix="/api/v1/material", tags=["material"])
@@ -22,15 +22,15 @@ PrincipalDep = Annotated[dict[str, Any], Depends(require_token)]
 
 @router.get(
     "/video-tags",
-    response_model=Envelope[TagList],
-    summary="查询视频标签",
+    response_model=Envelope[PageData[TagItem]],
+    summary="分页查询视频标签",
 )
 async def get_video_tags(
     session: SessionDep,
     principal: PrincipalDep,
     query: Annotated[TagQuery, Query()],
 ) -> dict[str, Any]:
-    """按名称模糊列出当前用户能看见的全部素材标签。"""
+    """按名称模糊列出当前用户能看见的素材标签。"""
     return success(await list_tags(session, query, int(principal["id"])))
 
 

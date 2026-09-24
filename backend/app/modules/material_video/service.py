@@ -15,7 +15,7 @@ from app.core.times import beijing_iso, beijing_now
 from app.modules.material import book_names_by_ids
 from app.modules.material_video.crud import (
     ensure_tag,
-    find_tags,
+    page_tags,
     page_videos,
     pitcher_ids_by_videos,
     tag_names_by_ids,
@@ -188,7 +188,10 @@ def tag_filters(query: TagQuery, user_id: int) -> list[ColumnElement[bool]]:
 
 
 async def list_tags(session: AsyncSession, query: TagQuery, user_id: int) -> dict[str, Any]:
-    """一次列出全部匹配的视频标签，供下拉模糊选择。"""
-    # ponytail: 下拉一次拉全量。标签多到拖慢接口时再加分页。
-    rows = await find_tags(session, tag_filters(query, user_id))
-    return {"items": [{"id": str(row.id), "name": row.name} for row in rows]}
+    """分页列出视频标签，供下拉模糊选择。"""
+    params = PageParams(page=query.page, page_size=query.page_size)
+    rows, total = await page_tags(
+        session, tag_filters(query, user_id), offset=params.offset, limit=params.page_size
+    )
+    items = [{"id": str(row.id), "name": row.name} for row in rows]
+    return page_data(items, total, params)
