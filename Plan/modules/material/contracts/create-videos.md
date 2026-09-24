@@ -1,0 +1,80 @@
+# 契约：create-videos
+
+业务id：material
+文档版本：2
+方法：POST
+路径：/api/v1/material/videos
+作用：添加一条视频素材。素材名称后缀和素材标签由后端按当日日期生成，上传者取当前登录用户，上传时间取落库时间。
+
+作者：
+状态：draft
+更新日期：2026-09-23
+
+## 请求
+
+| 字段 | 位置（path/query/body/header） | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- | --- |
+| name | body | string | 是 | 素材名称。去首尾空白，1–480 字；落库时拼当日日期后缀，如 `甲` 存成 `甲_20260923` |
+| material_type | body | string | 是 | 素材类型：`vertical_video` 竖版视频、`horizontal_video` 横版视频、`horizontal_image` 大图横图、`small_image` 小图、`vertical_image` 大图竖图 |
+| file_urls | body | string[] | 是 | 素材文件 url 数组。每条 http/https 开头，≤1024 字；一次 1–50 个 |
+| series_id | body | integer | 是 | 短剧。取 [list-manhua-series.md](list-manhua-series.md) 列表里的 `id` |
+| platform | body | string | 否 | 投放平台，暂时只有 `tomato` 番茄；不传默认 `tomato` |
+| ownership | body | string | 是 | 归属：`public` 公有、`private` 私有 |
+| pitcher_ids | body | integer[] | 是 | 投手归属用户 id，可多个，一次 1–50 个；**不得重复**，重复返回 422，后端不去重 |
+
+需 `Authorization: Bearer`。接口层不校验菜单节点，登录即可调。
+
+视频文件由前端直传对象存储，本接口只收 url，不收 multipart。素材名称和素材标签不收入参：名称后缀为当日 `YYYYMMDD`，标签为短剧名加当前月日（如 `甲剧0923`），都按北京时间生成。
+
+## 响应
+
+`data` 为新增的那一条：
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| id | string | 素材 id |
+| name | string | 已拼好日期后缀的素材名称 |
+| material_type | string | 素材类型，取值同请求 |
+| file_urls | string[] | 素材文件 url 数组，按传入顺序 |
+| series_id | string | 短剧 id |
+| book_name | string | 短剧名称，落库时按 `series_id` 回填 |
+| platform | string | 投放平台 |
+| tag | string | 后端生成的素材标签 |
+| ownership | string | 归属 |
+| pitchers | object[] | 投手归属，按落库顺序。每项 `{ id, nickname }` |
+| uploader_id | string | 上传者用户 id |
+| uploader_nickname | string | 上传者昵称 |
+| created_at | string | 上传时间，北京时间 ISO-8601 带 `+08:00` |
+
+## 错误
+
+| HTTP | message 示例 | 何时 |
+| --- | --- | --- |
+| 422 | `file_urls: String should match pattern '^https?://'` | 文件 url 不是 http/https、文件数组为空或超 50、素材类型不在枚举、多传字段等入参不合规 |
+| 422 | `pitcher_ids: 投手不能重复` | 同一次提交里投手 id 重复 |
+| 404 | `短剧不存在` | `series_id` 在漫剧库里查不到 |
+| 404 | `用户不存在：9` | `pitcher_ids` 里有用户查不到，或当前登录用户已被删，报出缺的 id |
+
+出参里的昵称一律是查到的真值，不会为空串：查不到任何一个相关用户就整条不写、直接 404。
+
+其余共用错误见 [说明.md](说明.md)。
+
+## 被谁调用
+
+| 调用方 | 动作 |
+| --- | --- |
+| 素材管理/视频 | 「添加视频素材」 |
+
+## 明确不做
+
+- 视频封面、第一帧抽取（后端不引转码，封面由前端截帧后另行提交）
+- 头条素材 id、自动转码与转码时间
+- 手动添加自建短剧（只能从常读漫剧库里选）
+- 素材共享、绑定计划数 / 消耗计划数等投放侧字段
+
+## 变更历史
+
+| 日期 | 文档版本 | 破坏？ | 变更 | 作者 |
+| --- | --- | --- | --- | --- |
+| 2026-09-23 | 2 | 否 | 去掉两处兜底：投手重复不再静默去重改 422；昵称查不到不再回空串，缺用户直接 404（message 由「投手不存在」改「用户不存在」） | |
+| 2026-09-23 | 1 | 否 | 初稿 | |

@@ -15,6 +15,7 @@ from app.core.health import router as health_router
 from app.core.redis_client import close_redis, init_redis
 from app.modules.material import router as material_router
 from app.modules.material_title import router as material_title_router
+from app.modules.material_video import router as material_video_router
 from app.modules.oceanengine import router as oceanengine_router
 from app.modules.system_admin import router as system_admin_router
 
@@ -48,6 +49,7 @@ def create_app() -> FastAPI:
     app.include_router(system_admin_router)
     app.include_router(material_router)
     app.include_router(material_title_router)
+    app.include_router(material_video_router)
     app.include_router(oceanengine_router)
     return app
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Any
 
 from sqlalchemy import ColumnElement, func, select, tuple_
@@ -32,6 +33,20 @@ async def page_series(
         .limit(limit)
     )
     return list(result.scalars().all()), total
+
+
+async def book_names_by_ids(session: AsyncSession, series_ids: Iterable[int]) -> dict[int, str]:
+    """按漫剧主键一次取剧名，供别的业务包回填短剧名称。查不到或已软删的 id 不出现在结果里。"""
+    pks = {int(series_id) for series_id in series_ids}
+    if not pks:
+        return {}
+    rows = await session.execute(
+        select(ManhuaSeries.id, ManhuaSeries.book_name).where(
+            ManhuaSeries.id.in_(pks),
+            ManhuaSeries.is_deleted == 0,
+        )
+    )
+    return {int(series_id): book_name for series_id, book_name in rows.all()}
 
 
 async def latest_create_time(session: AsyncSession) -> str:

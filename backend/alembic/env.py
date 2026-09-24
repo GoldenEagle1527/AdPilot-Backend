@@ -17,6 +17,7 @@ def load_models() -> None:
     import app.modules.system_admin.domain.models  # noqa: F401
     import app.modules.material.model  # noqa: F401
     import app.modules.material_title.model  # noqa: F401
+    import app.modules.material_video.model  # noqa: F401
 
 
 config = context.config
