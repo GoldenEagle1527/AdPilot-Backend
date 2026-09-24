@@ -11,6 +11,7 @@ from pydantic import ValidationError
 
 from app.core.envelope import ApiError
 from app.core.times import BEIJING
+from app.modules.material_video.model import MaterialVideo, MaterialVideoPitcher, MaterialVideoTag
 from app.modules.material_video.schema import VideoCreate
 from app.modules.material_video.service import create_video
 
@@ -24,6 +25,10 @@ class FakeResult:
     def all(self) -> list[Any]:
         """原样返回预置行。"""
         return self._rows
+
+    def scalars(self) -> FakeResult:
+        """标签查询走 scalars().all()，这里原样接着用。"""
+        return self
 
 
 class FakeSession:
@@ -40,9 +45,17 @@ class FakeSession:
 
     def add(self, row: Any) -> None:
         """记下待插入行，并补上库里会回填的主键和创建时间。"""
-        row.id = 1
+        row.id = len(self.added) + 1
         row.created_date = datetime(2026, 9, 23, 14, 30, tzinfo=BEIJING)
         self.added.append(row)
+
+    def add_all(self, rows: list[Any]) -> None:
+        """一批插入。"""
+        for row in rows:
+            self.add(row)
+
+    async def flush(self) -> None:
+        """主键已在 add 时补上。"""
 
     async def commit(self) -> None:
         """记一次提交。"""
@@ -57,6 +70,7 @@ def make_body(**kwargs: Any) -> VideoCreate:
             "material_type": "vertical_video",
             "file_urls": ["https://cdn.example.com/a.mp4"],
             "series_id": 3,
+            "tag": "甲剧0923",
             "ownership": "public",
             "pitcher_ids": [7],
             **kwargs,
@@ -72,14 +86,13 @@ class RequestTests(unittest.TestCase):
             make_body(platform="kuaishou")
 
     def test_duplicate_pitchers_are_rejected(self) -> None:
-        """投手重复直接拒绝，不去重；空列表同样被拒。"""
+        """投手重复直接拒绝，不去重。空列表可以，公有私有都不靠它决定能不能看。"""
         with self.assertRaises(ValidationError):
             make_body(pitcher_ids=[7, 9, 7])
-        with self.assertRaises(ValidationError):
-            make_body(pitcher_ids=[])
+        self.assertEqual(make_body(pitcher_ids=[]).pitcher_ids, [])
 
     def test_bad_input_is_rejected(self) -> None:
-        """非 http 链接、未知素材类型、空文件数组、多传字段都在进业务前被拒。"""
+        """非 http 链接、未知素材类型、空文件数组、空标签、多传字段都在进业务前被拒。"""
         with self.assertRaises(ValidationError):
             make_body(file_urls=["ftp://cdn.example.com/a.mp4"])
         with self.assertRaises(ValidationError):
@@ -87,23 +100,33 @@ class RequestTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             make_body(file_urls=[])
         with self.assertRaises(ValidationError):
+            make_body(tag="  ")
+        with self.assertRaises(ValidationError):
             make_body(uploader_id=9)
 
 
 class CreateTests(unittest.TestCase):
     def test_name_and_tag_are_generated(self) -> None:
-        """名称拼当日日期、标签拼短剧名加月日，上传者取当前用户，提交一次。"""
+        """名称拼当日日期，标签用前端传入的文案，上传者取当前用户，提交一次。"""
         session = FakeSession([[(3, "甲剧")], [(7, "投手甲"), (5, "上传者")]])
         result = asyncio.run(create_video(session, make_body(), 5))
         today = datetime.now(BEIJING)
         self.assertEqual(result["name"], f"甲_{today:%Y%m%d}")
-        self.assertEqual(result["tag"], f"甲剧{today:%m%d}")
+        self.assertEqual(result["tag"], "甲剧0923")
         self.assertEqual(result["book_name"], "甲剧")
         self.assertEqual(result["series_id"], "3")
         self.assertEqual(result["uploader_id"], "5")
         self.assertEqual(result["uploader_nickname"], "上传者")
         self.assertEqual(result["pitchers"], [{"id": "7", "nickname": "投手甲"}])
-        self.assertEqual(session.added[0].uploader_id, 5)
+        tag_row, video_row, pitcher_row = session.added
+        self.assertIsInstance(tag_row, MaterialVideoTag)
+        self.assertEqual(tag_row.name, "甲剧0923")
+        self.assertIsInstance(video_row, MaterialVideo)
+        self.assertEqual(video_row.uploader_id, 5)
+        self.assertEqual(video_row.tag_id, tag_row.id)
+        self.assertIsInstance(pitcher_row, MaterialVideoPitcher)
+        self.assertEqual(pitcher_row.video_id, video_row.id)
+        self.assertEqual(pitcher_row.user_id, 7)
         self.assertEqual(session.commits, 1)
 
     def test_unknown_series_is_rejected(self) -> None:
@@ -132,3 +155,13 @@ class CreateTests(unittest.TestCase):
         self.assertEqual(caught.exception.status_code, 404)
         self.assertIn("5", caught.exception.message)
         self.assertEqual(session.commits, 0)
+
+    def test_empty_pitchers_write_no_link_rows(self) -> None:
+        """不分配投手时写标签和素材，不写投手关联。"""
+        session = FakeSession([[(3, "甲剧")], [(5, "上传者")]])
+        result = asyncio.run(create_video(session, make_body(pitcher_ids=[]), 5))
+        self.assertEqual(result["pitchers"], [])
+        self.assertEqual(len(session.added), 2)
+        self.assertIsInstance(session.added[0], MaterialVideoTag)
+        self.assertIsInstance(session.added[1], MaterialVideo)
+        self.assertEqual(session.commits, 1)

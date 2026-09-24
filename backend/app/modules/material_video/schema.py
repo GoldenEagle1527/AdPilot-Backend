@@ -16,10 +16,11 @@ FileUrl = Annotated[
 ]
 # 名称留出 _YYYYMMDD 后缀的 9 个字符，拼完不超列宽 512
 VideoName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=480)]
+TagName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=600)]
 
 
 class VideoCreate(BaseModel):
-    """添加视频素材入参。名称后缀和素材标签由后端按当日日期生成，不收入参。"""
+    """添加视频素材入参。名称后缀由后端按当日日期生成，标签名由前端传入。"""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -33,9 +34,11 @@ class VideoCreate(BaseModel):
     )
     series_id: int = Field(gt=0, description="短剧，漫剧库 manhua-series 列表里的 id")
     platform: Platform = Field(Platform.TOMATO, description="投放平台，暂时只有 tomato 番茄")
+    tag: TagName = Field(description="标签名，原样落库，如 甲剧0923。同一文案共用一条标签")
     ownership: Ownership = Field(description="归属：public 公有、private 私有")
     pitcher_ids: list[int] = Field(
-        min_length=1, max_length=50, description="投手归属用户 id，可多个，不得重复"
+        max_length=50,
+        description="分配的投手用户 id，可空，一次最多 50 个，不得重复。公有时不决定谁能看见",
     )
 
     @field_validator("pitcher_ids")
@@ -47,6 +50,40 @@ class VideoCreate(BaseModel):
         return value
 
 
+class VideoQuery(BaseModel):
+    """视频素材列表查询。归属不传为公有和私有都查，仍受当前用户可见范围限制。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    page: int = Field(1, ge=1, description="页码，从 1 起")
+    page_size: int = Field(20, ge=1, le=100, description="每页条数，最大 100")
+    tag_id: int | None = Field(None, gt=0, description="视频标签 id，下拉选中的那一条")
+    name: str | None = Field(None, description="视频名称，模糊")
+    id: int | None = Field(None, gt=0, description="视频 id，精确")
+    series_id: int | None = Field(None, gt=0, description="短剧 id，下拉选中的那一条")
+    pitcher_id: int | None = Field(None, gt=0, description="归属投手用户 id，下拉选中的那一条")
+    uploader_id: int | None = Field(None, gt=0, description="上传者用户 id，下拉选中的那一条")
+    file_name: str | None = Field(None, description="上传文件名，按素材文件地址模糊匹配")
+    ownership: Ownership | None = Field(None, description="归属：public 公有、private 私有，不传为全部")
+
+
+class TagQuery(BaseModel):
+    """视频标签下拉。名称模糊，只列出当前用户能看见的素材用过的标签。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    page: int = Field(1, ge=1, description="页码，从 1 起")
+    page_size: int = Field(20, ge=1, le=100, description="每页条数，最大 100")
+    name: str | None = Field(None, description="标签名，模糊")
+
+
+class TagItem(BaseModel):
+    """一条视频标签。"""
+
+    id: str
+    name: str
+
+
 class PitcherItem(BaseModel):
     """一个投手归属。"""
 
@@ -55,7 +92,7 @@ class PitcherItem(BaseModel):
 
 
 class VideoItem(BaseModel):
-    """一条视频素材。名称和标签是后端拼好的结果，上传时间为北京时间 +08:00。"""
+    """一条视频素材。名称是后端拼好日期后缀的结果，标签是前端传入的文案。"""
 
     id: str
     name: str

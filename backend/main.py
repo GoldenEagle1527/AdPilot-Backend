@@ -13,6 +13,7 @@ from app.core.db import dispose_engine, init_engine
 from app.core.envelope import register_exception_handlers
 from app.core.health import router as health_router
 from app.core.redis_client import close_redis, init_redis
+from app.modules.file import router as file_router
 from app.modules.material import router as material_router
 from app.modules.material_title import router as material_title_router
 from app.modules.material_video import router as material_video_router
@@ -47,6 +48,7 @@ def create_app() -> FastAPI:
     app.include_router(health_router)
     app.include_router(auth_router)
     app.include_router(system_admin_router)
+    app.include_router(file_router)
     app.include_router(material_router)
     app.include_router(material_title_router)
     app.include_router(material_video_router)

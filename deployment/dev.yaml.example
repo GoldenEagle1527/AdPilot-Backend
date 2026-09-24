@@ -30,3 +30,10 @@ changdu:
 
 dingtalk:
   webhook: ""
+
+tos:
+  access_key: ""
+  secret_key: ""
+  endpoint: "tos-cn-beijing.volces.com"
+  region: "cn-beijing"
+  bucket_name: ""

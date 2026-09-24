@@ -71,7 +71,18 @@ class OceanEngineSettings(BaseModel):
     mock: bool = True
 
 
+class TosSettings(BaseModel):
+    """火山引擎对象存储的密钥、地域、接入点和桶。缺省为空，未配置时上传会失败。"""
+
+    access_key: str = ""
+    secret_key: str = ""
+    endpoint: str = ""
+    region: str = ""
+    bucket_name: str = ""
+
+
 class Settings(BaseModel):
+    app_name: str = "adpilot-backend"
     listen_host: str = "0.0.0.0"
     listen_port: int = 8000
     cors_origins: list[str] = Field(default_factory=list)
@@ -85,6 +96,7 @@ class Settings(BaseModel):
     changdu: ChangduSettings
     dingtalk: DingTalkSettings = Field(default_factory=DingTalkSettings)
     oceanengine: OceanEngineSettings = Field(default_factory=OceanEngineSettings)
+    tos: TosSettings = Field(default_factory=TosSettings)
 
     @property
     def async_database_url(self) -> str:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from sqlalchemy import Index, Integer, String
+from sqlalchemy import ForeignKey, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import BaseModel
@@ -28,5 +28,8 @@ class MaterialTitle(BaseModel):
         String(16), nullable=False, comment="标题分类，取 TitleCategory：paid 付费标题、common 通用标题"
     )
     uploader_id: Mapped[int] = mapped_column(
-        Integer, nullable=False, comment="上传者，对应 system_admin users.id；不设外键，跨包只按值关联"
+        Integer,
+        ForeignKey("users.id"),
+        nullable=False,
+        comment="上传者，外键 users.id",
     )

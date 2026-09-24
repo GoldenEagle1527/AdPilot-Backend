@@ -1,10 +1,10 @@
 # 契约：create-videos
 
 业务id：material
-文档版本：5
+文档版本：4
 方法：POST
 路径：/api/v1/material/videos
-作用：添加一条视频素材。素材名称后缀由后端按当日日期生成，标签名由前端传入，上传者取当前登录用户，上传时间取落库时间。
+作用：添加一条视频素材。素材名称后缀和素材标签由后端按当日日期生成，上传者取当前登录用户，上传时间取落库时间。
 
 作者：
 状态：draft
@@ -19,13 +19,12 @@
 | file_urls | body | string[] | 是 | 素材文件 url 数组。每条 http/https 开头，≤1024 字；一次 1–50 个 |
 | series_id | body | integer | 是 | 短剧。取 [list-manhua-series.md](list-manhua-series.md) 列表里的 `id` |
 | platform | body | string | 否 | 投放平台，暂时只有 `tomato` 番茄；不传默认 `tomato` |
-| tag | body | string | 是 | 标签名。去首尾空白，1–600 字，原样落库，如 `甲剧0923`。同一文案共用 `material_video_tags` 一行 |
 | ownership | body | string | 是 | 归属：`public` 公有、`private` 私有 |
 | pitcher_ids | body | integer[] | 是 | 分配的投手用户 id。可空，一次最多 50 个；**不得重复**，重复返回 422，后端不去重。公有、私有都可以传，也可以是空数组。公有时这列不决定谁能看见；私有时这些投手和创建者能看见 |
 
 需 `Authorization: Bearer`。接口层不校验菜单节点，登录即可调。
 
-视频文件先经 [upload-file.md](../../file/contracts/upload-file.md) 转到对象存储，本接口只收返回的 url，不收 multipart。素材名称的日期后缀不收入参：落库时拼当日 `YYYYMMDD`，按北京时间生成。标签名用入参 `tag`，原样落库。
+视频文件先经 [upload-file.md](../../file/contracts/upload-file.md) 转到对象存储，本接口只收返回的 url，不收 multipart。素材名称和素材标签不收入参：名称后缀为当日 `YYYYMMDD`，标签为短剧名加当前月日（如 `甲剧0923`），都按北京时间生成。
 
 ## 响应
 
@@ -40,7 +39,7 @@
 | series_id | string | 短剧 id |
 | book_name | string | 短剧名称，落库时按 `series_id` 回填 |
 | platform | string | 投放平台 |
-| tag | string | 前端传入的标签名 |
+| tag | string | 后端生成的素材标签 |
 | ownership | string | 归属 |
 | pitchers | object[] | 分配的投手，按传入顺序，可为空数组。每项 `{ id, nickname }` |
 | uploader_id | string | 上传者用户 id |
@@ -51,7 +50,7 @@
 
 | HTTP | message 示例 | 何时 |
 | --- | --- | --- |
-| 422 | `file_urls: String should match pattern '^https?://'` | 文件 url 不是 http/https、文件数组为空或超 50、标签名为空或超 600 字、素材类型不在枚举、多传字段等入参不合规 |
+| 422 | `file_urls: String should match pattern '^https?://'` | 文件 url 不是 http/https、文件数组为空或超 50、素材类型不在枚举、多传字段等入参不合规 |
 | 422 | `pitcher_ids: 投手不能重复` | 同一次提交里投手 id 重复 |
 | 404 | `短剧不存在` | `series_id` 在漫剧库里查不到 |
 | 404 | `用户不存在：9` | `pitcher_ids` 里有用户查不到，或当前登录用户已被删，报出缺的 id |
@@ -77,7 +76,6 @@
 
 | 日期 | 文档版本 | 破坏？ | 变更 | 作者 |
 | --- | --- | --- | --- | --- |
-| 2026-09-24 | 5 | 是 | 新增必填 `tag`。标签名由前端传入并原样落库，不再按短剧名加月日生成 | |
 | 2026-09-24 | 4 | 否 | 投手改记关联表。`pitcher_ids` 允许空数组；公有不靠名单决定可见，私有为创建者加被分配的投手 | |
 | 2026-09-24 | 3 | 否 | 文件改为先走 `POST /api/v1/files/upload`，本接口仍只收 url | |
 | 2026-09-23 | 2 | 否 | 去掉两处兜底：投手重复不再静默去重改 422；昵称查不到不再回空串，缺用户直接 404（message 由「投手不存在」改「用户不存在」） | |
