@@ -1,10 +1,10 @@
 # 契约：create-videos
 
 业务id：material
-文档版本：7
+文档版本：5
 方法：POST
 路径：/api/v1/material/videos
-作用：添加一条视频素材。素材名称后缀由后端按当日日期生成，标签名由前端传入，上传者取当前登录用户。可同时把素材共享给别人，创建时不分配投手。
+作用：添加一条视频素材。素材名称后缀由后端按当日日期生成，标签名由前端传入，上传者取当前登录用户，上传时间取落库时间。
 
 作者：
 状态：draft
@@ -21,7 +21,7 @@
 | platform | body | string | 否 | 投放平台，暂时只有 `tomato` 番茄；不传默认 `tomato` |
 | tag | body | string | 是 | 标签名。去首尾空白，1–600 字，原样落库，如 `甲剧0923`。同一文案共用 `material_video_tags` 一行 |
 | ownership | body | string | 是 | 归属：`public` 公有、`private` 私有 |
-| share_user_ids | body | integer[] | 是 | 共享给哪些用户。可空，**不得重复**，重复返回 422。这些人之后可以把素材分给投手。公有、私有都可以传 |
+| pitcher_ids | body | integer[] | 是 | 分配的投手用户 id。可空，一次最多 50 个；**不得重复**，重复返回 422，后端不去重。公有、私有都可以传，也可以是空数组。公有时这列不决定谁能看见；私有时这些投手和创建者能看见 |
 
 需 `Authorization: Bearer`。接口层不校验菜单节点，登录即可调。
 
@@ -42,8 +42,7 @@
 | platform | string | 投放平台 |
 | tag | string | 前端传入的标签名 |
 | ownership | string | 归属 |
-| shares | object[] | 被共享的人，按传入顺序，可为空数组。每项 `{ id, nickname }` |
-| pitchers | object[] | 投手归属。创建时恒为空数组，分配见 [assign-video-pitchers.md](assign-video-pitchers.md) |
+| pitchers | object[] | 分配的投手，按传入顺序，可为空数组。每项 `{ id, nickname }` |
 | uploader_id | string | 上传者用户 id |
 | uploader_nickname | string | 上传者昵称 |
 | created_at | string | 上传时间，北京时间 ISO-8601 带 `+08:00` |
@@ -53,9 +52,9 @@
 | HTTP | message 示例 | 何时 |
 | --- | --- | --- |
 | 422 | `file_urls: String should match pattern '^https?://'` | 文件 url 不是 http/https、文件数组为空或超 50、标签名为空或超 600 字、素材类型不在枚举、多传字段等入参不合规 |
-| 422 | `share_user_ids: 共享人不能重复` | 同一次提交里共享人 id 重复 |
+| 422 | `pitcher_ids: 投手不能重复` | 同一次提交里投手 id 重复 |
 | 404 | `短剧不存在` | `series_id` 在漫剧库里查不到 |
-| 404 | `用户不存在：9` | `share_user_ids` 里有用户查不到，或当前登录用户已被删，报出缺的 id |
+| 404 | `用户不存在：9` | `pitcher_ids` 里有用户查不到，或当前登录用户已被删，报出缺的 id |
 
 出参里的昵称一律是查到的真值，不会为空串：查不到任何一个相关用户就整条不写、直接 404。
 
@@ -72,15 +71,12 @@
 - 视频封面、第一帧抽取（后端不引转码，封面由前端截帧后另行提交）
 - 头条素材 id、自动转码与转码时间
 - 手动添加自建短剧（只能从常读漫剧库里选）
-- 创建时分配投手（见 [assign-video-pitchers.md](assign-video-pitchers.md)）
-- 绑定计划数 / 消耗计划数等投放侧字段
+- 素材共享、绑定计划数 / 消耗计划数等投放侧字段
 
 ## 变更历史
 
 | 日期 | 文档版本 | 破坏？ | 变更 | 作者 |
 | --- | --- | --- | --- | --- |
-| 2026-09-24 | 7 | 否 | `share_user_ids` 不再限制最多 50 个 | |
-| 2026-09-24 | 6 | 是 | `pitcher_ids` 改为 `share_user_ids`。出参增加 `shares`，`pitchers` 创建时恒为空。快照 [_history/create-videos-v5.md](_history/create-videos-v5.md) | |
 | 2026-09-24 | 5 | 是 | 新增必填 `tag`。标签名由前端传入并原样落库，不再按短剧名加月日生成 | |
 | 2026-09-24 | 4 | 否 | 投手改记关联表。`pitcher_ids` 允许空数组；公有不靠名单决定可见，私有为创建者加被分配的投手 | |
 | 2026-09-24 | 3 | 否 | 文件改为先走 `POST /api/v1/files/upload`，本接口仍只收 url | |

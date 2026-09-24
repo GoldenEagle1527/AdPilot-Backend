@@ -33,7 +33,7 @@ class Platform(StrEnum):
 
 
 class Ownership(StrEnum):
-    """谁能看见。public 所有投手可见；private 只有创建者和 material_video_pitchers 里的投手可见。"""
+    """谁能看见。public 所有人可见；private 为创建者、共享表里的人，以及投手归属里的投手。"""
     # 公有
     PUBLIC = "public"
     # 私有
@@ -94,7 +94,7 @@ class MaterialVideo(BaseModel):
     ownership: Mapped[str] = mapped_column(
         String(16),
         nullable=False,
-        comment="谁能看见，取 Ownership：public 所有投手可见、private 仅创建者和已分配投手可见",
+        comment="谁能看见，取 Ownership：public 所有人可见、private 仅创建者、被共享的人和已分配投手可见",
     )
     uploader_id: Mapped[int] = mapped_column(
         Integer,
@@ -102,15 +102,45 @@ class MaterialVideo(BaseModel):
         nullable=False,
         comment="上传者，外键 users.id",
     )
+    shares: Mapped[list[MaterialVideoShare]] = relationship(back_populates="video")
     pitchers: Mapped[list[MaterialVideoPitcher]] = relationship(back_populates="video")
 
 
+class MaterialVideoShare(BaseModel):
+    """一条素材共享给一个能操作的人。取消共享只删这一行，他分过的投手还在。"""
+
+    __tablename__ = "material_video_shares"
+    __table_args__ = (
+        UniqueConstraint("user_id", "video_id", name="uq_material_video_shares_user_video"),
+        Index("ix_material_video_shares_video", "video_id"),
+    )
+
+    video_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("material_videos.id"),
+        nullable=False,
+        comment="素材，外键 material_videos.id",
+    )
+    user_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("users.id"),
+        nullable=False,
+        comment="被共享的人，外键 users.id",
+    )
+    video: Mapped[MaterialVideo] = relationship(back_populates="shares")
+
+
 class MaterialVideoPitcher(BaseModel):
-    """一条素材分配给一个投手。公有私有都可以有行，可见性只在私有时用这张表。"""
+    """某个操作人把素材分给一个投手。操作人被移出共享后，这些行保留。"""
 
     __tablename__ = "material_video_pitchers"
     __table_args__ = (
-        UniqueConstraint("user_id", "video_id", name="uq_material_video_pitchers_user_video"),
+        UniqueConstraint(
+            "video_id",
+            "operator_id",
+            "user_id",
+            name="uq_material_video_pitchers_video_operator_user",
+        ),
         Index("ix_material_video_pitchers_video", "video_id"),
     )
 
@@ -119,6 +149,12 @@ class MaterialVideoPitcher(BaseModel):
         ForeignKey("material_videos.id"),
         nullable=False,
         comment="素材，外键 material_videos.id",
+    )
+    operator_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("users.id"),
+        nullable=False,
+        comment="谁分的。上传者或当时的共享人，外键 users.id",
     )
     user_id: Mapped[int] = mapped_column(
         Integer,

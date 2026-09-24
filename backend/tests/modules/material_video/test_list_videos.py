@@ -24,10 +24,11 @@ class VideoFilterTests(unittest.TestCase):
         self.assertEqual(like_text(" a_b% "), r"%a\_b\%%")
 
     def test_default_is_visible_set(self) -> None:
-        """不传归属时仍限制为公有、自己创建、或私有且分配给自己。"""
+        """不传归属时仍限制为公有、自己创建、或私有且自己是共享人或投手。"""
         sql = compiled(VideoQuery())
         self.assertIn("material_videos.ownership", sql)
         self.assertIn("material_videos.uploader_id", sql)
+        self.assertIn("material_video_shares", sql)
         self.assertIn("material_video_pitchers", sql)
         self.assertNotIn("ILIKE", sql)
 
@@ -50,7 +51,8 @@ class VideoFilterTests(unittest.TestCase):
         self.assertIn("ILIKE", sql)
         self.assertIn("material_videos.file_urls", sql)
         self.assertIn("material_videos.series_id", sql)
-        self.assertGreaterEqual(sql.count("material_video_pitchers.user_id"), 2)
+        self.assertIn("material_video_pitchers.user_id", sql)
+        self.assertIn("material_video_shares", sql)
 
     def test_tag_dropdown_is_fuzzy_and_visible(self) -> None:
         """标签下拉按名称模糊，并且只挂在当前用户能看见的素材上。"""
