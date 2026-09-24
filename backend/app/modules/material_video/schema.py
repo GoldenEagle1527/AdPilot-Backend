@@ -86,6 +86,73 @@ class PitcherChange(BaseModel):
         return value
 
 
+class VideoIdsBody(BaseModel):
+    """一批视频素材 id。不得重复。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    video_ids: list[int] = Field(min_length=1, description="视频素材 id，不得重复")
+
+    @field_validator("video_ids")
+    @classmethod
+    def reject_duplicate_videos(cls, value: list[int]) -> list[int]:
+        """同一次提交里不许重复素材。"""
+        if len(set(value)) != len(value):
+            raise ValueError("视频不能重复")
+        return value
+
+
+class BatchShareBody(VideoIdsBody):
+    """把同一批共享人加到多条素材上。已共享的跳过，不取消别人。"""
+
+    user_ids: list[int] = Field(min_length=1, description="要共享给的用户，不得重复")
+
+    @field_validator("user_ids")
+    @classmethod
+    def reject_duplicate_users(cls, value: list[int]) -> list[int]:
+        """同一次提交里不许重复共享人。"""
+        if len(set(value)) != len(value):
+            raise ValueError("共享人不能重复")
+        return value
+
+
+class BatchPitcherBody(VideoIdsBody):
+    """把同一批投手加到多条素材上，记在当前操作人名下。已分过的跳过，不取消别人的。"""
+
+    user_ids: list[int] = Field(
+        min_length=1, max_length=50, description="要分给的投手，不得重复，一次最多 50 个"
+    )
+
+    @field_validator("user_ids")
+    @classmethod
+    def reject_duplicate_users(cls, value: list[int]) -> list[int]:
+        """同一次提交里不许重复投手。"""
+        if len(set(value)) != len(value):
+            raise ValueError("投手不能重复")
+        return value
+
+
+class BatchDeleted(BaseModel):
+    """批量软删的出参。"""
+
+    ids: list[str]
+    deleted: bool
+
+
+class BatchPublic(BaseModel):
+    """批量转公有的出参。"""
+
+    ids: list[str]
+    ownership: str
+
+
+class BatchUserIds(BaseModel):
+    """批量共享或批量投手归属的出参。ids 是素材，user_ids 是这次提交的人。"""
+
+    ids: list[str]
+    user_ids: list[str]
+
+
 class VideoQuery(BaseModel):
     """视频素材列表查询。归属不传为公有和私有都查，仍受当前用户可见范围限制。"""
 

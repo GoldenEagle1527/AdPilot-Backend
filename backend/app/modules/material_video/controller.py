@@ -12,6 +12,11 @@ from app.core.db import get_session
 from app.core.envelope import Envelope, success
 from app.core.pagination import PageData
 from app.modules.material_video.schema import (
+    BatchDeleted,
+    BatchPitcherBody,
+    BatchPublic,
+    BatchShareBody,
+    BatchUserIds,
     PitcherChange,
     PitcherChanged,
     ShareChange,
@@ -20,10 +25,15 @@ from app.modules.material_video.schema import (
     TagQuery,
     VideoCreate,
     VideoDeleted,
+    VideoIdsBody,
     VideoItem,
     VideoQuery,
 )
 from app.modules.material_video.service import (
+    batch_assign_pitchers,
+    batch_delete_videos,
+    batch_make_public,
+    batch_share_videos,
     change_pitchers,
     change_shares,
     create_video,
@@ -122,3 +132,59 @@ async def post_video_pitchers(
 ) -> dict[str, Any]:
     """上传者或共享人一次添加和取消自己分出去的投手。"""
     return success(await change_pitchers(session, video_id, body, int(principal["id"])))
+
+
+@router.post(
+    "/videos/batch-delete",
+    response_model=Envelope[BatchDeleted],
+    summary="批量删除视频素材",
+)
+async def post_batch_delete_videos(
+    body: VideoIdsBody,
+    session: SessionDep,
+    principal: PrincipalDep,
+) -> dict[str, Any]:
+    """软删自己上传的多条视频。有一条不是自己的就整批不删。"""
+    return success(await batch_delete_videos(session, body, int(principal["id"])))
+
+
+@router.post(
+    "/videos/batch-shares",
+    response_model=Envelope[BatchUserIds],
+    summary="批量共享视频素材",
+)
+async def post_batch_share_videos(
+    body: BatchShareBody,
+    session: SessionDep,
+    principal: PrincipalDep,
+) -> dict[str, Any]:
+    """把同一批人加到自己的多条素材上。不取消原有共享。"""
+    return success(await batch_share_videos(session, body, int(principal["id"])))
+
+
+@router.post(
+    "/videos/batch-public",
+    response_model=Envelope[BatchPublic],
+    summary="批量把视频素材转为公有",
+)
+async def post_batch_public_videos(
+    body: VideoIdsBody,
+    session: SessionDep,
+    principal: PrincipalDep,
+) -> dict[str, Any]:
+    """把自己上传的多条视频改成公有。"""
+    return success(await batch_make_public(session, body, int(principal["id"])))
+
+
+@router.post(
+    "/videos/batch-pitchers",
+    response_model=Envelope[BatchUserIds],
+    summary="批量设置视频素材的投手归属",
+)
+async def post_batch_pitcher_videos(
+    body: BatchPitcherBody,
+    session: SessionDep,
+    principal: PrincipalDep,
+) -> dict[str, Any]:
+    """把同一批投手加到多条素材上，记在当前用户名下。"""
+    return success(await batch_assign_pitchers(session, body, int(principal["id"])))

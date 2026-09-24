@@ -27,6 +27,51 @@ async def own_video(session: AsyncSession, video_id: int, uploader_id: int) -> M
     return result.scalar_one_or_none()
 
 
+async def own_videos(
+    session: AsyncSession, video_ids: Iterable[int], uploader_id: int
+) -> list[MaterialVideo]:
+    """一次取出这些 id 里该用户自己上传且未删除的视频。"""
+    pks = {int(video_id) for video_id in video_ids}
+    if not pks:
+        return []
+    rows = await session.execute(
+        select(MaterialVideo).where(
+            MaterialVideo.id.in_(pks),
+            MaterialVideo.uploader_id == uploader_id,
+            MaterialVideo.is_deleted == 0,
+        )
+    )
+    return list(rows.scalars().all())
+
+
+async def live_videos(session: AsyncSession, video_ids: Iterable[int]) -> list[MaterialVideo]:
+    """一次取出这些 id 里未删除的视频。"""
+    pks = {int(video_id) for video_id in video_ids}
+    if not pks:
+        return []
+    rows = await session.execute(
+        select(MaterialVideo).where(MaterialVideo.id.in_(pks), MaterialVideo.is_deleted == 0)
+    )
+    return list(rows.scalars().all())
+
+
+async def active_shared_video_ids(
+    session: AsyncSession, video_ids: Iterable[int], user_id: int
+) -> set[int]:
+    """这些素材里，哪些还共享给这个人。"""
+    pks = {int(video_id) for video_id in video_ids}
+    if not pks:
+        return set()
+    rows = await session.execute(
+        select(MaterialVideoShare.video_id).where(
+            MaterialVideoShare.video_id.in_(pks),
+            MaterialVideoShare.user_id == user_id,
+            MaterialVideoShare.is_deleted == 0,
+        )
+    )
+    return {int(video_id) for video_id in rows.scalars().all()}
+
+
 async def live_video(session: AsyncSession, video_id: int) -> MaterialVideo | None:
     """取未删除的一条视频。"""
     result = await session.execute(
@@ -117,6 +162,35 @@ async def pitcher_ids_by_videos(
         seen.add(key)
         grouped.setdefault(key[0], []).append(key[1])
     return grouped
+
+
+async def share_rows_by_videos(
+    session: AsyncSession, video_ids: Iterable[int]
+) -> list[MaterialVideoShare]:
+    """这些素材上的全部共享行，含已取消的。"""
+    pks = {int(video_id) for video_id in video_ids}
+    if not pks:
+        return []
+    rows = await session.execute(
+        select(MaterialVideoShare).where(MaterialVideoShare.video_id.in_(pks))
+    )
+    return list(rows.scalars().all())
+
+
+async def pitcher_rows_by_operator_videos(
+    session: AsyncSession, video_ids: Iterable[int], operator_id: int
+) -> list[MaterialVideoPitcher]:
+    """这个人在这些素材上分过的投手行，含已取消的。"""
+    pks = {int(video_id) for video_id in video_ids}
+    if not pks:
+        return []
+    rows = await session.execute(
+        select(MaterialVideoPitcher).where(
+            MaterialVideoPitcher.video_id.in_(pks),
+            MaterialVideoPitcher.operator_id == operator_id,
+        )
+    )
+    return list(rows.scalars().all())
 
 
 async def share_rows(session: AsyncSession, video_id: int) -> list[MaterialVideoShare]:

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Iterable
 
 from sqlalchemy import String, and_, cast, exists, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,14 +15,19 @@ from app.core.times import beijing_iso, beijing_now
 from app.modules.material import book_names_by_ids
 from app.modules.material_video.crud import (
     active_share,
+    active_shared_video_ids,
     ensure_tag,
     live_video,
+    live_videos,
     own_video,
+    own_videos,
     page_tags,
     page_videos,
     pitcher_ids_by_videos,
     pitcher_rows_by_operator,
+    pitcher_rows_by_operator_videos,
     share_rows,
+    share_rows_by_videos,
     share_user_ids_by_videos,
     tag_names_by_ids,
 )
@@ -33,7 +38,16 @@ from app.modules.material_video.model import (
     MaterialVideoTag,
     Ownership,
 )
-from app.modules.material_video.schema import PitcherChange, ShareChange, TagQuery, VideoCreate, VideoQuery
+from app.modules.material_video.schema import (
+    BatchPitcherBody,
+    BatchShareBody,
+    PitcherChange,
+    ShareChange,
+    TagQuery,
+    VideoCreate,
+    VideoIdsBody,
+    VideoQuery,
+)
 from app.modules.system_admin import nicknames_by_ids
 
 
@@ -208,6 +222,134 @@ async def change_pitchers(
         "id": str(video_id),
         "added": user_items(added, nicknames),
         "removed": user_items(removed, nicknames),
+    }
+
+
+def absent_ids(wanted: list[int], found: Iterable[int]) -> list[int]:
+    """按传入顺序找出没出现在结果里的 id。"""
+    got = {int(item) for item in found}
+    return [item for item in wanted if item not in got]
+
+
+def require_present(wanted: list[int], found: Iterable[int]) -> None:
+    """有素材对不上就整批拒绝，不写。"""
+    missing = absent_ids(wanted, found)
+    if missing:
+        raise ApiError(404, f"视频素材不存在：{'、'.join(str(item) for item in missing)}")
+
+
+async def require_owned(
+    session: AsyncSession, video_ids: list[int], uploader_id: int
+) -> list[MaterialVideo]:
+    """一次取出自己上传的这些视频。缺任何一条就拒绝。"""
+    rows = await own_videos(session, video_ids, uploader_id)
+    require_present(video_ids, [row.id for row in rows])
+    return rows
+
+
+async def require_operable(
+    session: AsyncSession, video_ids: list[int], operator_id: int
+) -> list[MaterialVideo]:
+    """一次取出能操作的视频。不是上传者、也不在共享里的整批拒绝。"""
+    rows = await live_videos(session, video_ids)
+    by_id = {row.id: row for row in rows}
+    require_present(video_ids, by_id)
+    need_share = [video_id for video_id in video_ids if by_id[video_id].uploader_id != operator_id]
+    if need_share:
+        shared = await active_shared_video_ids(session, need_share, operator_id)
+        require_present(need_share, shared)
+    return rows
+
+
+def ensure_links(existing: dict[tuple[int, int], Any], video_ids: list[int], user_ids: list[int], make_row):
+    """名单里还没有的关联补上，取消过的恢复。返回新插入的行。"""
+    fresh = []
+    for video_id in video_ids:
+        for user_id in user_ids:
+            row = existing.get((video_id, user_id))
+            if row is None:
+                fresh.append(make_row(video_id, user_id))
+            elif row.is_deleted:
+                restore(row)
+    return fresh
+
+
+async def batch_delete_videos(
+    session: AsyncSession, body: VideoIdsBody, uploader_id: int
+) -> dict[str, Any]:
+    """软删自己上传的多条视频。有一条不是自己的就整批不删。"""
+    rows = await require_owned(session, body.video_ids, uploader_id)
+    for row in rows:
+        row.mark_deleted()
+    await session.commit()
+    return {"ids": [str(video_id) for video_id in body.video_ids], "deleted": True}
+
+
+async def batch_share_videos(
+    session: AsyncSession, body: BatchShareBody, uploader_id: int
+) -> dict[str, Any]:
+    """把同一批人加到自己的多条素材上。已共享的跳过，不取消原有共享。"""
+    await require_owned(session, body.video_ids, uploader_id)
+    nicknames = await nicknames_by_ids(session, body.user_ids)
+    missing = missing_users(body.user_ids, nicknames)
+    if missing:
+        raise ApiError(404, f"用户不存在：{'、'.join(str(item) for item in missing)}")
+    existing = {
+        (row.video_id, row.user_id): row for row in await share_rows_by_videos(session, body.video_ids)
+    }
+    session.add_all(
+        ensure_links(
+            existing,
+            body.video_ids,
+            body.user_ids,
+            lambda video_id, user_id: MaterialVideoShare(video_id=video_id, user_id=user_id),
+        )
+    )
+    await session.commit()
+    return {
+        "ids": [str(video_id) for video_id in body.video_ids],
+        "user_ids": [str(user_id) for user_id in body.user_ids],
+    }
+
+
+async def batch_make_public(
+    session: AsyncSession, body: VideoIdsBody, uploader_id: int
+) -> dict[str, Any]:
+    """把自己上传的多条视频改成公有。有一条不是自己的就整批不改。"""
+    rows = await require_owned(session, body.video_ids, uploader_id)
+    for row in rows:
+        row.ownership = Ownership.PUBLIC
+    await session.commit()
+    return {"ids": [str(video_id) for video_id in body.video_ids], "ownership": Ownership.PUBLIC}
+
+
+async def batch_assign_pitchers(
+    session: AsyncSession, body: BatchPitcherBody, operator_id: int
+) -> dict[str, Any]:
+    """把同一批投手加到多条素材上，记在当前操作人名下。别人分的不动。"""
+    await require_operable(session, body.video_ids, operator_id)
+    nicknames = await nicknames_by_ids(session, body.user_ids)
+    missing = missing_users(body.user_ids, nicknames)
+    if missing:
+        raise ApiError(404, f"用户不存在：{'、'.join(str(item) for item in missing)}")
+    existing = {
+        (row.video_id, row.user_id): row
+        for row in await pitcher_rows_by_operator_videos(session, body.video_ids, operator_id)
+    }
+    session.add_all(
+        ensure_links(
+            existing,
+            body.video_ids,
+            body.user_ids,
+            lambda video_id, user_id: MaterialVideoPitcher(
+                video_id=video_id, operator_id=operator_id, user_id=user_id
+            ),
+        )
+    )
+    await session.commit()
+    return {
+        "ids": [str(video_id) for video_id in body.video_ids],
+        "user_ids": [str(user_id) for user_id in body.user_ids],
     }
 
 
