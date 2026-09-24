@@ -36,15 +36,51 @@ class VideoCreate(BaseModel):
     platform: Platform = Field(Platform.TOMATO, description="投放平台，暂时只有 tomato 番茄")
     tag: TagName = Field(description="标签名，原样落库，如 甲剧0923。同一文案共用一条标签")
     ownership: Ownership = Field(description="归属：public 公有、private 私有")
-    pitcher_ids: list[int] = Field(
-        max_length=50,
-        description="分配的投手用户 id，可空，一次最多 50 个，不得重复。公有时不决定谁能看见",
+    share_user_ids: list[int] = Field(
+        description="共享给哪些人，这些人可以再把素材分给投手。可空，不得重复",
     )
 
-    @field_validator("pitcher_ids")
+    @field_validator("share_user_ids")
     @classmethod
-    def reject_duplicate_pitchers(cls, value: list[int]) -> list[int]:
-        """同一次提交里不许重复投手，重复直接拒绝。"""
+    def reject_duplicate_shares(cls, value: list[int]) -> list[int]:
+        """同一次提交里不许重复共享人，重复直接拒绝。"""
+        if len(set(value)) != len(value):
+            raise ValueError("共享人不能重复")
+        return value
+
+
+class ShareChange(BaseModel):
+    """上传者提交这条素材共享人的完整名单。库里多出来的取消，少了的补上。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    user_ids: list[int] = Field(
+        description="共享人的完整名单。已在名单里的不动，名单里没有的取消共享，取消过又出现的恢复。空数组表示全部取消",
+    )
+
+    @field_validator("user_ids")
+    @classmethod
+    def reject_duplicate_users(cls, value: list[int]) -> list[int]:
+        """同一次提交里不许重复共享人。"""
+        if len(set(value)) != len(value):
+            raise ValueError("共享人不能重复")
+        return value
+
+
+class PitcherChange(BaseModel):
+    """当前操作人提交自己分出去的投手完整名单。别人分的投手不动。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    user_ids: list[int] = Field(
+        max_length=50,
+        description="当前操作人分出去的投手完整名单。名单里没有的取消，取消过又出现的恢复。空数组表示这个人分的投手全部取消。不影响别人分的投手",
+    )
+
+    @field_validator("user_ids")
+    @classmethod
+    def reject_duplicate_users(cls, value: list[int]) -> list[int]:
+        """同一次提交里不许重复投手。"""
         if len(set(value)) != len(value):
             raise ValueError("投手不能重复")
         return value
@@ -61,7 +97,7 @@ class VideoQuery(BaseModel):
     name: str | None = Field(None, description="视频名称，模糊")
     id: int | None = Field(None, gt=0, description="视频 id，精确")
     series_id: int | None = Field(None, gt=0, description="短剧 id，下拉选中的那一条")
-    pitcher_id: int | None = Field(None, gt=0, description="归属投手用户 id，下拉选中的那一条")
+    pitcher_id: int | None = Field(None, gt=0, description="投手用户 id，匹配投手归属，不是共享人")
     uploader_id: int | None = Field(None, gt=0, description="上传者用户 id，下拉选中的那一条")
     file_name: str | None = Field(None, description="上传文件名，按素材文件地址模糊匹配")
     ownership: Ownership | None = Field(None, description="归属：public 公有、private 私有，不传为全部")
@@ -77,6 +113,13 @@ class TagQuery(BaseModel):
     name: str | None = Field(None, description="标签名，模糊")
 
 
+class VideoDeleted(BaseModel):
+    """软删视频素材的出参。"""
+
+    id: str
+    deleted: bool
+
+
 class TagItem(BaseModel):
     """一条视频标签。"""
 
@@ -84,11 +127,34 @@ class TagItem(BaseModel):
     name: str
 
 
+class ShareItem(BaseModel):
+    """一个被共享、可以操作素材的人。"""
+
+    id: str
+    nickname: str
+
+
 class PitcherItem(BaseModel):
     """一个投手归属。"""
 
     id: str
     nickname: str
+
+
+class ShareChanged(BaseModel):
+    """一次共享增删的结果。added、removed 只含这次真正写上或取消的人。"""
+
+    id: str
+    added: list[ShareItem]
+    removed: list[ShareItem]
+
+
+class PitcherChanged(BaseModel):
+    """一次投手增删的结果。added、removed 只含这次真正写上或取消的投手。"""
+
+    id: str
+    added: list[PitcherItem]
+    removed: list[PitcherItem]
 
 
 class VideoItem(BaseModel):
@@ -103,6 +169,7 @@ class VideoItem(BaseModel):
     platform: str
     tag: str
     ownership: str
+    shares: list[ShareItem]
     pitchers: list[PitcherItem]
     uploader_id: str
     uploader_nickname: str

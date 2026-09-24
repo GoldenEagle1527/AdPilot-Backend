@@ -11,8 +11,26 @@ from app.core.auth import require_token
 from app.core.db import get_session
 from app.core.envelope import Envelope, success
 from app.core.pagination import PageData
-from app.modules.material_video.schema import TagItem, TagQuery, VideoCreate, VideoItem, VideoQuery
-from app.modules.material_video.service import create_video, list_tags, list_videos
+from app.modules.material_video.schema import (
+    PitcherChange,
+    PitcherChanged,
+    ShareChange,
+    ShareChanged,
+    TagItem,
+    TagQuery,
+    VideoCreate,
+    VideoDeleted,
+    VideoItem,
+    VideoQuery,
+)
+from app.modules.material_video.service import (
+    change_pitchers,
+    change_shares,
+    create_video,
+    delete_video,
+    list_tags,
+    list_videos,
+)
 
 router = APIRouter(prefix="/api/v1/material", tags=["material"])
 
@@ -60,3 +78,47 @@ async def post_video(
 ) -> dict[str, Any]:
     """新增一条视频素材，上传者取当前登录用户。"""
     return success(await create_video(session, body, int(principal["id"])))
+
+
+@router.delete(
+    "/videos/{video_id}",
+    response_model=Envelope[VideoDeleted],
+    summary="删除视频素材",
+)
+async def delete_one_video(
+    video_id: int,
+    session: SessionDep,
+    principal: PrincipalDep,
+) -> dict[str, Any]:
+    """软删当前用户自己上传的一条视频素材。别人的按不存在处理。"""
+    return success(await delete_video(session, video_id, int(principal["id"])))
+
+
+@router.post(
+    "/videos/{video_id}/shares",
+    response_model=Envelope[ShareChanged],
+    summary="添加或取消视频素材共享",
+)
+async def post_video_shares(
+    video_id: int,
+    body: ShareChange,
+    session: SessionDep,
+    principal: PrincipalDep,
+) -> dict[str, Any]:
+    """上传者一次添加和取消共享。取消后，这个人分过的投手还在。"""
+    return success(await change_shares(session, video_id, body, int(principal["id"])))
+
+
+@router.post(
+    "/videos/{video_id}/pitchers",
+    response_model=Envelope[PitcherChanged],
+    summary="添加或取消视频素材的投手",
+)
+async def post_video_pitchers(
+    video_id: int,
+    body: PitcherChange,
+    session: SessionDep,
+    principal: PrincipalDep,
+) -> dict[str, Any]:
+    """上传者或共享人一次添加和取消自己分出去的投手。"""
+    return success(await change_pitchers(session, video_id, body, int(principal["id"])))

@@ -1,10 +1,10 @@
 # 契约：list-videos
 
 业务id：material
-文档版本：3
+文档版本：2
 方法：GET
 路径：/api/v1/material/videos
-作用：分页列出当前登录用户能看见的视频素材。公有都能看；私有为创建者、被共享的人，以及投手归属里的投手。
+作用：分页列出当前登录用户能看见的视频素材。公有都能看；私有只有创建者和被分配的投手能看。
 
 作者：
 状态：draft
@@ -20,14 +20,14 @@
 | name | query | string | 否 | 视频名称，模糊。`%` 和 `_` 按字面量处理。对应添加页自动生成的名称 |
 | id | query | integer | 否 | 视频 id，精确 |
 | series_id | query | integer | 否 | 短剧 id。下拉单选后的精确值 |
-| pitcher_id | query | integer | 否 | 投手用户 id。精确匹配投手归属，不是共享人 |
+| pitcher_id | query | integer | 否 | 归属投手用户 id。下拉单选后的精确值，匹配添加页配置的投手 |
 | uploader_id | query | integer | 否 | 上传者用户 id。下拉单选后的精确值 |
 | file_name | query | string | 否 | 上传文件名，对素材文件地址做模糊匹配 |
 | ownership | query | string | 否 | 归属：`public` 公有、`private` 私有。不传为全部 |
 
 无请求体。需 `Authorization: Bearer`。接口层不校验菜单节点，登录即可调。
 
-可见范围先于筛选：公有素材当前用户都能看到；私有素材只有上传者自己、`material_video_shares` 里有自己，或 `material_video_pitchers` 里有自己，才能看到。`ownership` 不传时两种都查，仍受这个范围限制。
+可见范围先于筛选：公有素材当前用户都能看到；私有素材只有 `uploader_id` 是自己，或 `material_video_pitchers` 里有自己，才能看到。`ownership` 不传时两种都查，仍受这个范围限制。
 
 下拉的模糊搜索在选项接口完成。本接口收到的是选中后的精确 id。名称和文件名在这里模糊。
 
@@ -62,6 +62,5 @@
 
 | 日期 | 文档版本 | 破坏？ | 变更 | 作者 |
 | --- | --- | --- | --- | --- |
-| 2026-09-24 | 3 | 是 | 私有可见范围改为创建者、共享人、投手。`pitcher_id` 只匹配投手归属。出参随 create-videos 增加 `shares`。快照 [_history/list-videos-v2.md](_history/list-videos-v2.md) | |
 | 2026-09-24 | 2 | 是 | 查询条件 `tag`（标签文案）改为 `tag_id`（标签表主键） | |
 | 2026-09-24 | 1 | 否 | 初稿 | |

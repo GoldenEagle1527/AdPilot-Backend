@@ -11,7 +11,7 @@ from pydantic import ValidationError
 
 from app.core.envelope import ApiError
 from app.core.times import BEIJING
-from app.modules.material_video.model import MaterialVideo, MaterialVideoPitcher, MaterialVideoTag
+from app.modules.material_video.model import MaterialVideo, MaterialVideoShare, MaterialVideoTag
 from app.modules.material_video.schema import VideoCreate
 from app.modules.material_video.service import create_video
 
@@ -72,7 +72,7 @@ def make_body(**kwargs: Any) -> VideoCreate:
             "series_id": 3,
             "tag": "甲剧0923",
             "ownership": "public",
-            "pitcher_ids": [7],
+            "share_user_ids": [7],
             **kwargs,
         }
     )
@@ -85,11 +85,11 @@ class RequestTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             make_body(platform="kuaishou")
 
-    def test_duplicate_pitchers_are_rejected(self) -> None:
-        """投手重复直接拒绝，不去重。空列表可以，公有私有都不靠它决定能不能看。"""
+    def test_duplicate_shares_are_rejected(self) -> None:
+        """共享人重复直接拒绝，不去重。空列表可以。"""
         with self.assertRaises(ValidationError):
-            make_body(pitcher_ids=[7, 9, 7])
-        self.assertEqual(make_body(pitcher_ids=[]).pitcher_ids, [])
+            make_body(share_user_ids=[7, 9, 7])
+        self.assertEqual(make_body(share_user_ids=[]).share_user_ids, [])
 
     def test_bad_input_is_rejected(self) -> None:
         """非 http 链接、未知素材类型、空文件数组、空标签、多传字段都在进业务前被拒。"""
@@ -117,16 +117,17 @@ class CreateTests(unittest.TestCase):
         self.assertEqual(result["series_id"], "3")
         self.assertEqual(result["uploader_id"], "5")
         self.assertEqual(result["uploader_nickname"], "上传者")
-        self.assertEqual(result["pitchers"], [{"id": "7", "nickname": "投手甲"}])
-        tag_row, video_row, pitcher_row = session.added
+        self.assertEqual(result["shares"], [{"id": "7", "nickname": "投手甲"}])
+        self.assertEqual(result["pitchers"], [])
+        tag_row, video_row, share_row = session.added
         self.assertIsInstance(tag_row, MaterialVideoTag)
         self.assertEqual(tag_row.name, "甲剧0923")
         self.assertIsInstance(video_row, MaterialVideo)
         self.assertEqual(video_row.uploader_id, 5)
         self.assertEqual(video_row.tag_id, tag_row.id)
-        self.assertIsInstance(pitcher_row, MaterialVideoPitcher)
-        self.assertEqual(pitcher_row.video_id, video_row.id)
-        self.assertEqual(pitcher_row.user_id, 7)
+        self.assertIsInstance(share_row, MaterialVideoShare)
+        self.assertEqual(share_row.video_id, video_row.id)
+        self.assertEqual(share_row.user_id, 7)
         self.assertEqual(session.commits, 1)
 
     def test_unknown_series_is_rejected(self) -> None:
@@ -137,11 +138,11 @@ class CreateTests(unittest.TestCase):
         self.assertEqual(caught.exception.status_code, 404)
         self.assertEqual(session.commits, 0)
 
-    def test_unknown_pitcher_is_rejected(self) -> None:
-        """有投手查不到就是 404，且把缺的 id 报出来，不写不提交。"""
+    def test_unknown_share_user_is_rejected(self) -> None:
+        """有共享人查不到就是 404，且把缺的 id 报出来，不写不提交。"""
         session = FakeSession([[(3, "甲剧")], [(7, "投手甲"), (5, "上传者")]])
         with self.assertRaises(ApiError) as caught:
-            asyncio.run(create_video(session, make_body(pitcher_ids=[7, 9]), 5))
+            asyncio.run(create_video(session, make_body(share_user_ids=[7, 9]), 5))
         self.assertEqual(caught.exception.status_code, 404)
         self.assertIn("9", caught.exception.message)
         self.assertEqual(session.added, [])
@@ -156,10 +157,11 @@ class CreateTests(unittest.TestCase):
         self.assertIn("5", caught.exception.message)
         self.assertEqual(session.commits, 0)
 
-    def test_empty_pitchers_write_no_link_rows(self) -> None:
-        """不分配投手时写标签和素材，不写投手关联。"""
+    def test_empty_shares_write_no_link_rows(self) -> None:
+        """不共享时写标签和素材，不写共享行，投手为空。"""
         session = FakeSession([[(3, "甲剧")], [(5, "上传者")]])
-        result = asyncio.run(create_video(session, make_body(pitcher_ids=[]), 5))
+        result = asyncio.run(create_video(session, make_body(share_user_ids=[]), 5))
+        self.assertEqual(result["shares"], [])
         self.assertEqual(result["pitchers"], [])
         self.assertEqual(len(session.added), 2)
         self.assertIsInstance(session.added[0], MaterialVideoTag)
