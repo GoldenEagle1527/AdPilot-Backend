@@ -87,26 +87,13 @@ async def tag_names_by_ids(session: AsyncSession, tag_ids: Iterable[int]) -> dic
     return {int(tag_id): name for tag_id, name in rows.all()}
 
 
-async def page_tags(
-    session: AsyncSession,
-    filters: list[ColumnElement[bool]],
-    *,
-    offset: int,
-    limit: int,
-) -> tuple[list[MaterialVideoTag], int]:
-    """按标签名分页。返回 (行, 总数)。"""
-    total = int(
-        (
-            await session.execute(
-                select(func.count()).select_from(MaterialVideoTag).where(*filters)
-            )
-        ).scalar_one()
-    )
+async def find_tags(
+    session: AsyncSession, filters: list[ColumnElement[bool]]
+) -> list[MaterialVideoTag]:
+    """按名称取出全部匹配标签，不分页。"""
     result = await session.execute(
         select(MaterialVideoTag)
         .where(*filters)
         .order_by(MaterialVideoTag.name, MaterialVideoTag.id)
-        .offset(offset)
-        .limit(limit)
     )
-    return list(result.scalars().all()), total
+    return list(result.scalars().all())

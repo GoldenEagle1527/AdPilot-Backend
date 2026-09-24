@@ -68,12 +68,10 @@ class VideoQuery(BaseModel):
 
 
 class TagQuery(BaseModel):
-    """视频标签下拉。名称模糊，只列出当前用户能看见的素材用过的标签。"""
+    """视频标签下拉。名称模糊，一次返回当前用户能看见的全部匹配标签。"""
 
     model_config = ConfigDict(extra="forbid")
 
-    page: int = Field(1, ge=1, description="页码，从 1 起")
-    page_size: int = Field(20, ge=1, le=100, description="每页条数，最大 100")
     name: str | None = Field(None, description="标签名，模糊")
 
 
@@ -82,6 +80,12 @@ class TagItem(BaseModel):
 
     id: str
     name: str
+
+
+class TagList(BaseModel):
+    """不分页的视频标签列表。"""
+
+    items: list[TagItem]
 
 
 class PitcherItem(BaseModel):

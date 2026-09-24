@@ -1,10 +1,10 @@
 # 契约：list-video-tags
 
 业务id：material
-文档版本：2
+文档版本：1
 方法：GET
 路径：/api/v1/material/video-tags
-作用：一次列出当前登录用户能看见的视频素材用过的标签，供下拉模糊选择。
+作用：分页列出当前登录用户能看见的视频素材用过的标签，供下拉模糊选择。
 
 作者：
 状态：draft
@@ -14,21 +14,24 @@
 
 | 字段 | 位置（path/query/body/header） | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- | --- |
+| page | query | integer | 否 | 从 1；缺省 1 |
+| page_size | query | integer | 否 | 默认 20、上限 100 |
 | name | query | string | 否 | 标签名，模糊。`%` 和 `_` 按字面量处理。对应添加页传入的标签，如 `甲剧0923` |
 
 无请求体。需 `Authorization: Bearer`。接口层不校验菜单节点，登录即可调。
 
 只返回未删除、且至少被一条当前用户能看见的素材引用的标签。可见范围与 [list-videos.md](list-videos.md) 相同：公有都能看；私有只有创建者和被分配的投手能看。
 
-一次返回全部匹配结果，不分页。排序固定 `name` 升序、同名按 `id` 升序。
+排序固定 `name` 升序、同名按 `id` 升序。
 
 ## 响应
 
-`data`：
-
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| items | TagItem[] | 空结果为 `[]` |
+| list | TagItem[] | |
+| total | integer | |
+| page | integer | |
+| page_size | integer | |
 
 **TagItem**
 
@@ -51,5 +54,4 @@
 
 | 日期 | 文档版本 | 破坏？ | 变更 | 作者 |
 | --- | --- | --- | --- | --- |
-| 2026-09-24 | 2 | 是 | 去掉分页。响应由 `list/total/page/page_size` 改为 `items`，不再收 `page`、`page_size` | |
 | 2026-09-24 | 1 | 否 | 初稿 | |
