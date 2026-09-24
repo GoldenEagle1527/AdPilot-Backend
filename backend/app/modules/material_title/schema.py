@@ -60,6 +60,29 @@ class TitleItem(BaseModel):
     created_at: str
 
 
+class TitleIdsBody(BaseModel):
+    """一批标题 id。不得重复。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    title_ids: list[int] = Field(min_length=1, description="要删除的标题 id。放一个是单删，放多个是批量删，不得重复")
+
+    @field_validator("title_ids")
+    @classmethod
+    def reject_duplicate_titles(cls, value: list[int]) -> list[int]:
+        """同一次提交里不许重复标题。"""
+        if len(set(value)) != len(value):
+            raise ValueError("标题不能重复")
+        return value
+
+
+class TitlesDeleted(BaseModel):
+    """删除标题的出参。一条和多条都用 ids。"""
+
+    ids: list[str]
+    deleted: bool
+
+
 class TitleUpdate(BaseModel):
     """改标题入参：只准改标题名和分类。"""
 

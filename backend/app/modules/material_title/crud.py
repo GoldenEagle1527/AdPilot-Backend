@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+
 from sqlalchemy import ColumnElement, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -52,6 +54,23 @@ async def page_titles(
         .limit(limit)
     )
     return list(result.scalars().all()), total
+
+
+async def own_titles(
+    session: AsyncSession, title_ids: Iterable[int], uploader_id: int
+) -> list[MaterialTitle]:
+    """一次取出这些 id 里该用户自己上传且未删除的标题。"""
+    pks = {int(title_id) for title_id in title_ids}
+    if not pks:
+        return []
+    rows = await session.execute(
+        select(MaterialTitle).where(
+            MaterialTitle.id.in_(pks),
+            MaterialTitle.uploader_id == uploader_id,
+            MaterialTitle.is_deleted == 0,
+        )
+    )
+    return list(rows.scalars().all())
 
 
 async def own_title(session: AsyncSession, title_id: int, uploader_id: int) -> MaterialTitle | None:

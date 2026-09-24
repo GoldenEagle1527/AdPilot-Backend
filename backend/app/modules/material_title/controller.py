@@ -14,11 +14,18 @@ from app.core.pagination import PageData
 from app.modules.material_title.schema import (
     TitleBatchCreate,
     TitleBatchCreated,
+    TitleIdsBody,
     TitleItem,
     TitleQuery,
     TitleUpdate,
+    TitlesDeleted,
 )
-from app.modules.material_title.service import batch_create_titles, list_titles, update_title
+from app.modules.material_title.service import (
+    batch_create_titles,
+    batch_delete_titles,
+    list_titles,
+    update_title,
+)
 
 router = APIRouter(prefix="/api/v1/material", tags=["material"])
 
@@ -67,3 +74,17 @@ async def patch_title(
 ) -> dict[str, Any]:
     """只改标题名和分类，且只能改自己上传的那条。"""
     return success(await update_title(session, title_id, body, int(principal["id"])))
+
+
+@router.post(
+    "/titles/batch-delete",
+    response_model=Envelope[TitlesDeleted],
+    summary="删除标题",
+)
+async def post_delete_titles(
+    body: TitleIdsBody,
+    session: SessionDep,
+    principal: PrincipalDep,
+) -> dict[str, Any]:
+    """软删自己上传的标题。title_ids 放一个是单删，放多个是批量删。有一条不是自己的就整批不删。"""
+    return success(await batch_delete_titles(session, body, int(principal["id"])))

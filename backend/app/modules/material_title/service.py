@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Any
 
 from sqlalchemy import ColumnElement
@@ -10,9 +11,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.envelope import ApiError
 from app.core.pagination import PageParams, page_data
 from app.core.times import beijing_iso
-from app.modules.material_title.crud import existing_titles, own_title, page_titles
+from app.modules.material_title.crud import existing_titles, own_title, own_titles, page_titles
 from app.modules.material_title.model import MaterialTitle
-from app.modules.material_title.schema import TitleBatchCreate, TitleQuery, TitleUpdate
+from app.modules.material_title.schema import TitleBatchCreate, TitleIdsBody, TitleQuery, TitleUpdate
 from app.modules.system_admin import nicknames_by_ids
 
 
@@ -71,6 +72,26 @@ async def list_titles(
     nicknames = await nicknames_by_ids(session, {row.uploader_id for row in rows})
     items = [to_item(row, nicknames.get(row.uploader_id, "")) for row in rows]
     return page_data(items, total, params)
+
+
+def absent_ids(wanted: list[int], found: Iterable[int]) -> list[int]:
+    """按传入顺序找出没出现在结果里的 id。"""
+    got = {int(item) for item in found}
+    return [item for item in wanted if item not in got]
+
+
+async def batch_delete_titles(
+    session: AsyncSession, body: TitleIdsBody, uploader_id: int
+) -> dict[str, Any]:
+    """软删自己上传的标题，一条或多条。有一条不是自己的就整批不删。"""
+    rows = await own_titles(session, body.title_ids, uploader_id)
+    missing = absent_ids(body.title_ids, [row.id for row in rows])
+    if missing:
+        raise ApiError(404, f"标题不存在：{'、'.join(str(item) for item in missing)}")
+    for row in rows:
+        row.mark_deleted()
+    await session.commit()
+    return {"ids": [str(title_id) for title_id in body.title_ids], "deleted": True}
 
 
 async def update_title(

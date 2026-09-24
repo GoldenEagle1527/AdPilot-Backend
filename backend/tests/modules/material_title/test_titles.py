@@ -12,9 +12,10 @@ from pydantic import ValidationError
 from app.core.envelope import ApiError
 from app.core.times import BEIJING
 from app.modules.material_title.model import MaterialTitle
-from app.modules.material_title.schema import TitleBatchCreate, TitleQuery, TitleUpdate
+from app.modules.material_title.schema import TitleBatchCreate, TitleIdsBody, TitleQuery, TitleUpdate
 from app.modules.material_title.service import (
     batch_create_titles,
+    batch_delete_titles,
     title_filters,
     to_item,
     update_title,
@@ -34,6 +35,10 @@ class FakeResult:
     def scalar_one_or_none(self) -> Any:
         """返回首行，没有则 None。"""
         return self._rows[0] if self._rows else None
+
+    def scalars(self) -> FakeResult:
+        """单列查询接着用这份结果。"""
+        return self
 
 
 class FakeSession:
@@ -171,6 +176,53 @@ class UpdateTests(unittest.TestCase):
         self.assertEqual(session.commits, 1)
         self.assertEqual(result["uploader_nickname"], "程浩2")
         self.assertEqual(result["id"], "1")
+
+
+class DeleteTests(unittest.TestCase):
+    def test_own_title_is_soft_deleted(self) -> None:
+        """只传一个 id 也走同一接口，标成已删并提交一次。"""
+        row = make_row()
+        session = FakeSession([[row]])
+        result = asyncio.run(batch_delete_titles(session, TitleIdsBody(title_ids=[1]), 7))
+        self.assertEqual(result, {"ids": ["1"], "deleted": True})
+        self.assertEqual(row.is_deleted, 1)
+        self.assertIsNotNone(row.deleted_at)
+        self.assertEqual(session.commits, 1)
+
+    def test_missing_title_is_rejected(self) -> None:
+        """查不到、已删或不是自己的，都是 404，不提交。"""
+        session = FakeSession([[]])
+        with self.assertRaises(ApiError) as caught:
+            asyncio.run(batch_delete_titles(session, TitleIdsBody(title_ids=[1]), 7))
+        self.assertEqual(caught.exception.status_code, 404)
+        self.assertEqual(caught.exception.message, "标题不存在：1")
+        self.assertEqual(session.commits, 0)
+
+    def test_own_titles_are_soft_deleted_together(self) -> None:
+        """自己的多条一起标成已删，只提交一次。"""
+        first, second = make_row(id=1), make_row(id=2)
+        session = FakeSession([[first, second]])
+        result = asyncio.run(batch_delete_titles(session, TitleIdsBody(title_ids=[1, 2]), 7))
+        self.assertEqual(result, {"ids": ["1", "2"], "deleted": True})
+        self.assertEqual(first.is_deleted, 1)
+        self.assertEqual(second.is_deleted, 1)
+        self.assertEqual(session.commits, 1)
+
+    def test_one_missing_rejects_the_batch(self) -> None:
+        """有一条不是自己的，整批不删。"""
+        kept = make_row(id=1)
+        kept.is_deleted = 0
+        session = FakeSession([[kept]])
+        with self.assertRaises(ApiError) as caught:
+            asyncio.run(batch_delete_titles(session, TitleIdsBody(title_ids=[1, 2]), 7))
+        self.assertEqual(caught.exception.message, "标题不存在：2")
+        self.assertEqual(kept.is_deleted, 0)
+        self.assertEqual(session.commits, 0)
+
+    def test_duplicate_ids_are_rejected(self) -> None:
+        """同一次提交里标题 id 不能重复。"""
+        with self.assertRaises(ValidationError):
+            TitleIdsBody(title_ids=[1, 1])
 
 
 class ItemTests(unittest.TestCase):
