@@ -41,6 +41,7 @@ from app.modules.material_video.model import (
 from app.modules.material_video.schema import (
     BatchPitcherBody,
     BatchShareBody,
+    OwnershipChange,
     PitcherChange,
     ShareChange,
     TagQuery,
@@ -351,6 +352,18 @@ async def batch_assign_pitchers(
         "ids": [str(video_id) for video_id in body.video_ids],
         "user_ids": [str(user_id) for user_id in body.user_ids],
     }
+
+
+async def change_ownership(
+    session: AsyncSession, video_id: int, body: OwnershipChange, uploader_id: int
+) -> dict[str, Any]:
+    """把自己上传的一条视频改成公有或私有。共享和投手归属不动。"""
+    row = await own_video(session, video_id, uploader_id)
+    if row is None:
+        raise ApiError(404, "视频素材不存在")
+    row.ownership = body.ownership
+    await session.commit()
+    return {"id": str(row.id), "ownership": body.ownership}
 
 
 async def delete_video(session: AsyncSession, video_id: int, uploader_id: int) -> dict[str, Any]:

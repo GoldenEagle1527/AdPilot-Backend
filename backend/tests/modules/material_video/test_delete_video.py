@@ -8,7 +8,8 @@ from typing import Any
 
 from app.core.envelope import ApiError
 from app.modules.material_video.model import MaterialVideo
-from app.modules.material_video.service import delete_video
+from app.modules.material_video.schema import OwnershipChange
+from app.modules.material_video.service import change_ownership, delete_video
 
 
 class FakeResult:
@@ -70,6 +71,26 @@ class DeleteTests(unittest.TestCase):
         session = FakeSession(None)
         with self.assertRaises(ApiError) as caught:
             asyncio.run(delete_video(session, 8, 5))
+        self.assertEqual(caught.exception.status_code, 404)
+        self.assertEqual(caught.exception.message, "视频素材不存在")
+        self.assertEqual(session.commits, 0)
+
+
+class OwnershipTests(unittest.TestCase):
+    def test_own_video_can_switch_ownership(self) -> None:
+        """自己的视频改成私有，共享行不在这次写入里。"""
+        row = make_video()
+        session = FakeSession(row)
+        result = asyncio.run(change_ownership(session, 8, OwnershipChange(ownership="private"), 5))
+        self.assertEqual(result, {"id": "8", "ownership": "private"})
+        self.assertEqual(row.ownership, "private")
+        self.assertEqual(session.commits, 1)
+
+    def test_other_uploader_is_rejected(self) -> None:
+        """不是自己上传的按不存在拒绝，不提交。"""
+        session = FakeSession(None)
+        with self.assertRaises(ApiError) as caught:
+            asyncio.run(change_ownership(session, 8, OwnershipChange(ownership="public"), 5))
         self.assertEqual(caught.exception.status_code, 404)
         self.assertEqual(caught.exception.message, "视频素材不存在")
         self.assertEqual(session.commits, 0)

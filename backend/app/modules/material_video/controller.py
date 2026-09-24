@@ -17,6 +17,8 @@ from app.modules.material_video.schema import (
     BatchPublic,
     BatchShareBody,
     BatchUserIds,
+    OwnershipChange,
+    OwnershipChanged,
     PitcherChange,
     PitcherChanged,
     ShareChange,
@@ -34,6 +36,7 @@ from app.modules.material_video.service import (
     batch_delete_videos,
     batch_make_public,
     batch_share_videos,
+    change_ownership,
     change_pitchers,
     change_shares,
     create_video,
@@ -132,6 +135,21 @@ async def post_video_pitchers(
 ) -> dict[str, Any]:
     """上传者或共享人一次添加和取消自己分出去的投手。"""
     return success(await change_pitchers(session, video_id, body, int(principal["id"])))
+
+
+@router.post(
+    "/videos/{video_id}/ownership",
+    response_model=Envelope[OwnershipChanged],
+    summary="修改视频素材归属",
+)
+async def post_video_ownership(
+    video_id: int,
+    body: OwnershipChange,
+    session: SessionDep,
+    principal: PrincipalDep,
+) -> dict[str, Any]:
+    """把自己上传的一条视频改成公有或私有。"""
+    return success(await change_ownership(session, video_id, body, int(principal["id"])))
 
 
 @router.post(

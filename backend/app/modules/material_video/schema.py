@@ -146,6 +146,21 @@ class BatchPublic(BaseModel):
     ownership: str
 
 
+class OwnershipChange(BaseModel):
+    """把一条视频改成公有或私有。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    ownership: Ownership = Field(description="归属：public 公有、private 私有")
+
+
+class OwnershipChanged(BaseModel):
+    """改一条视频归属的出参。"""
+
+    id: str
+    ownership: str
+
+
 class BatchUserIds(BaseModel):
     """批量共享或批量投手归属的出参。ids 是素材，user_ids 是这次提交的人。"""
 
