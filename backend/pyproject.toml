@@ -17,6 +17,7 @@ dependencies = [
     "celery==5.6.3",
     "tos==2.9.2",
     "python-multipart==0.0.22",
+    "openpyxl==3.1.5",
 ]
 
 [build-system]

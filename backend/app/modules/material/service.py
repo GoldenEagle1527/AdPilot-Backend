@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import time
 from collections.abc import Awaitable, Mapping
 from dataclasses import dataclass
@@ -10,12 +11,14 @@ from datetime import datetime, timedelta
 from typing import Any, NoReturn
 
 import httpx
+from openpyxl import Workbook
+from sqlalchemy import ColumnElement
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import ChangduSettings, get_settings
 from app.core.pagination import PageParams, page_data
 from app.core.times import BEIJING, beijing_iso
-from app.modules.material.crud import insert_missing_series, page_series
+from app.modules.material.crud import insert_missing_series, list_series, page_series
 from app.modules.material.model import ManhuaSeries
 from app.modules.material.schema import ManhuaSeriesQuery
 from app.notify.changdu import ChangduNotify
@@ -44,12 +47,9 @@ def to_item(row: ManhuaSeries) -> dict[str, Any]:
     }
 
 
-async def list_manhua_series(session: AsyncSession, query: ManhuaSeriesQuery) -> dict[str, Any]:
-    """按查询条件分页列出未删除漫剧。传入部门则空列表。"""
-    params = PageParams(page=query.page, page_size=query.page_size)
-    if query.department_id and query.department_id.strip():
-        return page_data([], 0, params)
-    filters = [ManhuaSeries.is_deleted == 0]
+def series_filters(query: ManhuaSeriesQuery) -> list[ColumnElement[bool]]:
+    """列表和导出共用的筛选。"""
+    filters: list[ColumnElement[bool]] = [ManhuaSeries.is_deleted == 0]
     if query.tab_text:
         filters.append(ManhuaSeries.tab_text == query.tab_text)
     name = (query.book_name or "").strip()
@@ -77,8 +77,89 @@ async def list_manhua_series(session: AsyncSession, query: ManhuaSeriesQuery) ->
         filters.append(ManhuaSeries.episode_amount >= query.episode_amount_min)
     if query.episode_amount_max is not None:
         filters.append(ManhuaSeries.episode_amount <= query.episode_amount_max)
+    return filters
+
+
+async def list_manhua_series(session: AsyncSession, query: ManhuaSeriesQuery) -> dict[str, Any]:
+    """按查询条件分页列出未删除漫剧。"""
+    params = PageParams(page=query.page, page_size=query.page_size)
+    filters = series_filters(query)
     rows, total = await page_series(session, filters, offset=params.offset, limit=params.page_size)
     return page_data([to_item(row) for row in rows], total, params)
+
+
+_PUBLISH_STATUS = {1: "未发布", 2: "已发布", 3: "已下架"}
+
+_EXPORT_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("book_name", "短剧名称"),
+    ("episode_amount", "集数"),
+    ("publish_status", "发布状态"),
+    ("estimate_publish_time", "预估投放时间"),
+    ("listed_today", "是否当天上架"),
+    ("publish_time", "发布时间"),
+    ("create_time", "创建时间"),
+    ("collected_at", "采集时间"),
+    ("playlet_id", "抖音id"),
+    ("douyin_nick_name", "抖音名"),
+)
+
+def _listed_today(publish_time: object) -> str:
+    """发布时间落在北京今天则为是。"""
+    text = "" if publish_time is None else str(publish_time)
+    today = datetime.now(BEIJING).date().isoformat()
+    return "是" if text[:10] == today else "否"
+
+
+def _plain_stamp(value: object) -> str:
+    """采集时间收成 YYYY-MM-DD HH:MM:SS。"""
+    text = "" if value is None else str(value)
+    if "T" not in text:
+        return text
+    return text.replace("T", " ").split("+", 1)[0].split("Z", 1)[0][:19]
+
+
+def export_cells(item: dict[str, Any]) -> list[str]:
+    """把一条列表项收成导出行。发布状态和是否当天上架写成中文，抖音id 用专辑 ID。"""
+    cells: list[str] = []
+    for key, _label in _EXPORT_COLUMNS:
+        if key == "listed_today":
+            cells.append(_listed_today(item.get("publish_time")))
+            continue
+        value = item.get(key)
+        if key == "publish_status":
+            cells.append(_PUBLISH_STATUS.get(int(value), "" if value is None else str(value)))
+        elif key == "collected_at":
+            cells.append(_plain_stamp(value))
+        elif value is None:
+            cells.append("")
+        else:
+            cells.append(str(value))
+    return cells
+
+
+def rows_to_xlsx(headers: list[str], rows: list[list[str]]) -> bytes:
+    """表头加文本行打成 xlsx。值已是字符串，大整数不会被 Excel 改成科学计数。"""
+    book = Workbook()
+    sheet = book.active
+    assert sheet is not None
+    sheet.title = "漫剧库"
+    sheet.append(headers)
+    for line in rows:
+        sheet.append(line)
+    buffer = io.BytesIO()
+    book.save(buffer)
+    return buffer.getvalue()
+
+
+async def export_manhua_series(session: AsyncSession, query: ManhuaSeriesQuery) -> bytes:
+    """按列表相同筛选导出全部匹配行。page、page_size 不参与。
+
+    ponytail: 匹配行一次读进内存再打成 xlsx。到十万行再改成分批写入或加上限。
+    """
+    filters = series_filters(query)
+    rows = await list_series(session, filters)
+    headers = [label for _key, label in _EXPORT_COLUMNS]
+    return rows_to_xlsx(headers, [export_cells(to_item(row)) for row in rows])
 
 
 class ChangduError(RuntimeError):

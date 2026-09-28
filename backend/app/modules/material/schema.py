@@ -55,7 +55,6 @@ class ManhuaSeriesQuery(BaseModel):
     collected_at_to: CollectedAt | None = Field(None, description="采集时间止，YYYY-MM-DD HH:MM:SS，右闭")
     publish_status: Literal[1, 2] | None = Field(None, description="1 未发布、2 已发布，不传为全部")
     listed_today: bool | None = Field(None, description="是否当天上架，不传为全部")
-    department_id: str | None = Field(None, description="部门。本轮传入则结果为空")
     episode_amount_min: int | None = Field(None, ge=0, description="集数下限，含")
     episode_amount_max: int | None = Field(None, ge=0, description="集数上限，含")
 

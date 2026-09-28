@@ -12,6 +12,15 @@ from app.core.times import beijing_now
 from app.modules.material.model import ManhuaSeries
 
 
+def _series_select(filters: list[ColumnElement[bool]]):
+    """未删除行按采集时间倒序。列表和导出共用这一序。"""
+    return (
+        select(ManhuaSeries)
+        .where(*filters)
+        .order_by(ManhuaSeries.collected_at.desc(), ManhuaSeries.id.desc())
+    )
+
+
 async def page_series(
     session: AsyncSession,
     filters: list[ColumnElement[bool]],
@@ -25,14 +34,17 @@ async def page_series(
             await session.execute(select(func.count()).select_from(ManhuaSeries).where(*filters))
         ).scalar_one()
     )
-    result = await session.execute(
-        select(ManhuaSeries)
-        .where(*filters)
-        .order_by(ManhuaSeries.collected_at.desc(), ManhuaSeries.id.desc())
-        .offset(offset)
-        .limit(limit)
-    )
+    result = await session.execute(_series_select(filters).offset(offset).limit(limit))
     return list(result.scalars().all()), total
+
+
+async def list_series(
+    session: AsyncSession,
+    filters: list[ColumnElement[bool]],
+) -> list[ManhuaSeries]:
+    """按采集时间倒序取出全部匹配行。导出走这条，行数随筛选结果增长。"""
+    result = await session.execute(_series_select(filters))
+    return list(result.scalars().all())
 
 
 async def book_names_by_ids(session: AsyncSession, series_ids: Iterable[int]) -> dict[int, str]:

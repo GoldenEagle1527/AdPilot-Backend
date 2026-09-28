@@ -1,14 +1,14 @@
 # 契约：list-manhua-series
 
 业务id：material
-文档版本：7
+文档版本：6
 方法：GET
 路径：/api/v1/material/manhua-series
 作用：分页列出已从常读同步落库的短剧/漫剧。各 tab 的筛选和列表字段相同，tab 只按 `tab_text` 的 IAA/IAP 快捷筛选。不做数据范围过滤。
 
 作者：调度者
 状态：accepted
-更新日期：2026-09-28
+更新日期：2026-09-22
 
 ## 请求
 
@@ -24,6 +24,7 @@
 | collected_at_to | query | string | 否 | 采集时间止，`YYYY-MM-DD HH:MM:SS`，北京时间，右闭 |
 | publish_status | query | integer | 否 | 下拉单选：`1` 未发布、`2` 已发布。不传=全部（含已下架 `3`） |
 | listed_today | query | boolean | 否 | 是否当天上架。`true` 是、`false` 否。不传=全部。按 `publish_time` 的北京日历日 |
+| department_id | query | string | 否 | 部门组织下拉。视频块未开，该列恒空，传入则结果为空 |
 | episode_amount_min | query | integer | 否 | 集数下限，含 |
 | episode_amount_max | query | integer | 否 | 集数上限，含 |
 
@@ -77,7 +78,6 @@
 
 | 日期 | 文档版本 | 破坏？ | 变更 | 作者 |
 | --- | --- | --- | --- | --- |
-| 2026-09-28 | 7 | 是 | 去掉查询参数 `department_id`。快照 [_history/list-manhua-series-v6.md](_history/list-manhua-series-v6.md) | |
 | 2026-09-22 | 6 | 是 | 预估可投、采集时间的查询改为 `YYYY-MM-DD HH:MM:SS`，按该时刻左闭右闭 | |
 | 2026-09-22 | 5 | 否 | 常读 `publish_time` / `estimate_publish_time` / `create_time` 原样返回 | |
 | 2026-09-22 | 4 | 是 | tab 查询和返回改为 `tab_text`，取值 `IAA`/`IAP`，不再映射付费/免费 | |
