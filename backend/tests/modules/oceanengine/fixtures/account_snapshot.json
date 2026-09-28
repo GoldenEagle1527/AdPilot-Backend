@@ -1,0 +1,74 @@
+{
+  "app_id": 1877195092619340,
+  "authorized_accounts": [
+    {
+      "advertiser_id": 1872115109920903,
+      "advertiser_name": "深圳发行中心",
+      "account_role": "PLATFORM_ROLE_ENTERPRISE_BP_ADMIN",
+      "is_valid": true
+    }
+  ],
+  "advertiser_total": 62181,
+  "advertisers": [
+    {
+      "account_id": 1877343430576522,
+      "account_name": "至也-濠酝五分-全域-1251",
+      "account_type": "AD_NORMAL",
+      "valid_balance": 0.0,
+      "company": "杭州濠酝网络科技有限公司第五分公司",
+      "projects": [],
+      "promotions": [],
+      "reports": [],
+      "fund_code": 0,
+      "info_code": 0
+    },
+    {
+      "account_id": 1877325073767107,
+      "account_name": "濠酝二分-超小-1001",
+      "account_type": "AD_NORMAL",
+      "valid_balance": 0.0,
+      "company": "杭州濠酝网络科技有限公司杭州第二分公司",
+      "projects": [],
+      "promotions": [],
+      "reports": [],
+      "fund_code": 0,
+      "info_code": 0
+    },
+    {
+      "account_id": 1877314125365706,
+      "account_name": "濠酝五分-全域-2201",
+      "account_type": "AD_NORMAL",
+      "valid_balance": 0.0,
+      "company": "杭州濠酝网络科技有限公司第五分公司",
+      "projects": [],
+      "promotions": [],
+      "reports": [],
+      "fund_code": 0,
+      "info_code": 0
+    },
+    {
+      "account_id": 1877314124781755,
+      "account_name": "濠酝五分-全域-2200",
+      "account_type": "AD_NORMAL",
+      "valid_balance": 0.0,
+      "company": "杭州濠酝网络科技有限公司第五分公司",
+      "projects": [],
+      "promotions": [],
+      "reports": [],
+      "fund_code": 0,
+      "info_code": 0
+    },
+    {
+      "account_id": 1877314124264586,
+      "account_name": "濠酝五分-全域-2199",
+      "account_type": "AD_NORMAL",
+      "valid_balance": 0.0,
+      "company": "杭州濠酝网络科技有限公司第五分公司",
+      "projects": [],
+      "promotions": [],
+      "reports": [],
+      "fund_code": 0,
+      "info_code": 0
+    }
+  ]
+}

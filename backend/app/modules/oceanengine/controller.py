@@ -6,8 +6,11 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query
 
-from app.core.envelope import Envelope, success
+from app.core.envelope import ApiError, Envelope, success
 from app.core.pagination import PageData
+from app.modules.account.api import router as account_router
+from app.modules.account.commands import assert_oauth_state, choose_library
+from app.modules.account.model import ProductLibrary
 from app.modules.oceanengine.schema import (
     AdvertiserItem,
     AdvertiserQuery,
@@ -41,10 +44,54 @@ from app.modules.oceanengine.service import (
     upload_video,
 )
 from app.modules.system_admin import require_menu
+from app.modules.system_admin.deps import SessionDep
+from app.modules.system_admin.domain.access import effective_menu_ids, user_by_login
 
 router = APIRouter(prefix="/api/v1/oceanengine", tags=["oceanengine"])
 
-PrincipalDep = Annotated[dict[str, Any], Depends(require_menu("32"))]
+Menu32 = Annotated[dict[str, Any], Depends(require_menu("32"))]
+Menu64 = Annotated[dict[str, Any], Depends(require_menu("64"))]
+MenuAdvertiser = Annotated[dict[str, Any], Depends(require_menu("63", "32"))]
+
+
+async def _granted_menu_ids(session: SessionDep, principal: dict[str, Any]) -> set[str]:
+    granted = principal.get("menu_ids")
+    enabled = principal.get("enabled")
+    if isinstance(granted, list) and enabled is not None:
+        if enabled is False:
+            raise ApiError(403, "已登录但无对应菜单或组件")
+        return {str(item) for item in granted}
+    user = await user_by_login(session, str(principal["login_account"]))
+    if user is None or not user.enabled:
+        raise ApiError(403, "已登录但无对应菜单或组件")
+    return {str(item) for item in await effective_menu_ids(session, user)}
+
+
+async def _advertiser_only_user_id(session: SessionDep, principal: dict[str, Any]) -> int | None:
+    """有菜单 63 看全部。只有 32 时用登录账号查出的用户 id 限制名单。"""
+    if "63" in await _granted_menu_ids(session, principal):
+        return None
+    user = await user_by_login(session, str(principal["login_account"]))
+    if user is None or not user.enabled:
+        raise ApiError(403, "已登录但无对应菜单或组件")
+    return user.id
+
+
+async def _assert_upload_library(
+    session: SessionDep, principal: dict[str, Any], library_id: int
+) -> None:
+    """path 上的库必须是该投手这次该写入的标准库或兜底库。"""
+    library = await session.get(ProductLibrary, library_id)
+    if library is None or library.is_deleted:
+        return
+    user = await user_by_login(session, str(principal["login_account"]))
+    if user is None or not user.enabled:
+        raise ApiError(403, "已登录但无对应菜单或组件")
+    chosen = await choose_library(
+        session, user.id, library.organization_id, library.library_kind
+    )
+    if chosen != library.id:
+        raise ApiError(409, "商品库不是本次应写入的库")
 
 
 @router.get(
@@ -52,9 +99,11 @@ PrincipalDep = Annotated[dict[str, Any], Depends(require_menu("32"))]
     response_model=Envelope[OrganizationList],
     summary="授权组织列表",
 )
-async def get_organizations(_principal: PrincipalDep) -> dict[str, Any]:
+async def get_organizations(session: SessionDep, _principal: Menu64) -> dict[str, Any]:
     """列出授权组织，不分页。"""
-    return success({"items": await list_organizations()})
+    data = {"items": await list_organizations(session)}
+    await session.commit()
+    return success(data)
 
 
 @router.get(
@@ -63,11 +112,16 @@ async def get_organizations(_principal: PrincipalDep) -> dict[str, Any]:
     summary="分页查询广告主",
 )
 async def get_advertisers(
-    _principal: PrincipalDep,
+    session: SessionDep,
+    principal: MenuAdvertiser,
     query: Annotated[AdvertiserQuery, Query()],
 ) -> dict[str, Any]:
-    """按名称或账户 id 分页列出广告主。"""
-    return success(await list_advertisers(query))
+    """有菜单 63 看全部含失效户；只有 32 时 only_user_id 为当前用户。"""
+    only_user_id = await _advertiser_only_user_id(session, principal)
+    scoped = query.model_copy(update={"only_user_id": only_user_id})
+    data = await list_advertisers(session, scoped)
+    await session.commit()
+    return success(data)
 
 
 @router.get(
@@ -76,11 +130,14 @@ async def get_advertisers(
     summary="巨量授权链接",
 )
 async def get_authorize(
-    _principal: PrincipalDep,
+    session: SessionDep,
+    _principal: Menu64,
     query: Annotated[AuthorizeQuery, Query()],
 ) -> dict[str, Any]:
     """按 third 或 self 返回授权页地址。"""
-    return success({"authorize_url": authorize_url(query.channel)})
+    url = await authorize_url(session, query.channel)
+    await session.commit()
+    return success({"authorize_url": url})
 
 
 @router.get(
@@ -89,11 +146,15 @@ async def get_authorize(
     summary="巨量授权回调",
 )
 async def get_oauth_callback(
-    _principal: PrincipalDep,
+    session: SessionDep,
     query: Annotated[OAuthCallbackQuery, Query()],
 ) -> dict[str, Any]:
-    """用 auth_code 换 access_token。"""
-    return success(await oauth_callback(query.auth_code, query.state))
+    """免登录。state 为空仍允许；非空必须用 jwt_secret 验 HMAC。"""
+    if query.state:
+        await assert_oauth_state(session, query.state)
+    data = await oauth_callback(session, query.auth_code, query.state)
+    await session.commit()
+    return success(data)
 
 
 @router.post(
@@ -102,11 +163,14 @@ async def get_oauth_callback(
     summary="创建项目",
 )
 async def post_project(
-    _principal: PrincipalDep,
+    session: SessionDep,
+    _principal: Menu32,
     body: ProjectCreate,
 ) -> dict[str, Any]:
     """创建巨量项目。"""
-    return success(await create_project(body))
+    data = await create_project(session, body)
+    await session.commit()
+    return success(data)
 
 
 @router.post(
@@ -115,11 +179,14 @@ async def post_project(
     summary="上传视频",
 )
 async def post_video(
-    _principal: PrincipalDep,
+    session: SessionDep,
+    _principal: Menu32,
     body: VideoCreate,
 ) -> dict[str, Any]:
     """按视频地址登记素材。"""
-    return success(await upload_video(body))
+    data = await upload_video(session, body)
+    await session.commit()
+    return success(data)
 
 
 @router.post(
@@ -129,11 +196,15 @@ async def post_video(
 )
 async def post_product(
     library_id: int,
-    _principal: PrincipalDep,
+    session: SessionDep,
+    _principal: Menu32,
     body: ProductCreate,
 ) -> dict[str, Any]:
-    """向商品库追加一条剧。"""
-    return success(await upload_product(library_id, body))
+    """向商品库追加一条剧。库 id 必须是 choose_library 选出的那一个。"""
+    await _assert_upload_library(session, _principal, library_id)
+    data = await upload_product(session, library_id, body)
+    await session.commit()
+    return success(data)
 
 
 @router.get(
@@ -141,9 +212,11 @@ async def post_product(
     response_model=Envelope[ReportList],
     summary="自定义报表",
 )
-async def get_reports(_principal: PrincipalDep) -> dict[str, Any]:
+async def get_reports(session: SessionDep, _principal: Menu32) -> dict[str, Any]:
     """广告消耗与回收率，不分页。"""
-    return success({"items": await list_reports()})
+    data = {"items": await list_reports(session)}
+    await session.commit()
+    return success(data)
 
 
 @router.post(
@@ -152,11 +225,14 @@ async def get_reports(_principal: PrincipalDep) -> dict[str, Any]:
     summary="更新广告状态",
 )
 async def post_promotion_status(
-    _principal: PrincipalDep,
+    session: SessionDep,
+    _principal: Menu32,
     body: PromotionStatusBody,
 ) -> dict[str, Any]:
     """批量暂停或启用广告。"""
-    return success({"items": await update_promotions(body)})
+    data = {"items": await update_promotions(session, body)}
+    await session.commit()
+    return success(data)
 
 
 @router.post(
@@ -165,8 +241,14 @@ async def post_promotion_status(
     summary="按阈值自动关停",
 )
 async def post_auto_pause(
-    _principal: PrincipalDep,
+    session: SessionDep,
+    _principal: Menu32,
     body: AutoPauseBody,
 ) -> dict[str, Any]:
     """用报表判断并暂停命中的广告。"""
-    return success(await run_auto_pause(body))
+    data = await run_auto_pause(session, body)
+    await session.commit()
+    return success(data)
+
+
+router.include_router(account_router)

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import os
 import unittest
 
-from app.core.config import _host_for_this_process, get_settings
+from app.core.config import _host_for_this_process, _require_local_data_host, get_settings
 
 
 class ComposeHostFallbackTests(unittest.TestCase):
@@ -22,3 +23,17 @@ class ComposeHostFallbackTests(unittest.TestCase):
         self.assertEqual(settings.postgres.port, 5432)
         self.assertEqual(settings.redis.port, 6379)
         self.assertGreaterEqual(len(settings.jwt_secret), 32)
+
+    def test_remote_host_is_refused_without_explicit_allow(self) -> None:
+        """文档网段地址不是本机时，未放行就拒绝。"""
+        previous = os.environ.pop("ADPILOT_ALLOW_REMOTE", None)
+        try:
+            with self.assertRaises(RuntimeError):
+                _require_local_data_host("203.0.113.10", "PostgreSQL")
+            os.environ["ADPILOT_ALLOW_REMOTE"] = "1"
+            _require_local_data_host("203.0.113.10", "PostgreSQL")
+        finally:
+            if previous is None:
+                os.environ.pop("ADPILOT_ALLOW_REMOTE", None)
+            else:
+                os.environ["ADPILOT_ALLOW_REMOTE"] = previous

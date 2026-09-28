@@ -13,16 +13,18 @@ description: >-
 
 ## 本地
 
-工作目录是 `backend/`。配置读 `deployment/prod.yaml`（`ADPILOT_ENV=prod`），库和 Redis 都在 `192.168.111.40`。
+工作目录是 `backend/`。只读 `deployment/dev.yaml`（不要设置 `ADPILOT_ENV`，或设为 `dev`）。`postgres` / `redis` 在本机解析不到时会落到 `127.0.0.1` 上的 Docker。
+
+禁止在本机使用 `ADPILOT_ENV=prod`。禁止对本机以外的库或 Redis 做迁移、清库、灌种。配置加载时若主机不是本机地址，进程直接报错退出。确要连远程必须同时设置 `ADPILOT_ALLOW_REMOTE=1`；本机测试不要设这个变量。
 
 ```bash
 cd backend
-ADPILOT_ENV=prod python main.py
+python main.py
 ```
 
 完成标准：进程听在 `8300`，改过的接口在 `http://127.0.0.1:8300/docs` 上得到预期状态码。测完停掉进程，把端口让出来。
 
-表结构有变时，仍在 `backend/` 下先执行 `ADPILOT_ENV=prod alembic upgrade head`，再起服务。已有迁移就升级，不要为灌已有数据再 `revision --autogenerate`。
+表结构有变时，仍在 `backend/` 下先执行 `alembic upgrade head`，再起服务。已有迁移就升级，不要为灌已有数据再 `revision --autogenerate`。
 
 ## 提交
 

@@ -17,6 +17,7 @@ build/
 .env
 .env.*
 !.env.example
+test.env
 # 本机/环境密钥不入库；只保留 *.example
 deployment/*
 !deployment/*.example

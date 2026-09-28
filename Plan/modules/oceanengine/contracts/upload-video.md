@@ -8,4 +8,4 @@
 
 JSON（`extra=forbid`）：`advertiser_id`、`video_url`。
 
-`mock=true` 时追加夹具 `VIDEOS`，`video_id` 为 `mock-video-N`，`status=完成`，返回该条。`mock=false` 走 `POST /open_api/2/file/video/ad/`。未配 secret：503，`巨量未配置`。
+`mock=true` 时 `video_id` 为本地字符串，`status=完成`。`mock=false` 走 `POST /open_api/2/file/video/ad/`，`video_id` 保存开放平台返回的字符串，不再要求它是纯数字。未配 secret：503，`巨量未配置`。

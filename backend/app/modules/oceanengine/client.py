@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import httpx
@@ -12,6 +13,14 @@ from app.core.envelope import ApiError
 _MOCK_COMPANY = (
     "番茄漫剧~普通-我花-我家-低调-岁月-苏子-我替-我不-萌宝-重生-杭州瑶添IAA-常规-48-king-免费#2"
 )
+
+
+def _app_id_value(app_id: str) -> int | str:
+    """开放平台的 app_id 是数字。配置里是字符串时转成整数再提交。"""
+    text = app_id.strip()
+    if text.isdigit():
+        return int(text)
+    return text
 
 
 class OceanEngineError(RuntimeError):
@@ -46,7 +55,7 @@ class OceanEngineClient:
             "POST",
             f"{self._settings.api_base}/open_api/oauth2/access_token/",
             json_body={
-                "app_id": self._settings.app_id,
+                "app_id": _app_id_value(self._settings.app_id),
                 "secret": self._settings.secret,
                 "auth_code": auth_code,
                 "grant_type": "auth_code",
@@ -66,7 +75,7 @@ class OceanEngineClient:
             "POST",
             f"{self._settings.api_base}/open_api/oauth2/refresh_token/",
             json_body={
-                "app_id": self._settings.app_id,
+                "app_id": _app_id_value(self._settings.app_id),
                 "secret": self._settings.secret,
                 "refresh_token": refresh_token,
                 "grant_type": "refresh_token",
@@ -90,13 +99,82 @@ class OceanEngineClient:
         return await self._request(
             "GET",
             f"{self._settings.api_base}/open_api/oauth2/advertiser/get/",
-            params={"access_token": access_token},
+            headers={"Access-Token": access_token},
         )
 
     async def list_ebp_advertisers(
+        self,
+        access_token: str,
+        enterprise_organization_id: int,
+        *,
+        page: int = 1,
+        page_size: int = 100,
+    ) -> dict[str, Any]:
+        """列出企业组织下的 EBP 广告主。默认每页 100，由调用方翻页。"""
+        if self._settings.mock:
+            return _envelope(
+                {
+                    "account_list": [
+                        {
+                            "account_id": 1873916032590219,
+                            "account_name": "番茄漫剧测试户",
+                            "account_type": "AD_NORMAL",
+                        }
+                    ],
+                    "page_info": {"page": 1, "page_size": page_size, "total_page": 1},
+                }
+            )
+        return await self._request(
+            "GET",
+            f"{self._settings.api_base}/open_api/2/ebp/advertiser/list/",
+            headers={"Access-Token": access_token},
+            params={
+                "enterprise_organization_id": enterprise_organization_id,
+                "account_source": "AD",
+                "filtering": json.dumps({"query_type": "TRAVERSE"}),
+                "page": page,
+                "page_size": page_size,
+            },
+        )
+
+    async def create_ebp_advertiser_task(
         self, access_token: str, enterprise_organization_id: int
     ) -> dict[str, Any]:
-        """列出企业组织下的 EBP 广告主。"""
+        """超过 1 万条时创建全量账户导出任务。"""
+        if self._settings.mock:
+            return _envelope({"task_id": 1})
+        return await self._request(
+            "POST",
+            f"{self._settings.api_base}/open_api/2/ebp/advertiser/task/create/",
+            headers={"Access-Token": access_token},
+            json_body={
+                "enterprise_organization_id": enterprise_organization_id,
+                "account_source": "AD",
+            },
+        )
+
+    async def list_ebp_advertiser_tasks(
+        self, access_token: str, enterprise_organization_id: int, task_ids: list[int]
+    ) -> dict[str, Any]:
+        """查询导出任务状态。"""
+        if self._settings.mock:
+            return _envelope(
+                {"list": [{"task_id": task_ids[0] if task_ids else 1, "task_status": "COMPLETED"}]}
+            )
+        return await self._request(
+            "GET",
+            f"{self._settings.api_base}/open_api/2/ebp/advertiser/task/list/",
+            headers={"Access-Token": access_token},
+            params={
+                "enterprise_organization_id": enterprise_organization_id,
+                "task_ids": json.dumps(task_ids),
+            },
+        )
+
+    async def download_ebp_advertiser_task(
+        self, access_token: str, enterprise_organization_id: int, task_id: int
+    ) -> dict[str, Any]:
+        """下载导出结果。JSON 按开放平台信封解析，文件正文放在 raw_text。"""
         if self._settings.mock:
             return _envelope(
                 {
@@ -109,11 +187,60 @@ class OceanEngineClient:
                     ]
                 }
             )
+        url = f"{self._settings.api_base}/open_api/2/ebp/advertiser/task/download/"
+        params = {
+            "enterprise_organization_id": enterprise_organization_id,
+            "task_id": task_id,
+        }
+        headers = {"Access-Token": access_token}
+        if self._client is None:
+            async with httpx.AsyncClient(timeout=60) as http:
+                response = await http.get(url, headers=headers, params=params)
+        else:
+            response = await self._client.get(url, headers=headers, params=params)
+        text = response.text
+        if text.lstrip().startswith("{") or text.lstrip().startswith("["):
+            try:
+                body = response.json()
+            except ValueError as exc:
+                raise OceanEngineError("巨量引擎返回不是 JSON") from exc
+            if isinstance(body, dict) and body.get("code") not in (None, 0):
+                raise OceanEngineError(f"巨量引擎业务失败：code={body.get('code')} {body.get('message')}")
+            if isinstance(body, dict):
+                return body
+        return {"code": 0, "message": "OK", "raw_text": text}
+
+    async def list_customer_center_advertisers(
+        self,
+        access_token: str,
+        cc_account_id: int,
+        *,
+        page: int = 1,
+        page_size: int = 100,
+    ) -> dict[str, Any]:
+        """列出旧版工作台下的广告主。"""
+        if self._settings.mock:
+            return _envelope(
+                {
+                    "list": [
+                        {
+                            "advertiser_id": 1873916032590219,
+                            "advertiser_name": "番茄漫剧测试户",
+                        }
+                    ],
+                    "page_info": {"page": 1, "page_size": page_size, "total_page": 1},
+                }
+            )
         return await self._request(
             "GET",
-            f"{self._settings.api_base}/open_api/2/ebp/advertiser/list/",
+            f"{self._settings.ad_base}/open_api/2/customer_center/advertiser/list/",
             headers={"Access-Token": access_token},
-            params={"enterprise_organization_id": enterprise_organization_id},
+            params={
+                "cc_account_id": cc_account_id,
+                "account_source": "AD",
+                "page": page,
+                "page_size": page_size,
+            },
         )
 
     async def fund_get(self, access_token: str, advertiser_id: int) -> dict[str, Any]:
@@ -127,10 +254,32 @@ class OceanEngineClient:
             params={"advertiser_id": advertiser_id},
         )
 
+    async def advertiser_public_info(
+        self, access_token: str, advertiser_ids: list[int]
+    ) -> dict[str, Any]:
+        """查询广告主公开信息。公司名在 data.advertisers[].company。"""
+        if self._settings.mock:
+            return _envelope(
+                {
+                    "advertisers": [
+                        {
+                            "id": 1873916032590219,
+                            "company": _MOCK_COMPANY,
+                        }
+                    ]
+                }
+            )
+        return await self._request(
+            "GET",
+            f"{self._settings.ad_base}/open_api/2/advertiser/public_info/",
+            headers={"Access-Token": access_token},
+            params={"advertiser_ids": json.dumps(advertiser_ids)},
+        )
+
     async def advertiser_info_query(
         self, access_token: str, account_ids: list[int]
     ) -> dict[str, Any]:
-        """查询广告主主体名称。account_ids 以重复 query 发出。"""
+        """代理商查询广告主主体。account_ids 以 JSON 数组 query 发出。"""
         if self._settings.mock:
             return _envelope(
                 {
@@ -146,7 +295,7 @@ class OceanEngineClient:
             "GET",
             f"{self._settings.api_base}/open_api/2/agent/advertiser_info/query/",
             headers={"Access-Token": access_token},
-            params={"account_ids": account_ids},
+            params={"account_ids": json.dumps(account_ids)},
         )
 
     async def create_project(self, access_token: str, body: dict[str, Any]) -> dict[str, Any]:
@@ -161,14 +310,19 @@ class OceanEngineClient:
         )
 
     async def upload_video(self, access_token: str, body: dict[str, Any]) -> dict[str, Any]:
-        """上传广告视频。mock 固定 video_id。"""
+        """按 URL 上传广告视频。开放平台要求 multipart，upload_type 为 UPLOAD_BY_URL。"""
         if self._settings.mock:
             return _envelope({"video_id": "mock-video-1"})
+        form = {
+            "advertiser_id": (None, str(body["advertiser_id"])),
+            "upload_type": (None, "UPLOAD_BY_URL"),
+            "video_url": (None, str(body["video_url"])),
+        }
         return await self._request(
             "POST",
             f"{self._settings.api_base}/open_api/2/file/video/ad/",
             headers={"Access-Token": access_token},
-            json_body=body,
+            files=form,
         )
 
     async def custom_report(
@@ -226,12 +380,17 @@ class OceanEngineClient:
         headers: dict[str, str] | None = None,
         params: dict[str, Any] | None = None,
         json_body: dict[str, Any] | None = None,
+        files: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         if self._client is None:
             async with httpx.AsyncClient(timeout=30) as http:
-                response = await http.request(method, url, headers=headers, params=params, json=json_body)
+                response = await http.request(
+                    method, url, headers=headers, params=params, json=json_body, files=files
+                )
         else:
-            response = await self._client.request(method, url, headers=headers, params=params, json=json_body)
+            response = await self._client.request(
+                method, url, headers=headers, params=params, json=json_body, files=files
+            )
         return _parse(response)
 
 

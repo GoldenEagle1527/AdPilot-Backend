@@ -28,6 +28,14 @@ changdu:
   secret_key: "replace-me"
   sync_interval_seconds: 1800
 
+oceanengine:
+  api_base: "https://api.oceanengine.com"
+  ad_base: "https://ad.oceanengine.com"
+  app_id: ""
+  secret: ""
+  redirect_uri: "http://127.0.0.1:8300/api/v1/oceanengine/oauth/callback"
+  mock: true
+
 dingtalk:
   webhook: ""
 
