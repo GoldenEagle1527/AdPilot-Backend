@@ -8,12 +8,16 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class OrganizationItem(BaseModel):
-    """一条授权组织。"""
+    """一条授权组织。后四列是契约 v2 增加的兼容字段。"""
 
     advertiser_id: int
     advertiser_name: str
     account_role: str
     ocean_version: str
+    id: int
+    channel: str
+    status: str
+    token_valid: bool
 
 
 class OrganizationList(BaseModel):
@@ -30,6 +34,9 @@ class AdvertiserItem(BaseModel):
     valid_balance: float
     adv_company_name: str
     organization_id: int
+    pitcher_nickname: str = ""
+    manager_name: str = ""
+    sync_status: str = "active"
 
 
 class AdvertiserQuery(BaseModel):
@@ -41,6 +48,12 @@ class AdvertiserQuery(BaseModel):
     page_size: int = Field(20, ge=1, le=100, description="每页条数，最大 100")
     account_name: str | None = Field(None, description="账户名称，模糊")
     account_id: int | None = Field(None, description="账户 id，精确")
+    pitcher_user_id: int | None = Field(None, description="投手用户 id")
+    organization_id: int | None = Field(None, description="组织的巨量账户 id")
+    only_user_id: int | None = Field(
+        None,
+        description="非空时强制投手为该用户且 sync_status=active，忽略 pitcher_user_id",
+    )
 
 
 class AuthorizeQuery(BaseModel):
@@ -58,9 +71,9 @@ class AuthorizeData(BaseModel):
 
 
 class OAuthCallbackQuery(BaseModel):
-    """授权回调。state 可空，auth_code 不可空。"""
+    """授权回调。只认 auth_code 和 state，巨量多带的 query 忽略。"""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     auth_code: str = Field(min_length=1)
     state: str = ""

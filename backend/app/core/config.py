@@ -24,6 +24,44 @@ def _host_for_this_process(host: str) -> str:
     return host
 
 
+def _is_this_machine(host: str) -> bool:
+    """目标地址是回环，或就是本机网卡地址。"""
+    if host in {"localhost", "127.0.0.1", "::1"}:
+        return True
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except OSError:
+        return False
+    addresses = {item[4][0] for item in infos}
+    if addresses & {"127.0.0.1", "::1"}:
+        return True
+    for address in addresses:
+        family = socket.AF_INET6 if ":" in address else socket.AF_INET
+        probe = socket.socket(family, socket.SOCK_DGRAM)
+        try:
+            probe.connect((address, 9))
+            local_address = probe.getsockname()[0]
+        except OSError:
+            continue
+        finally:
+            probe.close()
+        if local_address == address:
+            return True
+    return False
+
+
+def _require_local_data_host(host: str, kind: str) -> None:
+    """本机进程默认不许连远程库。远程必须显式 ADPILOT_ALLOW_REMOTE=1。"""
+    if os.environ.get("ADPILOT_ALLOW_REMOTE", "").strip() == "1":
+        return
+    if _is_this_machine(host):
+        return
+    raise RuntimeError(
+        f"{kind} 主机 {host} 不是本机。本机测试禁止连远程库或 Redis。"
+        "确要连远程时设置 ADPILOT_ALLOW_REMOTE=1。"
+    )
+
+
 def repo_root() -> Path:
     here = Path(__file__).resolve()
     for parent in here.parents:
@@ -68,6 +106,7 @@ class OceanEngineSettings(BaseModel):
     ad_base: str = "https://ad.oceanengine.com"
     app_id: str = ""
     secret: str = ""
+    redirect_uri: str = ""
     mock: bool = True
 
 
@@ -115,14 +154,16 @@ def load_yaml(path: Path) -> Settings:
     settings = Settings.model_validate(raw)
     postgres_host = _host_for_this_process(settings.postgres.host)
     redis_host = _host_for_this_process(settings.redis.host)
-    if postgres_host == settings.postgres.host and redis_host == settings.redis.host:
-        return settings
-    return settings.model_copy(
-        update={
-            "postgres": settings.postgres.model_copy(update={"host": postgres_host}),
-            "redis": settings.redis.model_copy(update={"host": redis_host}),
-        }
-    )
+    if postgres_host != settings.postgres.host or redis_host != settings.redis.host:
+        settings = settings.model_copy(
+            update={
+                "postgres": settings.postgres.model_copy(update={"host": postgres_host}),
+                "redis": settings.redis.model_copy(update={"host": redis_host}),
+            }
+        )
+    _require_local_data_host(settings.postgres.host, "PostgreSQL")
+    _require_local_data_host(settings.redis.host, "Redis")
+    return settings
 
 
 @lru_cache
