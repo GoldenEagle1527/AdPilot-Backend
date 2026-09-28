@@ -13,7 +13,7 @@ from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.times import beijing_now
-from app.modules.account.model import AdvertiserAccount, OeApp, OeOrganization
+from app.modules.account.model import AdvertiserAccount, OeApp, OeOrganization, OeOrganizationGrant
 from app.modules.oceanengine.client import OceanEngineClient, OceanEngineError
 from app.modules.oceanengine.runtime import (
     _PAGE_SIZE,
@@ -35,6 +35,18 @@ _LIST_CAP = 10_000
 _BALANCE_BATCH = 200
 _BALANCE_TTL = timedelta(days=1)
 _TASK_POLLS = 3
+_EBP_ROLE_PREFIX = "PLATFORM_ROLE_ENTERPRISE_BP_"
+_LEGACY_WORKBENCH_ROLES = frozenset({"CUSTOMER_ADMIN", "CUSTOMER_OPERATOR"})
+
+
+def ocean_version_for_role(account_role: str) -> str:
+    """接口没有版本字段。升级版工作台和旧版工作台由 account_type 区分。"""
+    role = account_role.strip()
+    if role.startswith(_EBP_ROLE_PREFIX):
+        return "升级版组织"
+    if role in _LEGACY_WORKBENCH_ROLES:
+        return "旧版工作台"
+    return role
 
 
 async def sync_from_oceanengine(session: AsyncSession, app: OeApp | None = None) -> None:
@@ -58,40 +70,36 @@ async def _sync_organizations(session: AsyncSession, app: OeApp) -> OeApp:
         ocean_account_id, name, role = identity
         seen.append(ocean_account_id)
         found = await session.scalar(
-            select(OeOrganization).where(
-                OeOrganization.oe_app_id == app.id,
-                OeOrganization.ocean_account_id == ocean_account_id,
-            )
+            select(OeOrganization)
+            .where(OeOrganization.ocean_account_id == ocean_account_id)
+            .order_by(OeOrganization.is_deleted, OeOrganization.id)
+            .limit(1)
         )
-        version = str(raw.get("ocean_version") or "").strip()
+        version = ocean_version_for_role(role)
         if found is None:
-            session.add(
-                OeOrganization(
-                    oe_app_id=app.id,
-                    ocean_account_id=ocean_account_id,
-                    name=name,
-                    account_role=role,
-                    ocean_version=version,
-                    status="active",
-                    raw_payload=raw,
-                )
+            found = OeOrganization(
+                ocean_account_id=ocean_account_id,
+                name=name,
+                account_role=role,
+                ocean_version=version,
+                status="active",
+                raw_payload=raw,
             )
-            continue
-        found.name = name or found.name
-        found.account_role = role or found.account_role
-        if version:
-            found.ocean_version = version
-        found.status = "active"
-        found.is_deleted = 0
-        found.deleted_at = None
-        found.raw_payload = raw
-    missing = update(OeOrganization).where(
-        OeOrganization.oe_app_id == app.id,
-        OeOrganization.is_deleted == 0,
-    )
-    if seen:
-        missing = missing.where(OeOrganization.ocean_account_id.not_in(seen))
-    await session.execute(missing.values(status="invalid"))
+            session.add(found)
+            await session.flush()
+        else:
+            found.name = name or found.name
+            found.account_role = role or found.account_role
+            if version:
+                found.ocean_version = version
+            found.status = "active"
+            found.is_deleted = 0
+            found.deleted_at = None
+            found.raw_payload = raw
+        await _upsert_grant(session, found, app)
+    await session.flush()
+    await _invalidate_missing_grants(session, app, seen)
+    await _refresh_organization_status(session)
     await session.flush()
     return app
 
@@ -101,8 +109,12 @@ async def _sync_advertisers(session: AsyncSession, app: OeApp) -> None:
     token = await _access_token(session, app)
     orgs = (
         await session.scalars(
-            select(OeOrganization).where(
-                OeOrganization.oe_app_id == app.id,
+            select(OeOrganization)
+            .join(OeOrganizationGrant, OeOrganizationGrant.organization_id == OeOrganization.id)
+            .where(
+                OeOrganizationGrant.oe_app_id == app.id,
+                OeOrganizationGrant.status == "active",
+                OeOrganizationGrant.is_deleted == 0,
                 OeOrganization.is_deleted == 0,
                 OeOrganization.account_role.in_(_ORG_ROLES),
             )
@@ -146,9 +158,15 @@ async def _upsert_advertiser(
     found = await session.scalar(
         select(AdvertiserAccount)
         .where(AdvertiserAccount.advertiser_id == account_id)
-        .order_by(AdvertiserAccount.is_deleted, AdvertiserAccount.id)
+        .order_by(
+            AdvertiserAccount.unbound_at.is_not(None).desc(),
+            AdvertiserAccount.is_deleted,
+            AdvertiserAccount.id,
+        )
         .limit(1)
     )
+    if _is_unbound(found):
+        return
     now = beijing_now()
     if found is None:
         session.add(
@@ -204,6 +222,60 @@ def _company_name(body: dict[str, Any], account_id: int) -> str:
         if int(item.get("id") or item.get("advertiser_id") or 0) == account_id:
             return str(item.get("company") or item.get("adv_company_name") or "")
     return ""
+
+
+def _is_unbound(row: AdvertiserAccount | None) -> bool:
+    """解绑行留在库里，同步不能把它加回列表，也不能另插一条未删除行。"""
+    return row is not None and row.unbound_at is not None
+
+
+async def _upsert_grant(session: AsyncSession, org: OeOrganization, app: OeApp) -> None:
+    grant = await session.scalar(
+        select(OeOrganizationGrant).where(
+            OeOrganizationGrant.organization_id == org.id,
+            OeOrganizationGrant.oe_app_id == app.id,
+        )
+    )
+    if grant is None:
+        session.add(OeOrganizationGrant(organization_id=org.id, oe_app_id=app.id, status="active"))
+        return
+    grant.status = "active"
+    grant.is_deleted = 0
+    grant.deleted_at = None
+
+
+async def _invalidate_missing_grants(session: AsyncSession, app: OeApp, seen: list[int]) -> None:
+    """这次没返回的账户，只让当前应用的授权失效。"""
+    org_ids = select(OeOrganization.id).where(OeOrganization.is_deleted == 0)
+    if seen:
+        org_ids = org_ids.where(OeOrganization.ocean_account_id.not_in(seen))
+    await session.execute(
+        update(OeOrganizationGrant)
+        .where(
+            OeOrganizationGrant.oe_app_id == app.id,
+            OeOrganizationGrant.is_deleted == 0,
+            OeOrganizationGrant.organization_id.in_(org_ids),
+        )
+        .values(status="invalid")
+    )
+
+
+async def _refresh_organization_status(session: AsyncSession) -> None:
+    """还有任一有效授权则组织有效；全部失效才标 invalid。"""
+    active_ids = select(OeOrganizationGrant.organization_id).where(
+        OeOrganizationGrant.status == "active",
+        OeOrganizationGrant.is_deleted == 0,
+    )
+    await session.execute(
+        update(OeOrganization)
+        .where(OeOrganization.is_deleted == 0, OeOrganization.id.in_(active_ids))
+        .values(status="active")
+    )
+    await session.execute(
+        update(OeOrganization)
+        .where(OeOrganization.is_deleted == 0, OeOrganization.id.not_in(active_ids))
+        .values(status="invalid")
+    )
 
 
 def _organization_identity(raw: dict[str, Any]) -> tuple[int, str, str] | None:
@@ -369,9 +441,15 @@ async def _upsert_advertiser_name(
     found = await session.scalar(
         select(AdvertiserAccount)
         .where(AdvertiserAccount.advertiser_id == account_id)
-        .order_by(AdvertiserAccount.is_deleted, AdvertiserAccount.id)
+        .order_by(
+            AdvertiserAccount.unbound_at.is_not(None).desc(),
+            AdvertiserAccount.is_deleted,
+            AdvertiserAccount.id,
+        )
         .limit(1)
     )
+    if _is_unbound(found):
+        return
     if found is None:
         session.add(
             AdvertiserAccount(

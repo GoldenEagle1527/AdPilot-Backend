@@ -15,6 +15,7 @@ from app.modules.account.model import (
     DouyinPitcher,
     OeApp,
     OeOrganization,
+    OeOrganizationGrant,
     OeReportSnapshot,
     ProductLibrary,
     ProductLibraryPitcher,
@@ -34,7 +35,7 @@ _ADVERTISER_ID = 1873916032590219
 
 
 async def ensure_oceanengine_seed(session: AsyncSession) -> None:
-    """幂等插入两套应用、自研与三方各一条组织、一条广告主和两行报表快照。"""
+    """幂等插入两套应用、一条共享组织、两条授权关系、一条广告主和两行报表快照。"""
     self_app = await _ensure_app(
         session,
         app_id=_SELF_APP_ID,
@@ -94,26 +95,42 @@ async def _ensure_app(
 
 
 async def _ensure_organization(session: AsyncSession, app: OeApp) -> OeOrganization:
-    """同一巨量账户在每个应用下各一行。已有该应用上的这一行则不另插。"""
+    """同一巨量账户只一行。每个应用再挂一条授权关系。"""
     found = await session.scalar(
         select(OeOrganization).where(
-            OeOrganization.oe_app_id == app.id,
             OeOrganization.ocean_account_id == _ORG_OCEAN_ID,
+            OeOrganization.is_deleted == 0,
+        )
+    )
+    if found is None:
+        found = OeOrganization(
+            ocean_account_id=_ORG_OCEAN_ID,
+            name="深圳发行中心",
+            account_role="PLATFORM_ROLE_ENTERPRISE_BP_ADMIN",
+            ocean_version="升级版组织",
+            status="active",
+        )
+        session.add(found)
+        await session.flush()
+    elif found.account_role != "PLATFORM_ROLE_ENTERPRISE_BP_ADMIN":
+        found.account_role = "PLATFORM_ROLE_ENTERPRISE_BP_ADMIN"
+        found.ocean_version = "升级版组织"
+    await _ensure_grant(session, found, app)
+    return found
+
+
+async def _ensure_grant(session: AsyncSession, org: OeOrganization, app: OeApp) -> None:
+    found = await session.scalar(
+        select(OeOrganizationGrant).where(
+            OeOrganizationGrant.organization_id == org.id,
+            OeOrganizationGrant.oe_app_id == app.id,
+            OeOrganizationGrant.is_deleted == 0,
         )
     )
     if found is not None:
-        return found
-    row = OeOrganization(
-        oe_app_id=app.id,
-        ocean_account_id=_ORG_OCEAN_ID,
-        name="深圳发行中心",
-        account_role="CUSTOMER_ADMIN",
-        ocean_version="升级版组织",
-        status="active",
-    )
-    session.add(row)
+        return
+    session.add(OeOrganizationGrant(organization_id=org.id, oe_app_id=app.id, status="active"))
     await session.flush()
-    return row
 
 
 async def _ensure_advertiser(session: AsyncSession, app: OeApp, org: OeOrganization) -> AdvertiserAccount:
@@ -200,7 +217,6 @@ async def ensure_frontend_demo(session: AsyncSession) -> None:
         raise RuntimeError("配置的巨量应用还不在库里，先完成授权")
     org = await session.scalar(
         select(OeOrganization).where(
-            OeOrganization.oe_app_id == app.id,
             OeOrganization.ocean_account_id == 1877115471075891,
             OeOrganization.is_deleted == 0,
         )

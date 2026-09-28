@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.pagination import PageParams, page_data
 from app.core.times import beijing_now
-from app.modules.account.model import AdvertiserAccount, OeApp, OeOrganization, OeToken
+from app.modules.account.model import AdvertiserAccount, OeApp, OeOrganization, OeOrganizationGrant, OeToken
 from app.modules.oceanengine.runtime import _prepare
 from app.modules.oceanengine.schema import AdvertiserQuery
 from app.modules.system_admin.domain.models import User
@@ -49,24 +49,29 @@ async def list_organizations(session: AsyncSession) -> list[dict[str, Any]]:
     now = beijing_now()
     stmt = (
         select(
-            OeOrganization.id,
+            OeOrganizationGrant.id,
             OeOrganization.ocean_account_id,
             OeOrganization.name,
             OeOrganization.account_role,
             OeOrganization.ocean_version,
-            OeOrganization.status,
+            OeOrganizationGrant.status,
             OeApp.channel,
             OeToken.access_token,
             OeToken.last_error,
             OeToken.access_expire_at,
         )
-        .join(OeApp, OeOrganization.oe_app_id == OeApp.id)
+        .join(OeOrganization, OeOrganizationGrant.organization_id == OeOrganization.id)
+        .join(OeApp, OeOrganizationGrant.oe_app_id == OeApp.id)
         .outerjoin(
             OeToken,
             (OeToken.oe_app_id == OeApp.id) & (OeToken.is_deleted == 0),
         )
-        .where(OeOrganization.is_deleted == 0, OeApp.is_deleted == 0)
-        .order_by(OeOrganization.id)
+        .where(
+            OeOrganizationGrant.is_deleted == 0,
+            OeOrganization.is_deleted == 0,
+            OeApp.is_deleted == 0,
+        )
+        .order_by(OeOrganizationGrant.id)
     )
     rows = await session.execute(stmt)
     return [

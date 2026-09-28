@@ -236,13 +236,15 @@ async def rename_advertisers(
 
 
 async def unbind_advertisers(session: AsyncSession, advertiser_ids: list[int]) -> None:
-    """有执行中广告则整批 409。解绑只取消投手，账户仍留在列表里。"""
+    """有执行中广告则整批 409。解绑是软删，投手和本地名留在已删行上。"""
     accounts = await _alive_advertisers(session, advertiser_ids)
     ocean_ids = list(accounts)
     busy = await _enabled_promotions(session, advertiser_ids=ocean_ids)
     await _reject_if_busy(busy)
+    now = beijing_now()
     for row in accounts.values():
-        _write_assign(row, None, "")
+        row.mark_deleted()
+        row.unbound_at = now
     await session.commit()
 
 

@@ -86,23 +86,27 @@ class OeToken(BaseModel):
 
 
 class OeOrganization(BaseModel):
-    """授权组织。页面不能新增。与应用联合唯一。"""
+    """授权组织。未删除的巨量账户 id 全局唯一。哪套应用授过权见 oe_organization_grant。"""
 
     __tablename__ = "oe_organization"
     __table_args__ = (
         CheckConstraint("status IN ('active', 'invalid')", name="ck_oe_organization_status"),
-        UniqueConstraint("oe_app_id", "ocean_account_id", name="uq_oe_organization_app_account"),
+        Index(
+            "uq_oe_organization_ocean_account_alive",
+            "ocean_account_id",
+            unique=True,
+            postgresql_where=text("is_deleted = 0"),
+        ),
         Index("ix_oe_organization_status_alive", "status", postgresql_where=text("is_deleted = 0")),
-        {"comment": "巨量授权组织。status：active 有效、invalid 失效。"},
+        {"comment": "巨量授权组织。同一 ocean_account_id 只一行。status：active 有效、invalid 全部授权失效。"},
     )
 
-    oe_app_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("oe_app.id", ondelete="RESTRICT"), nullable=False, comment="授权这套组织的应用"
-    )
     ocean_account_id: Mapped[int] = mapped_column(BigInteger, nullable=False, comment="巨量账户 id")
     name: Mapped[str] = mapped_column(String(256), nullable=False, comment="组织名称")
     account_role: Mapped[str] = mapped_column(String(64), nullable=False, comment="巨量账户角色，原样保存")
-    ocean_version: Mapped[str] = mapped_column(String(64), nullable=False, comment="巨量版本展示，如升级版组织")
+    ocean_version: Mapped[str] = mapped_column(
+        String(64), nullable=False, comment="由 account_role 推出：升级版组织或旧版工作台"
+    )
     status: Mapped[str] = mapped_column(
         String(16), nullable=False, server_default=text("'active'"), comment="active 有效、invalid 失效"
     )
@@ -114,6 +118,38 @@ class OeOrganization(BaseModel):
     )
     ebp_account_task_status: Mapped[str | None] = mapped_column(
         String(16), nullable=True, comment="导出任务状态：EXECUTING、COMPLETED、FAILED、EXPIRED"
+    )
+
+
+class OeOrganizationGrant(BaseModel):
+    """一套应用对一个组织的授权。列表按这一行区分自研和三方。"""
+
+    __tablename__ = "oe_organization_grant"
+    __table_args__ = (
+        CheckConstraint("status IN ('active', 'invalid')", name="ck_oe_organization_grant_status"),
+        Index(
+            "uq_oe_organization_grant_alive",
+            "organization_id",
+            "oe_app_id",
+            unique=True,
+            postgresql_where=text("is_deleted = 0"),
+        ),
+        Index(
+            "ix_oe_organization_grant_app_alive",
+            "oe_app_id",
+            postgresql_where=text("is_deleted = 0"),
+        ),
+        {"comment": "组织与应用的授权关系。失效只打在这一行，不连带另一套应用。"},
+    )
+
+    organization_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("oe_organization.id", ondelete="RESTRICT"), nullable=False, comment="授权组织"
+    )
+    oe_app_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("oe_app.id", ondelete="RESTRICT"), nullable=False, comment="授权应用"
+    )
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default=text("'active'"), comment="active 有效、invalid 这套应用已失效"
     )
 
 
@@ -177,7 +213,9 @@ class AdvertiserAccount(BaseModel):
         JSONB, nullable=True, comment="最近一次巨量原文，列表不返回"
     )
     balance_synced_at: Mapped[datetime | None] = mapped_column(_TS, nullable=True, comment="余额同步时间")
-    company_name: Mapped[str | None] = mapped_column(String(512), nullable=True, comment="投放主体公司名")
+    company_name: Mapped[str | None] = mapped_column(
+        String(512), nullable=True, comment="巨量公开信息中的公司名，不是投放主体"
+    )
     company_synced_at: Mapped[datetime | None] = mapped_column(_TS, nullable=True, comment="公司名同步时间")
     pitcher_user_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("users.id", ondelete="RESTRICT"), nullable=True, comment="投手，未分配为空"

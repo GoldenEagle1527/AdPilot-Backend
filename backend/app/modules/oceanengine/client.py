@@ -89,9 +89,9 @@ class OceanEngineClient:
                 {
                     "list": [
                         {
-                            "advertiser_id": 1872115109920903,
-                            "advertiser_name": "深圳发行中心",
-                            "account_role": "CUSTOMER_ADMIN",
+                            "account_id": 1872115109920903,
+                            "account_name": "深圳发行中心",
+                            "account_type": "PLATFORM_ROLE_ENTERPRISE_BP_ADMIN",
                         }
                     ]
                 }

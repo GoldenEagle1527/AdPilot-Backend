@@ -92,7 +92,7 @@ async def post_unbind_advertisers(
     _principal: Menu63,
     body: UnbindAdvertisersBody,
 ) -> dict[str, Any]:
-    """有执行中广告则整批拒绝。解绑是软删。"""
+    """有执行中广告则整批拒绝。解绑是软删，同步不会把这户加回列表。"""
     await commands.unbind_advertisers(session, body.advertiser_ids)
     return success(None)
 
