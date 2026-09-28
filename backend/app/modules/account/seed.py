@@ -34,7 +34,7 @@ _ADVERTISER_ID = 1873916032590219
 
 
 async def ensure_oceanengine_seed(session: AsyncSession) -> None:
-    """幂等插入两套应用、一条自研组织、一条广告主和两行报表快照。"""
+    """幂等插入两套应用、自研与三方各一条组织、一条广告主和两行报表快照。"""
     self_app = await _ensure_app(
         session,
         app_id=_SELF_APP_ID,
@@ -45,7 +45,7 @@ async def ensure_oceanengine_seed(session: AsyncSession) -> None:
         agency=True,
         oauth_rid="c9lb3o12qhm",
     )
-    await _ensure_app(
+    third_app = await _ensure_app(
         session,
         app_id=_THIRD_APP_ID,
         channel="third",
@@ -56,6 +56,7 @@ async def ensure_oceanengine_seed(session: AsyncSession) -> None:
         oauth_rid="tg29ccnkpzm",
     )
     org = await _ensure_organization(session, self_app)
+    await _ensure_organization(session, third_app)
     await _ensure_advertiser(session, self_app, org)
     await _ensure_report(session, promotion_id=8001, stat_cost=Decimal("120.00"), roi=Decimal("0.300"))
     await _ensure_report(session, promotion_id=8002, stat_cost=Decimal("10.00"), roi=Decimal("1.200"))
@@ -93,9 +94,12 @@ async def _ensure_app(
 
 
 async def _ensure_organization(session: AsyncSession, app: OeApp) -> OeOrganization:
-    """组织占位挂在自研应用上。已有该巨量账户 id 则不另插。"""
+    """同一巨量账户在每个应用下各一行。已有该应用上的这一行则不另插。"""
     found = await session.scalar(
-        select(OeOrganization).where(OeOrganization.ocean_account_id == _ORG_OCEAN_ID)
+        select(OeOrganization).where(
+            OeOrganization.oe_app_id == app.id,
+            OeOrganization.ocean_account_id == _ORG_OCEAN_ID,
+        )
     )
     if found is not None:
         return found

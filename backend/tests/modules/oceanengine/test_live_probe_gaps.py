@@ -8,16 +8,15 @@ from pathlib import Path
 
 from datetime import datetime, timedelta, timezone
 
+from app.modules.oceanengine.catalog import organization_token_valid
+from app.modules.oceanengine.delivery import _project_remote_body
+from app.modules.oceanengine.runtime import _page_count, token_needs_refresh
 from app.modules.oceanengine.schema import ProjectCreate
-from app.modules.oceanengine.service import (
+from app.modules.oceanengine.sync import (
     _account_row,
     _organization_identity,
-    _page_count,
-    _project_remote_body,
     accounts_from_download,
     list_exceeds_cap,
-    organization_token_valid,
-    token_needs_refresh,
 )
 
 _PROBE = Path(__file__).resolve().parent / "fixtures" / "live_delivery_probe.json"

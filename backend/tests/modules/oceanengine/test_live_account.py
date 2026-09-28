@@ -10,7 +10,7 @@ import json
 import unittest
 from pathlib import Path
 
-from app.modules.oceanengine.service import _company_name
+from app.modules.oceanengine.sync import _company_name
 from tests.modules.oceanengine.live_env import load_test_credentials, test_env_path
 from tests.modules.oceanengine.live_fetch import fetch_account_snapshot, snapshot_type_errors
 

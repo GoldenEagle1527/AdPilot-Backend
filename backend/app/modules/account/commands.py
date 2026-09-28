@@ -1,4 +1,4 @@
-"""账户管理写库与查询。广告主同步、授权链接仍走 oceanengine.service。"""
+"""账户管理写库与查询。广告主同步走 oceanengine.sync，授权链接走 oceanengine.oauth。"""
 
 from __future__ import annotations
 
@@ -60,7 +60,7 @@ def sign_oauth_state(payload: dict[str, Any]) -> str:
     """授权 state：紧凑 JSON，多一个 sig。HMAC-SHA256 的密钥是 jwt_secret。
 
     正文必须带整数 appRowId（oe_app.id），并保留 agentId；自研再带 agency=true。
-    这样 oceanengine.service 仍能按 JSON 认出渠道。拼进 URL 时把双引号写成 %22。
+    这样 oceanengine.oauth 仍能按 JSON 认出渠道。拼进 URL 时把双引号写成 %22。
     """
     raw = _oauth_state_body(payload)
     signature = hmac.new(get_settings().jwt_secret.encode(), raw.encode(), hashlib.sha256).hexdigest()
@@ -919,7 +919,7 @@ async def sync_advertisers(session: AsyncSession, oe_app_id: int | None) -> dict
     runs = await _open_advertiser_runs(session, apps)
     try:
         if not get_settings().oceanengine.mock:
-            from app.modules.oceanengine.service import sync_from_oceanengine
+            from app.modules.oceanengine.sync import sync_from_oceanengine
 
             for app in apps:
                 await sync_from_oceanengine(session, app)
