@@ -26,7 +26,7 @@ class StampParamTests(unittest.TestCase):
         app = FastAPI()
 
         @app.get("/t")
-        def _probe(query: Annotated[ManhuaSeriesQuery, Query()]) -> dict[str, str | None]:
+        def _probe(query: Annotated[ManhuaSeriesQuery, Query()]) -> dict[str, datetime | None]:
             """试查询模型的时间入参。"""
             return {"value": query.estimate_publish_time_from}
 
@@ -35,7 +35,7 @@ class StampParamTests(unittest.TestCase):
         self.assertEqual(rejected.status_code, 422)
         accepted = client.get("/t", params={"estimate_publish_time_from": "2026-09-22 10:00:00"})
         self.assertEqual(accepted.status_code, 200)
-        self.assertEqual(accepted.json()["value"], "2026-09-22 10:00:00")
+        self.assertEqual(accepted.json()["value"], "2026-09-22T10:00:00+08:00")
 
 
 class QueryRangeTests(unittest.TestCase):
@@ -67,7 +67,7 @@ class ItemTests(unittest.TestCase):
             publish_status = 2
             delivery_status = True
             publish_time = "2026-09-22 01:00:00"
-            estimate_publish_time = ""
+            estimate_publish_time = datetime(2026, 9, 21, 17, 30, tzinfo=BEIJING)
             create_time = "坏的"
             collected_at = datetime(2026, 9, 22, 1, 0, tzinfo=BEIJING)
             douyin_nick_name = "号"
@@ -75,6 +75,7 @@ class ItemTests(unittest.TestCase):
         item = to_item(Row())
         self.assertEqual(item["tab_text"], "IAP")
         self.assertEqual(item["publish_time"], "2026-09-22 01:00:00")
+        self.assertEqual(item["estimate_publish_time"], "2026-09-21 17:30:00")
         self.assertEqual(item["create_time"], "坏的")
         self.assertIsNone(item["department_name"])
         self.assertEqual(item["id"], "7")
@@ -102,7 +103,7 @@ class ExportTests(unittest.TestCase):
             publish_status = 2
             delivery_status = False
             publish_time = ""
-            estimate_publish_time = ""
+            estimate_publish_time = None
             create_time = ""
             collected_at = datetime(2026, 9, 22, 1, 0, tzinfo=BEIJING)
             douyin_nick_name = "号"

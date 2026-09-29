@@ -24,6 +24,7 @@ db_pool_timeout: 30
 
 changdu:
   base_url: "https://openapi.changdupingtai.com/novelsale/openapi/content/aweme_series/list/v1/"
+  promotion_list_url: "https://openapi.changdupingtai.com/novelsale/openapi/promotion/list/v2/"
   distributor_id: "0"
   secret_key: "replace-me"
   sync_interval_seconds: 1800

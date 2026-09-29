@@ -94,6 +94,7 @@ class ChangduSettings(BaseModel):
     """常读 OpenAPI 的列表地址、渠道、密钥和同步间隔。"""
 
     base_url: str
+    promotion_list_url: str
     distributor_id: int
     secret_key: str = Field(min_length=1)
     sync_interval_seconds: int = 1800

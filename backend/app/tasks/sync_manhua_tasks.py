@@ -7,9 +7,10 @@ import asyncio
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from app.clients.changdu import ChangduClient, ChangduError
 from app.core.config import get_settings
 from app.modules.material.crud import latest_create_time
-from app.modules.material.service import ChangduClient, save_aweme_series
+from app.modules.material.service import save_aweme_series
 from app.notify.changdu import ChangduNotify
 from app.notify.dingtalk import DingTalkWebhook
 from app.tasks.celery_app import celery_app
@@ -40,10 +41,7 @@ async def pull_since_latest() -> int:
         locked = bool(await redis.set(_LOCK_KEY, "1", nx=True, ex=_LOCK_SECONDS))
         if not locked:
             return 0
-        client = ChangduClient(
-            settings.changdu,
-            notify=ChangduNotify(DingTalkWebhook(settings.dingtalk.webhook)),
-        )
+        client = ChangduClient(settings.changdu)
         engine = create_async_engine(
             settings.async_database_url,
             pool_pre_ping=True,
@@ -54,13 +52,17 @@ async def pull_since_latest() -> int:
         factory = async_sessionmaker(engine, expire_on_commit=False)
         async with factory() as session:
             watermark = await latest_create_time(session)
-            page = await client.list_aweme_series(
-                page_index=_PAGE_INDEX,
-                page_size=_PAGE_SIZE,
-                sort_field=_SORT_FIELD_CREATE_TIME,
-                sort_type=_SORT_TYPE_DESC,
-                start_time=watermark or None,
-            )
+            try:
+                page = await client.list_aweme_series(
+                    page_index=_PAGE_INDEX,
+                    page_size=_PAGE_SIZE,
+                    sort_field=_SORT_FIELD_CREATE_TIME,
+                    sort_type=_SORT_TYPE_DESC,
+                    start_time=watermark or None,
+                )
+            except ChangduError as exc:
+                await ChangduNotify(DingTalkWebhook(settings.dingtalk.webhook)).sync_failed(str(exc))
+                raise
             inserted = await save_aweme_series(session, page.data)
             await session.commit()
         return inserted

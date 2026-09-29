@@ -19,8 +19,22 @@ from app.modules.theater.schema import (
     PlatformItem,
     PlatformQuery,
     PlatformUpdate,
+    PromotionLinkItem,
+    PromotionLinkQuery,
+    PromotionLinkUpdate,
+    PromotionTaskItem,
+    PromotionTaskQuery,
 )
-from app.modules.theater.service import create_app, list_apps, list_platforms, set_app_status, update_platform
+from app.modules.theater.service import (
+    create_app,
+    list_apps,
+    list_platforms,
+    list_promotion_links,
+    list_promotion_tasks,
+    set_app_status,
+    update_platform,
+    update_promotion_link,
+)
 
 router = APIRouter(prefix="/api/v1/theater", tags=["theater"], dependencies=[Depends(require_token)])
 
@@ -85,3 +99,40 @@ async def post_app(body: AppCreate, session: SessionDep) -> dict[str, Any]:
 async def patch_app_status(app_id: int, body: AppStatusUpdate, session: SessionDep) -> dict[str, Any]:
     """列表里切换有效/无效，只改状态。"""
     return success(await set_app_status(session, app_id, body))
+
+
+@router.get(
+    "/promotion-tasks",
+    response_model=Envelope[PageData[PromotionTaskItem]],
+    summary="分页查询推广链同步任务",
+)
+async def get_promotion_tasks(
+    session: SessionDep,
+    query: Annotated[PromotionTaskQuery, Query()],
+) -> dict[str, Any]:
+    """按剧名模糊、状态、执行时间筛选，只返回爬虫处理中、成功、失败，按执行时间倒序。"""
+    return success(await list_promotion_tasks(session, query))
+
+
+@router.get(
+    "/promotion-links",
+    response_model=Envelope[PageData[PromotionLinkItem]],
+    summary="分页查询端原生推广链",
+)
+async def get_promotion_links(
+    session: SessionDep,
+    query: Annotated[PromotionLinkQuery, Query()],
+) -> dict[str, Any]:
+    """按首发日期段、剧场、剧名、启用状态筛选推广链，按创建时间倒序。"""
+    return success(await list_promotion_links(session, query))
+
+
+@router.patch(
+    "/promotion-links/{link_id}",
+    response_model=Envelope[PromotionLinkItem],
+    summary="编辑端原生推广链",
+)
+async def patch_promotion_link(link_id: int, body: PromotionLinkUpdate, session: SessionDep) -> dict[str, Any]:
+    """剧名不可改，其它字段只改传了的。"""
+    return success(await update_promotion_link(session, link_id, body))
+

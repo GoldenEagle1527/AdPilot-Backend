@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Index, Integer, String, func
+from sqlalchemy import BigInteger, Boolean, DateTime, Index, Integer, String, func, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import BaseModel
@@ -12,7 +12,15 @@ class ManhuaSeries(BaseModel):
     """常读短剧/漫剧落库行。按专辑 ID 和剧名查找，两列联合索引，允许重复。"""
 
     __tablename__ = "manhua_series"
-    __table_args__ = (Index("ix_manhua_series_playlet_book", "playlet_id", "book_name"),)
+    __table_args__ = (
+        Index("ix_manhua_series_playlet_book", "playlet_id", "book_name"),
+        Index(
+            "ix_manhua_series_promotion_pending",
+            "estimate_publish_time",
+            postgresql_where=text("promotion_triggered = false AND is_deleted = 0"),
+        ),
+        {"comment": "漫剧流转剧库。常读端原生短剧/漫剧定时拉取落库，按专辑 ID 和剧名去重。"},
+    )
     thumb_url: Mapped[str] = mapped_column(String(1024), nullable=False, default="", comment="封面 URL")
     book_id: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, comment="常读 book_id")
     playlet_id: Mapped[int] = mapped_column(
@@ -33,8 +41,15 @@ class ManhuaSeries(BaseModel):
     publish_time: Mapped[str] = mapped_column(
         String(64), nullable=False, default="", comment="常读发布时间原串（北京朴素时间）"
     )
-    estimate_publish_time: Mapped[str] = mapped_column(
-        String(64), nullable=False, default="", comment="常读预估可投时间原串"
+    estimate_publish_time: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, comment="常读预估可投时间（北京），常读没给为空"
+    )
+    promotion_triggered: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=text("false"),
+        comment="到预估可投时间后是否已自动建过推广链同步任务",
     )
     permission_status: Mapped[int] = mapped_column(Integer, nullable=False, default=0, comment="常读权限状态")
     create_time: Mapped[str] = mapped_column(

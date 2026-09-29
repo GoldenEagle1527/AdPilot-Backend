@@ -5,35 +5,20 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Annotated, Literal
 
-from pydantic import AfterValidator, BaseModel, BeforeValidator, ConfigDict, Field, model_validator
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, model_validator
 
-from app.core.times import BEIJING
-
-_STAMP = "%Y-%m-%d %H:%M:%S"
+from app.core.times import parse_beijing_stamp
 
 
-def ensure_beijing_stamp(value: str) -> str:
-    """入参时间只收 YYYY-MM-DD HH:MM:SS。"""
+def ensure_beijing_time(value: str) -> datetime:
+    """时间入参只收 YYYY-MM-DD HH:MM:SS，收成北京时间。格式不对就拒绝。"""
     try:
-        datetime.strptime(value, _STAMP)
+        return parse_beijing_stamp(value)
     except ValueError as exc:
         raise ValueError("时间格式为 YYYY-MM-DD HH:MM:SS") from exc
-    return value
 
 
-BeijingStamp = Annotated[str, AfterValidator(ensure_beijing_stamp)]
-
-
-def ensure_collected_at(value: str) -> datetime:
-    """采集时间入参收成北京时间。格式不对就拒绝。"""
-    try:
-        parsed = datetime.strptime(value, _STAMP)
-    except ValueError as exc:
-        raise ValueError("时间格式为 YYYY-MM-DD HH:MM:SS") from exc
-    return parsed.replace(tzinfo=BEIJING)
-
-
-CollectedAt = Annotated[datetime, BeforeValidator(ensure_collected_at)]
+BeijingTime = Annotated[datetime, BeforeValidator(ensure_beijing_time)]
 
 
 class ManhuaSeriesQuery(BaseModel):
@@ -45,14 +30,14 @@ class ManhuaSeriesQuery(BaseModel):
     page_size: int = Field(20, ge=1, le=100, description="每页条数，最大 100")
     tab_text: Literal["IAA", "IAP"] | None = Field(None, description="tab，IAA 或 IAP，不传为全部")
     book_name: str | None = Field(None, description="短剧名称，模糊")
-    estimate_publish_time_from: BeijingStamp | None = Field(
+    estimate_publish_time_from: BeijingTime | None = Field(
         None, description="预估可投起，YYYY-MM-DD HH:MM:SS，左闭"
     )
-    estimate_publish_time_to: BeijingStamp | None = Field(
+    estimate_publish_time_to: BeijingTime | None = Field(
         None, description="预估可投止，YYYY-MM-DD HH:MM:SS，右闭"
     )
-    collected_at_from: CollectedAt | None = Field(None, description="采集时间起，YYYY-MM-DD HH:MM:SS，左闭")
-    collected_at_to: CollectedAt | None = Field(None, description="采集时间止，YYYY-MM-DD HH:MM:SS，右闭")
+    collected_at_from: BeijingTime | None = Field(None, description="采集时间起，YYYY-MM-DD HH:MM:SS，左闭")
+    collected_at_to: BeijingTime | None = Field(None, description="采集时间止，YYYY-MM-DD HH:MM:SS，右闭")
     publish_status: Literal[1, 2] | None = Field(None, description="1 未发布、2 已发布，不传为全部")
     listed_today: bool | None = Field(None, description="是否当天上架，不传为全部")
     episode_amount_min: int | None = Field(None, ge=0, description="集数下限，含")
