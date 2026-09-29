@@ -44,6 +44,7 @@ class MaterialVideoTag(BaseModel):
     """视频标签。同一短剧同一天的文案只存一行，多条素材共用。"""
 
     __tablename__ = "material_video_tags"
+    __table_args__ = ({"comment": "视频素材标签。同一短剧同一天的文案只存一行，多条素材共用。"},)
 
     name: Mapped[str] = mapped_column(
         String(600), nullable=False, unique=True, comment="标签文案，前端传入，如 甲剧0923"
@@ -60,6 +61,7 @@ class MaterialVideo(BaseModel):
         Index("ix_material_videos_ownership", "ownership"),
         Index("ix_material_videos_uploader", "uploader_id"),
         Index("ix_material_videos_tag_id", "tag_id"),
+        {"comment": "视频素材。短剧只存 manhua_series 主键，剧名查询时回填。"},
     )
 
     name: Mapped[str] = mapped_column(
@@ -113,6 +115,7 @@ class MaterialVideoShare(BaseModel):
     __table_args__ = (
         UniqueConstraint("user_id", "video_id", name="uq_material_video_shares_user_video"),
         Index("ix_material_video_shares_video", "video_id"),
+        {"comment": "视频素材共享。取消共享只删这一行，他分过的投手还在。"},
     )
 
     video_id: Mapped[int] = mapped_column(
@@ -142,6 +145,7 @@ class MaterialVideoPitcher(BaseModel):
             name="uq_material_video_pitchers_video_operator_user",
         ),
         Index("ix_material_video_pitchers_video", "video_id"),
+        {"comment": "视频素材分配的投手。操作人被移出共享后，这些行保留。"},
     )
 
     video_id: Mapped[int] = mapped_column(

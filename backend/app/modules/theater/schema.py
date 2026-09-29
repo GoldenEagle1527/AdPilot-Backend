@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
-from typing import Annotated
+from datetime import date
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
+from app.modules.material.schema import BeijingTime
 from app.modules.theater.model import DeliveryMode, TheaterStyle, TheaterType
 
 AppName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=128)]
 AdSource = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64)]
+TemplateName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=128)]
+PromotionUrl = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2048)]
 
 
 class PlatformQuery(BaseModel):
@@ -105,3 +109,107 @@ class AppStatusUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     is_valid: bool = Field(description="状态：true 有效、false 无效")
+
+
+class PromotionTaskQuery(BaseModel):
+    """推广链同步任务列表查询。只查爬虫处理中、成功、失败三种，没到点和排队中的不出现。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    page: int = Field(1, ge=1, description="页码，从 1 起")
+    page_size: int = Field(20, ge=1, le=100, description="每页条数，最大 100")
+    book_name: str | None = Field(None, description="短剧名称，模糊，不传为全部")
+    status: Literal["running", "success", "failed"] | None = Field(
+        None, description="状态：running 爬虫处理中、success 成功、failed 失败，不传为全部"
+    )
+    execute_at_from: BeijingTime | None = Field(None, description="执行时间起，YYYY-MM-DD HH:MM:SS，左闭")
+    execute_at_to: BeijingTime | None = Field(None, description="执行时间止，YYYY-MM-DD HH:MM:SS，右闭")
+
+    @model_validator(mode="after")
+    def check_range(self) -> PromotionTaskQuery:
+        """执行时间止不能早于起。"""
+        if (
+            self.execute_at_from is not None
+            and self.execute_at_to is not None
+            and self.execute_at_to < self.execute_at_from
+        ):
+            raise ValueError("执行结束时间不能早于开始时间")
+        return self
+
+
+class PromotionTaskItem(BaseModel):
+    """一条推广链同步任务。时间为北京时间 +08:00，精确到秒。"""
+
+    id: str
+    series_id: str
+    book_name: str
+    collector_name: str
+    tab_text: str
+    category_text: str
+    status: str
+    reason: str
+    execute_at: str
+    finished_at: str | None
+
+
+class PromotionLinkQuery(BaseModel):
+    """端原生推广链列表查询。筛选都不传为全部。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    page: int = Field(1, ge=1, description="页码，从 1 起")
+    page_size: int = Field(20, ge=1, le=100, description="每页条数，最大 100")
+    publish_date_from: date | None = Field(None, description="首发日期起，YYYY-MM-DD，左闭")
+    publish_date_to: date | None = Field(None, description="首发日期止，YYYY-MM-DD，右闭")
+    theater_app_id: int | None = Field(None, description="剧场，应用 id，不传为全部")
+    series_id: int | None = Field(None, description="剧名，漫剧流转剧库 id，不传为全部")
+    is_enabled: bool | None = Field(None, description="启用状态：true 启用、false 停用，不传为全部")
+
+    @model_validator(mode="after")
+    def check_range(self) -> PromotionLinkQuery:
+        """首发日期止不能早于起。"""
+        if (
+            self.publish_date_from is not None
+            and self.publish_date_to is not None
+            and self.publish_date_to < self.publish_date_from
+        ):
+            raise ValueError("首发结束日期不能早于开始日期")
+        return self
+
+
+class PromotionLinkItem(BaseModel):
+    """一条端原生推广链。时间为北京时间 +08:00，精确到秒。"""
+
+    id: str
+    theater_app_id: str | None
+    theater_app_name: str | None
+    series_id: str
+    book_name: str
+    is_enabled: bool
+    recharge_template_name: str
+    publish_time: str | None
+    promotion_url: str
+    promotion_create_time: str | None
+
+
+class PromotionLinkUpdate(BaseModel):
+    """编辑推广链：剧名不可改，其它都可改。只改传了的字段，至少传一个；剧场传 null 为清空。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    theater_app_id: int | None = Field(None, description="剧场，应用 id；传 null 清空")
+    is_enabled: bool | None = Field(None, description="启用状态：true 启用、false 停用")
+    recharge_template_name: TemplateName | None = Field(None, description="出价面板，去首尾空白，1–128 字")
+    publish_time: BeijingTime | None = Field(None, description="首发时间，YYYY-MM-DD HH:MM:SS")
+    promotion_url: PromotionUrl | None = Field(None, description="推广链，去首尾空白，1–2048 字")
+    promotion_create_time: BeijingTime | None = Field(None, description="创建时间，YYYY-MM-DD HH:MM:SS")
+
+    @model_validator(mode="after")
+    def check_fields(self) -> PromotionLinkUpdate:
+        """至少改一项；除剧场外的字段不能传 null。"""
+        if not self.model_fields_set:
+            raise ValueError("至少修改一项")
+        nulls = sorted(k for k in self.model_fields_set - {"theater_app_id"} if getattr(self, k) is None)
+        if nulls:
+            raise ValueError(f"不能为空：{', '.join(nulls)}")
+        return self

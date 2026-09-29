@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, time, timedelta
 from typing import Any
 
 from sqlalchemy import ColumnElement
@@ -9,12 +10,45 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.envelope import ApiError
 from app.core.pagination import PageParams, page_data
-from app.core.times import beijing_iso
-from app.modules.theater.crud import app_name_taken, get_app, get_platform, page_apps, page_platforms
-from app.modules.theater.model import TheaterApp, TheaterPlatform, TheaterType
-from app.modules.theater.schema import AppCreate, AppQuery, AppStatusUpdate, PlatformQuery, PlatformUpdate
+from app.core.times import BEIJING, beijing_iso
+from app.modules.material.model import ManhuaSeries
+from app.modules.theater.crud import (
+    app_name_taken,
+    get_app,
+    get_platform,
+    get_promotion_link,
+    page_apps,
+    page_platforms,
+    page_promotion_links,
+    page_promotion_tasks,
+)
+from app.modules.theater.model import (
+    PromotionTaskStatus,
+    TheaterApp,
+    TheaterPlatform,
+    TheaterPromotionLink,
+    TheaterPromotionTask,
+    TheaterType,
+)
+from app.modules.theater.schema import (
+    AppCreate,
+    AppQuery,
+    AppStatusUpdate,
+    PlatformQuery,
+    PlatformUpdate,
+    PromotionLinkQuery,
+    PromotionLinkUpdate,
+    PromotionTaskQuery,
+)
 
 THEATER_TYPE_LABELS = {TheaterType.MINI_PROGRAM: "小程序", TheaterType.NATIVE: "端原生"}
+# 列表只露开始执行之后的状态；pending 没到点、queued 排队中都不返回
+VISIBLE_TASK_STATUSES = (
+    PromotionTaskStatus.RUNNING,
+    PromotionTaskStatus.SUCCESS,
+    PromotionTaskStatus.FAILED,
+)
+SYSTEM_COLLECTOR = "系统"
 
 
 def platform_item(row: TheaterPlatform) -> dict[str, Any]:
@@ -150,3 +184,111 @@ async def set_app_status(session: AsyncSession, app_id: int, body: AppStatusUpda
     await session.refresh(row)
     platform = await get_platform(session, row.platform_id)
     return app_item(row, platform.name if platform else "")
+
+
+def promotion_task_item(task: TheaterPromotionTask, series: ManhuaSeries, nickname: str | None) -> dict[str, Any]:
+    """把任务行收成出参项。剧名、付费类型、短剧类型取短剧；没有采集人为系统。"""
+    return {
+        "id": str(task.id),
+        "series_id": str(task.series_id),
+        "book_name": series.book_name,
+        "collector_name": nickname or SYSTEM_COLLECTOR,
+        "tab_text": series.tab_text,
+        "category_text": series.category_text,
+        "status": task.status,
+        "reason": task.reason,
+        "execute_at": beijing_iso(task.execute_at),
+        "finished_at": beijing_iso(task.finished_at) if task.finished_at else None,
+    }
+
+
+def promotion_task_filters(query: PromotionTaskQuery) -> list[ColumnElement[bool]]:
+    """拼列表过滤：恒限未删除且只看三种可见状态；剧名模糊且转义 % 和 _，执行时间左闭右闭。"""
+    filters: list[ColumnElement[bool]] = [
+        TheaterPromotionTask.is_deleted == 0,
+        TheaterPromotionTask.status.in_(VISIBLE_TASK_STATUSES),
+    ]
+    if query.status is not None:
+        filters.append(TheaterPromotionTask.status == query.status)
+    name = (query.book_name or "").strip()
+    if name:
+        escaped = name.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        filters.append(ManhuaSeries.book_name.ilike(f"%{escaped}%", escape="\\"))
+    if query.execute_at_from is not None:
+        filters.append(TheaterPromotionTask.execute_at >= query.execute_at_from)
+    if query.execute_at_to is not None:
+        filters.append(TheaterPromotionTask.execute_at <= query.execute_at_to)
+    return filters
+
+
+async def list_promotion_tasks(session: AsyncSession, query: PromotionTaskQuery) -> dict[str, Any]:
+    """分页列出推广链同步任务，按执行时间倒序。"""
+    params = PageParams(page=query.page, page_size=query.page_size)
+    rows, total = await page_promotion_tasks(
+        session, promotion_task_filters(query), offset=params.offset, limit=params.page_size
+    )
+    return page_data([promotion_task_item(*row) for row in rows], total, params)
+
+
+def promotion_link_item(link: TheaterPromotionLink, book_name: str, app_name: str | None) -> dict[str, Any]:
+    """把推广链行收成出参项。剧名取剧库，剧场名取应用；对应不上剧场为 null。"""
+    return {
+        "id": str(link.id),
+        "theater_app_id": str(link.theater_app_id) if link.theater_app_id else None,
+        "theater_app_name": app_name,
+        "series_id": str(link.series_id),
+        "book_name": book_name,
+        "is_enabled": link.is_enabled,
+        "recharge_template_name": link.recharge_template_name,
+        "publish_time": beijing_iso(link.publish_time) if link.publish_time else None,
+        "promotion_url": link.promotion_url,
+        "promotion_create_time": beijing_iso(link.promotion_create_time) if link.promotion_create_time else None,
+    }
+
+
+def promotion_link_filters(query: PromotionLinkQuery) -> list[ColumnElement[bool]]:
+    """拼列表过滤：恒限未删除；首发日期按北京自然日左闭右闭，其余精确匹配。"""
+    filters: list[ColumnElement[bool]] = [TheaterPromotionLink.is_deleted == 0]
+    if query.publish_date_from is not None:
+        start = datetime.combine(query.publish_date_from, time.min, tzinfo=BEIJING)
+        filters.append(TheaterPromotionLink.publish_time >= start)
+    if query.publish_date_to is not None:
+        end = datetime.combine(query.publish_date_to + timedelta(days=1), time.min, tzinfo=BEIJING)
+        filters.append(TheaterPromotionLink.publish_time < end)
+    if query.theater_app_id is not None:
+        filters.append(TheaterPromotionLink.theater_app_id == query.theater_app_id)
+    if query.series_id is not None:
+        filters.append(TheaterPromotionLink.series_id == query.series_id)
+    if query.is_enabled is not None:
+        filters.append(TheaterPromotionLink.is_enabled == query.is_enabled)
+    return filters
+
+
+async def list_promotion_links(session: AsyncSession, query: PromotionLinkQuery) -> dict[str, Any]:
+    """分页列出端原生推广链，按创建时间倒序。"""
+    params = PageParams(page=query.page, page_size=query.page_size)
+    rows, total = await page_promotion_links(
+        session, promotion_link_filters(query), offset=params.offset, limit=params.page_size
+    )
+    return page_data([promotion_link_item(*row) for row in rows], total, params)
+
+
+async def update_promotion_link(session: AsyncSession, link_id: int, body: PromotionLinkUpdate) -> dict[str, Any]:
+    """只改传了的字段，剧名不可改。换剧场时剧场须存在。"""
+    link = await get_promotion_link(session, link_id)
+    if link is None:
+        raise ApiError(404, "推广链不存在")
+    changes = body.model_dump(exclude_unset=True)
+    app = None
+    if changes.get("theater_app_id") is not None:
+        app = await get_app(session, changes["theater_app_id"])
+        if app is None:
+            raise ApiError(404, "剧场不存在")
+    for field, value in changes.items():
+        setattr(link, field, value)
+    await session.commit()
+    await session.refresh(link)
+    if app is None and link.theater_app_id is not None:
+        app = await get_app(session, link.theater_app_id)
+    series = await session.get(ManhuaSeries, link.series_id)
+    return promotion_link_item(link, series.book_name if series else "", app.name if app else None)

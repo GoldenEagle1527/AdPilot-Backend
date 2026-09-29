@@ -39,6 +39,8 @@ celery_app.conf.update(
     task_default_queue="manhua_sync",
     task_routes={
         "app.tasks.sync_manhua_tasks.sync_aweme_series": {"queue": "manhua_sync"},
+        "app.tasks.promotion_tasks.create_promotion_tasks": {"queue": "manhua_sync"},
+        "app.tasks.promotion_tasks.run_promotion_tasks": {"queue": "manhua_sync"},
     },
     task_acks_late=True,  # 执行完再 ack，worker 中途挂了会重投
     task_reject_on_worker_lost=True,
@@ -48,12 +50,21 @@ celery_app.conf.update(
 
 celery_app.conf.include = [
     "app.tasks.sync_manhua_tasks",
+    "app.tasks.promotion_tasks",
 ]
 
-# Beat：按最晚创建时间拉常读短剧 100 条，每 1 分钟
+# Beat：按最晚创建时间拉常读短剧 100 条、到点短剧建推广链同步任务、执行到点的推广链同步任务，均每 1 分钟
 celery_app.conf.beat_schedule = {
     "sync-aweme-series-every-1min": {
         "task": "app.tasks.sync_manhua_tasks.sync_aweme_series",
+        "schedule": 60.0,
+    },
+    "create-promotion-tasks-every-1min": {
+        "task": "app.tasks.promotion_tasks.create_promotion_tasks",
+        "schedule": 60.0,
+    },
+    "run-promotion-tasks-every-1min": {
+        "task": "app.tasks.promotion_tasks.run_promotion_tasks",
         "schedule": 60.0,
     },
 }

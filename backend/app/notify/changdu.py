@@ -1,33 +1,30 @@
-"""常读短剧列表的钉钉错误通知。一种失败一条文案。"""
+"""常读调用失败的钉钉通知。"""
 
 from __future__ import annotations
 
-from app.notify.dingtalk import DingTalkWebhook
+from contextlib import suppress
+
+import httpx
+
+from app.notify.dingtalk import DingTalkWebhook, NotifySendError
 
 
 class ChangduNotify:
-    """常读列表失败时按错误类型推钉钉。"""
+    """常读调用失败时推钉钉。钉钉没发出去也不抛，不能盖住原来的常读错误。"""
 
     def __init__(self, webhook: DingTalkWebhook) -> None:
         """绑定一条钉钉通道。"""
         self._webhook = webhook
 
-    async def http_failed(self, status_code: int) -> str:
-        """通知常读列表 HTTP 状态不是 200。"""
-        return await self._webhook.push(f"常读短剧列表 HTTP 失败：{status_code}")
+    async def _push(self, content: str) -> None:
+        """推一条，钉钉失败吞掉。"""
+        with suppress(NotifySendError, httpx.HTTPError):
+            await self._webhook.push(content)
 
-    async def not_json(self, status_code: int) -> str:
-        """通知常读返回体不是 JSON。"""
-        return await self._webhook.push(f"常读返回不是 JSON：HTTP {status_code}")
+    async def sync_failed(self, message: str) -> None:
+        """通知常读短剧列表拉取失败。"""
+        await self._push(f"常读短剧列表拉取失败：{message}")
 
-    async def not_object(self, status_code: int) -> str:
-        """通知常读 JSON 不是对象。"""
-        return await self._webhook.push(f"常读返回不是对象：HTTP {status_code}")
-
-    async def business_code(self, code: object, message: object) -> str:
-        """通知常读业务 code 不是 200。"""
-        return await self._webhook.push(f"常读短剧列表失败：code={code} {message}")
-
-    async def data_not_list(self) -> str:
-        """通知常读 data 不是数组。"""
-        return await self._webhook.push("常读短剧列表 data 不是数组")
+    async def promotion_failed(self, book_name: str, book_id: int, message: str) -> None:
+        """通知一部剧的推广链重试用完仍拉取失败。"""
+        await self._push(f"常读推广链拉取失败：{book_name}（book_id={book_id}）{message}")

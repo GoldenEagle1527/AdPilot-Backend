@@ -3,8 +3,14 @@
 from __future__ import annotations
 
 import unittest
+from datetime import datetime
 
-from app.modules.material.service import collapse_by_playlet_book, fields_from_item, tab_text_from_price
+from app.core.times import BEIJING
+from app.modules.material.service import (
+    collapse_by_playlet_book,
+    fields_from_item,
+    tab_text_from_price,
+)
 
 
 class TabTextTests(unittest.TestCase):
@@ -37,3 +43,10 @@ class CollapseTests(unittest.TestCase):
         )
         self.assertEqual(fields["category_text"], "玄幻脑洞,逆袭")
         self.assertEqual(fields["tab_text"], "IAA")
+
+    def test_estimate_publish_time_parses_to_beijing_or_none(self) -> None:
+        """预估可投时间收成北京时间；常读没给为空。"""
+        fields = fields_from_item({"estimate_publish_time": "2026-09-22 09:43:00"})
+        self.assertEqual(fields["estimate_publish_time"], datetime(2026, 9, 22, 9, 43, tzinfo=BEIJING))
+        self.assertIsNone(fields_from_item({"estimate_publish_time": ""})["estimate_publish_time"])
+        self.assertIsNone(fields_from_item({})["estimate_publish_time"])

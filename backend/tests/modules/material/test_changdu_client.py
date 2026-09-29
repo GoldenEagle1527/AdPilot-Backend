@@ -1,4 +1,4 @@
-"""常读列表签名与请求头。"""
+"""常读客户端签名、请求头、翻页和统一报错；常读失败的钉钉通知。"""
 
 from __future__ import annotations
 
@@ -8,17 +8,28 @@ import unittest
 
 import httpx
 
+from app.clients.changdu import ChangduClient, ChangduError
 from app.core.config import ChangduSettings
-from app.modules.material.service import ChangduClient, ChangduError
 from app.notify.changdu import ChangduNotify
 from app.notify.dingtalk import DingTalkWebhook
 
 _SETTINGS = ChangduSettings(
     base_url="https://openapi.changdupingtai.com/novelsale/openapi/content/aweme_series/list/v1/",
+    promotion_list_url="https://openapi.changdupingtai.com/novelsale/openapi/promotion/list/v2/",
     distributor_id=1,
     secret_key="k",
     sync_interval_seconds=1800,
 )
+
+
+def call(handler, method: str, **kwargs):
+    """用假常读跑一次客户端方法。"""
+
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+            return await getattr(ChangduClient(_SETTINGS, http), method)(ts=100, **kwargs)
+
+    return asyncio.run(run())
 
 
 class ChangduSignTests(unittest.TestCase):
@@ -42,81 +53,95 @@ class ChangduListTests(unittest.TestCase):
 
         def handler(request: httpx.Request) -> httpx.Response:
             self.assertEqual(request.url.path, "/novelsale/openapi/content/aweme_series/list/v1/")
-            self.assertEqual(request.url.params["distributor_id"], "1")
-            self.assertEqual(request.url.params["page_index"], "0")
-            self.assertEqual(request.url.params["page_size"], "20")
+            self.assertEqual(dict(request.url.params), {"distributor_id": "1", "page_index": "0", "page_size": "20"})
             self.assertEqual(request.headers["header-ts"], "100")
             expected = ChangduClient(_SETTINGS).sign(100, {"distributor_id": 1, "page_index": 0, "page_size": 20})
             self.assertEqual(request.headers["header-sign"], expected)
             return httpx.Response(200, json={"code": 200, "message": "OPENAPI_OK", "total": 2, "data": [{"book_id": 1}]})
 
+        page = call(handler, "list_aweme_series")
+        self.assertEqual(page.total, 2)
+        self.assertEqual(page.data, [{"book_id": 1}])
+
+    def test_failures_raise_changdu_error(self) -> None:
+        """HTTP 不是 200、不是 JSON、业务码不是 200 都抛常读错误；业务失败正文是常读 message。"""
+        cases = [
+            (httpx.Response(502, text="bad gateway"), "常读 HTTP 失败：502"),
+            (httpx.Response(200, text="oops"), "常读返回不是 JSON：HTTP 200"),
+            (httpx.Response(200, json={"code": 400, "message": "bad"}), "bad"),
+        ]
+        for response, message in cases:
+            with self.subTest(message=message), self.assertRaises(ChangduError) as caught:
+                call(lambda request, r=response: r, "list_aweme_series")
+            self.assertEqual(str(caught.exception), message)
+
+
+class ChangduPromotionTests(unittest.TestCase):
+    def test_pages_until_no_more_with_signed_params(self) -> None:
+        """推广链带签名按 offset 翻页，has_more 为假就停，结果拼在一起。"""
+        seen: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            params = dict(request.url.params)
+            seen.append(params["offset"])
+            self.assertEqual(request.url.path, "/novelsale/openapi/promotion/list/v2/")
+            self.assertEqual(params["book_id"], "8")
+            expected = ChangduClient(_SETTINGS).sign(
+                100, {"book_id": "8", "distributor_id": 1, "limit": 100, "offset": int(params["offset"])}
+            )
+            self.assertEqual(request.headers["header-sign"], expected)
+            if params["offset"] == "0":
+                return httpx.Response(200, json={"code": 200, "has_more": True, "next_offset": 100, "result": [{"a": 1}]})
+            return httpx.Response(200, json={"code": 200, "has_more": False, "result": [{"a": 2}]})
+
+        self.assertEqual(call(handler, "list_promotions", book_id=8), [{"a": 1}, {"a": 2}])
+        self.assertEqual(seen, ["0", "100"])
+
+    def test_empty_page_stops_even_if_has_more(self) -> None:
+        """常读 has_more 一直为真但本页为空时停下，不死循环。"""
+        calls: list[int] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls.append(1)
+            return httpx.Response(200, json={"code": 200, "has_more": True, "next_offset": 100, "result": []})
+
+        self.assertEqual(call(handler, "list_promotions", book_id=8), [])
+        self.assertEqual(len(calls), 1)
+
+
+class ChangduNotifyTests(unittest.TestCase):
+    def _notify(self, handler) -> None:
+        """用假钉钉推一条短剧列表拉取失败。"""
+
         async def run() -> None:
-            transport = httpx.MockTransport(handler)
-            async with httpx.AsyncClient(transport=transport) as http:
-                page = await ChangduClient(_SETTINGS, http).list_aweme_series(ts=100)
-            self.assertEqual(page.total, 2)
-            self.assertEqual(page.data, [{"book_id": 1}])
+            async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as ding:
+                webhook = DingTalkWebhook("https://oapi.dingtalk.com/robot/send?access_token=t", ding)
+                await ChangduNotify(webhook).sync_failed("常读 HTTP 失败：502")
 
         asyncio.run(run())
 
-    def test_http_error_pushes_dingtalk(self) -> None:
-        """HTTP 失败时把同一段错误推到钉钉，并仍抛出常读错误。"""
+    def test_pushes_with_keyword(self) -> None:
+        """通知带全局关键词和常读错误。"""
         sent: dict[str, object] = {}
 
-        def changdu_handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(502, text="bad gateway")
-
-        def ding_handler(request: httpx.Request) -> httpx.Response:
-            sent["body"] = json.loads(request.content.decode())
+        def handler(request: httpx.Request) -> httpx.Response:
+            sent.update(json.loads(request.content.decode()))
             return httpx.Response(200, json={"errcode": 0, "errmsg": "ok"})
 
-        async def run() -> None:
-            changdu_transport = httpx.MockTransport(changdu_handler)
-            ding_transport = httpx.MockTransport(ding_handler)
-            async with httpx.AsyncClient(transport=changdu_transport) as http:
-                async with httpx.AsyncClient(transport=ding_transport) as ding:
-                    client = ChangduClient(
-                        _SETTINGS,
-                        http,
-                        notify=ChangduNotify(
-                            DingTalkWebhook("https://oapi.dingtalk.com/robot/send?access_token=t", ding)
-                        ),
-                    )
-                    with self.assertRaises(ChangduError) as caught:
-                        await client.list_aweme_series(ts=100)
-            self.assertIn("HTTP 失败：502", str(caught.exception))
+        self._notify(handler)
+        content = sent["text"]["content"]  # type: ignore[index]
+        self.assertTrue(content.startswith("AdPilot "))
+        self.assertIn("常读短剧列表拉取失败：常读 HTTP 失败：502", content)
 
-        asyncio.run(run())
-        body = sent["body"]
-        assert isinstance(body, dict)
-        self.assertEqual(body["msgtype"], "text")
-        self.assertTrue(body["text"]["content"].startswith("AdPilot "))
-        self.assertIn("HTTP 失败：502", body["text"]["content"])
+    def test_dingtalk_failure_is_swallowed(self) -> None:
+        """钉钉报错或连不上都不抛，不盖住原来的常读错误。"""
+        self._notify(lambda request: httpx.Response(200, json={"errcode": 310000, "errmsg": "keyword"}))
 
-    def test_http_status_failure(self) -> None:
-        """HTTP 不是 200 时直接失败。"""
+        def unreachable(request: httpx.Request) -> httpx.Response:
+            raise httpx.ConnectError("down")
 
-        def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(500, json={"code": 200, "message": "ok", "total": 0, "data": []})
+        self._notify(unreachable)
 
-        async def run() -> None:
-            transport = httpx.MockTransport(handler)
-            async with httpx.AsyncClient(transport=transport) as http:
-                with self.assertRaises(ChangduError):
-                    await ChangduClient(_SETTINGS, http).list_aweme_series(ts=100)
 
-        asyncio.run(run())
-
-    def test_business_code_failure(self) -> None:
-        """业务码不是 200 时抛出常读错误。"""
-
-        def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json={"code": 400, "message": "bad", "total": 0, "data": []})
-
-        async def run() -> None:
-            transport = httpx.MockTransport(handler)
-            async with httpx.AsyncClient(transport=transport) as http:
-                with self.assertRaises(ChangduError):
-                    await ChangduClient(_SETTINGS, http).list_aweme_series(ts=100)
-
-        asyncio.run(run())
+if __name__ == "__main__":
+    unittest.main()

@@ -21,7 +21,10 @@ class MaterialTitle(BaseModel):
     """素材标题落库行。上传时间用公共列 created_date，删除走公共软删列。"""
 
     __tablename__ = "material_titles"
-    __table_args__ = (Index("ix_material_titles_category_uploader", "category", "uploader_id"),)
+    __table_args__ = (
+        Index("ix_material_titles_category_uploader", "category", "uploader_id"),
+        {"comment": "素材标题。分付费标题和通用标题。"},
+    )
 
     title: Mapped[str] = mapped_column(String(512), nullable=False, comment="标题名称")
     category: Mapped[str] = mapped_column(
