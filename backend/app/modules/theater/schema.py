@@ -193,7 +193,7 @@ class PromotionLinkItem(BaseModel):
 
 
 class PromotionLinkCreate(BaseModel):
-    """人工新增：选一部短剧，五个档位各填 URL，空档不建行，至少一条。"""
+    """人工新增：选短剧，五个档位各填 URL；剧场按档位 IAA/IAP 自动挂应用，空档不建行，至少一条。"""
 
     model_config = ConfigDict(extra="forbid")
 

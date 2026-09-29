@@ -136,7 +136,7 @@ async def get_promotion_links(
     summary="人工新增端原生推广链",
 )
 async def post_promotion_links(body: PromotionLinkCreate, session: SessionDep) -> dict[str, Any]:
-    """选一部短剧，按 IAA/中额/小额/超小额/超超小额填 URL，每个非空档位落一行。"""
+    """选短剧，按 IAA/中额/小额/超小额/超超小额填 URL；剧场按 IAA/IAP 自动挂应用。"""
     return success(await create_promotion_links(session, body))
 
 

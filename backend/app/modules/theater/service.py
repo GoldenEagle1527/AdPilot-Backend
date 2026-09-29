@@ -12,12 +12,13 @@ from app.core.envelope import ApiError
 from app.core.pagination import PageParams, page_data
 from app.core.times import BEIJING, beijing_iso, beijing_now
 from app.modules.material.model import ManhuaSeries
-from app.modules.theater.changdu import MEDIA_CONFIG_TYPES
+from app.modules.theater.changdu import DELIVERY_MODE_BY_MEDIA, MEDIA_CONFIG_TYPES
 from app.modules.theater.crud import (
     app_name_taken,
     close_open_tasks_for_series,
     existing_promotion_templates,
     existing_promotion_urls,
+    first_app_by_delivery_mode,
     get_app,
     get_platform,
     get_promotion_link,
@@ -292,15 +293,19 @@ async def list_promotion_links(session: AsyncSession, query: PromotionLinkQuery)
 
 
 async def create_promotion_links(session: AsyncSession, body: PromotionLinkCreate) -> dict[str, Any]:
-    """按档位批量人工新增。锁短剧行；同步处理中拒绝；同剧同 URL / 同档位已有则跳过。
+    """按档位批量人工新增。剧场按 IAA/IAP 各取第一条有效应用；锁短剧；同步中拒绝；同剧同 URL/档位跳过。
 
-    写成功后关掉同剧 pending/queued 任务，避免定时稍后又落一遍。剧场先空着，可事后编辑补。
+    写成功后关掉同剧 pending/queued 任务，避免定时稍后又落一遍。
     """
     series = await get_series_for_update(session, body.series_id)
     if series is None:
         raise ApiError(404, "短剧不存在")
     if await series_has_running_task(session, series.id):
         raise ApiError(409, "该短剧正在同步推广链，请稍后再试")
+    apps = {
+        DeliveryMode.IAA: await first_app_by_delivery_mode(session, DeliveryMode.IAA),
+        DeliveryMode.IAP: await first_app_by_delivery_mode(session, DeliveryMode.IAP),
+    }
     seen_urls = await existing_promotion_urls(session, series.id)
     seen_templates = await existing_promotion_templates(session, series.id)
     now = beijing_now()
@@ -311,8 +316,10 @@ async def create_promotion_links(session: AsyncSession, body: PromotionLinkCreat
             continue
         seen_urls.add(url)
         seen_templates.add(template)
+        app = apps[mode]
         rows.append(
             TheaterPromotionLink(
+                theater_app_id=app.id if app else None,
                 series_id=series.id,
                 source=PromotionLinkSource.MANUAL,
                 promotion_url=url,
@@ -330,7 +337,17 @@ async def create_promotion_links(session: AsyncSession, body: PromotionLinkCreat
     await session.commit()
     for row in rows:
         await session.refresh(row)
-    return {"items": [promotion_link_item(row, series.book_name, None) for row in rows]}
+    app_names = {mode: (app.name if app else None) for mode, app in apps.items()}
+    return {
+        "items": [
+            promotion_link_item(
+                row,
+                series.book_name,
+                app_names.get(mode) if (mode := DELIVERY_MODE_BY_MEDIA.get(row.media_config_type)) else None,
+            )
+            for row in rows
+        ]
+    }
 
 
 async def update_promotion_link(session: AsyncSession, link_id: int, body: PromotionLinkUpdate) -> dict[str, Any]:

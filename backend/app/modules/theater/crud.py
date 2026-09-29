@@ -11,7 +11,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.material.model import ManhuaSeries
 from app.modules.system_admin.domain.models import User
+from app.modules.theater.changdu import DELIVERY_MODE_BY_MEDIA
 from app.modules.theater.model import (
+    DeliveryMode,
     PromotionTaskStatus,
     TheaterApp,
     TheaterPlatform,
@@ -24,6 +26,21 @@ async def get_series_for_update(session: AsyncSession, series_id: int) -> Manhua
     """锁住一条未删除短剧，给人工新增和定时落链串行用。"""
     result = await session.execute(
         select(ManhuaSeries).where(ManhuaSeries.id == series_id, ManhuaSeries.is_deleted == 0).with_for_update()
+    )
+    return result.scalar_one_or_none()
+
+
+async def first_app_by_delivery_mode(session: AsyncSession, delivery_mode: str) -> TheaterApp | None:
+    """按投放模式取一条有效未删应用；业务上 IAA/IAP 各一条，多条时取 id 最小的。"""
+    result = await session.execute(
+        select(TheaterApp)
+        .where(
+            TheaterApp.delivery_mode == delivery_mode,
+            TheaterApp.is_deleted == 0,
+            TheaterApp.is_valid.is_(True),
+        )
+        .order_by(TheaterApp.id)
+        .limit(1)
     )
     return result.scalar_one_or_none()
 
@@ -279,7 +296,7 @@ async def get_task_with_series(
 async def insert_missing_links(session: AsyncSession, links: Iterable[dict[str, Any]]) -> int:
     """插入常读拉到的推广链。按 promotion_id、同剧同 URL、同剧同档位去重，不覆盖已有行（含人工）。
 
-    先锁相关短剧行，与人工新增串行，避免调常读回来落库时和人工各插一条。
+    先锁相关短剧行，与人工新增串行。剧场按 media_config_type→IAA/IAP 取第一条有效应用。
     """
     items = list(links)
     if not items:
@@ -311,6 +328,11 @@ async def insert_missing_links(session: AsyncSession, links: Iterable[dict[str, 
         if template:
             seen_templates.add((sid, template))
 
+    app_ids: dict[str, int | None] = {}
+    for mode in (DeliveryMode.IAA, DeliveryMode.IAP):
+        app = await first_app_by_delivery_mode(session, mode)
+        app_ids[mode] = app.id if app else None
+
     fresh: list[dict[str, Any]] = []
     for promotion_id, link in incoming.items():
         sid = int(link["series_id"])
@@ -322,6 +344,8 @@ async def insert_missing_links(session: AsyncSession, links: Iterable[dict[str, 
             continue
         if template and (sid, template) in seen_templates:
             continue
+        mode = DELIVERY_MODE_BY_MEDIA.get(int(link.get("media_config_type") or 0))
+        link = {**link, "theater_app_id": app_ids.get(mode) if mode else None}
         fresh.append(link)
         seen_ids.add(promotion_id)
         seen_urls.add((sid, url))

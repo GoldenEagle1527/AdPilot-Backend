@@ -1,7 +1,7 @@
 # 契约：create-promotion-links
 
 业务id：theater
-文档版本：1
+文档版本：3
 方法：POST
 路径：/api/v1/theater/promotion-links
 作用：投手人工新增端原生推广链。系统调接口没拿到链时，从常读后台复制 URL，按档位一次可填最多五条；每个非空档位落一行。对应「三方剧场/端原生推广链」新增弹窗。
@@ -21,7 +21,7 @@
 | extra_small | body | string | 否 | 超小额推广链，同上 |
 | ultra_small | body | string | 否 | 超超小额推广链，同上 |
 
-五个档位至少填一个非空 URL。空白串按未填处理。多传字段返回 422。需 `Authorization: Bearer`。接口层不校验菜单节点，登录即可调。
+五个档位至少填一个非空 URL。空白串按未填处理。多传字段（含 `theater_app_id`）返回 422。需 `Authorization: Bearer`。接口层不校验菜单节点，登录即可调。
 
 落库约定（调用方不传）：
 
@@ -30,12 +30,14 @@
 | source | `manual` |
 | promotion_id | null |
 | task_id | null |
-| theater_app_id | null（可事后编辑补上） |
+| theater_app_id | 按档位自动挂：`IAA`→应用表 `delivery_mode=IAA` 第一条有效应用；其余档位→`IAP` 第一条。对应不上为空 |
 | is_enabled | `true` |
 | recharge_template_name | 对应档位名：`IAA` / `中额` / `小额` / `超小额` / `超超小额` |
 | media_config_type | IAA 为 `3`，其余档为 `2` |
 | publish_time | 短剧 `estimate_publish_time`，没有则为 null |
 | promotion_create_time | 本次写入时的北京时间 |
+
+「第一条」：未删除且有效，按 `id` 升序。业务上 IAA/IAP 各一条；若有多条取 id 最小。
 
 示例：
 
@@ -90,4 +92,6 @@ PromotionLinkItem 字段同 [list-promotion-links.md](list-promotion-links.md)�
 
 | 日期 | 文档版本 | 破坏？ | 变更 | 作者 |
 | --- | --- | --- | --- | --- |
+| 2026-09-29 | 3 | 是 | 去掉入参 `theater_app_id`，按档位 IAA/IAP 自动挂应用 | |
+| 2026-09-29 | 2 | 是 | 入参必填 `theater_app_id` | |
 | 2026-09-29 | 1 | 否 | 初稿 | |
