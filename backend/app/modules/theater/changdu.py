@@ -9,6 +9,7 @@ from app.modules.theater.model import DeliveryMode
 
 # 剧库 tab_text 对常读 media_config.media_config_type：2 付费短剧、3 免费短剧
 MEDIA_CONFIG_TYPES = {DeliveryMode.IAP: 2, DeliveryMode.IAA: 3}
+DELIVERY_MODE_BY_MEDIA = {2: DeliveryMode.IAP, 3: DeliveryMode.IAA}
 
 
 def matches_tab(item: dict[str, Any], tab_text: str) -> bool:

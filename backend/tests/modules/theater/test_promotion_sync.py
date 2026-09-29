@@ -169,12 +169,17 @@ class MappingTests(unittest.TestCase):
 
 
 class InsertMissingLinksTests(unittest.TestCase):
-    def test_locks_series_and_skips_id_url_or_template(self) -> None:
-        """落链前锁短剧；已有 promotion_id、同剧同 URL、同剧同档位都跳过。"""
+    def test_locks_series_skips_dupes_and_binds_app_by_mode(self) -> None:
+        """落链前锁短剧；已有 id/URL/档位跳过；按 media_config_type 挂 IAA/IAP 应用。"""
         from app.modules.theater.crud import insert_missing_links
+        from app.modules.theater.model import TheaterApp
 
         session = MagicMock()
         calls: list[Any] = []
+        iaa = TheaterApp(name="免费", delivery_mode="IAA")
+        iaa.id = 11
+        iap = TheaterApp(name="付费", delivery_mode="IAP")
+        iap.id = 22
 
         async def execute(statement: Any) -> Any:
             calls.append(statement)
@@ -185,7 +190,6 @@ class InsertMissingLinksTests(unittest.TestCase):
             if "promotion_id" in sql and "IN" in sql.upper():
                 result.scalars.return_value.all.return_value = [1]
                 return result
-            # 已有：id=1 的链；URL https://x/2；档位 超小额（拦住 id=4）
             result.all.return_value = [
                 (8, "https://x/1", "IAA"),
                 (8, "https://x/2", "中额"),
@@ -196,18 +200,22 @@ class InsertMissingLinksTests(unittest.TestCase):
         session.execute = execute
         session.add_all = MagicMock()
         links = [
-            {"promotion_id": 1, "series_id": 8, "promotion_url": "https://x/1", "recharge_template_name": "IAA"},
-            {"promotion_id": 2, "series_id": 8, "promotion_url": "https://x/2", "recharge_template_name": "中额"},
-            {"promotion_id": 3, "series_id": 8, "promotion_url": "https://x/3", "recharge_template_name": "小额"},
-            {"promotion_id": 4, "series_id": 8, "promotion_url": "https://x/4", "recharge_template_name": "超小额"},
+            {"promotion_id": 1, "series_id": 8, "promotion_url": "https://x/1", "recharge_template_name": "IAA", "media_config_type": 3},
+            {"promotion_id": 2, "series_id": 8, "promotion_url": "https://x/2", "recharge_template_name": "中额", "media_config_type": 2},
+            {"promotion_id": 3, "series_id": 8, "promotion_url": "https://x/3", "recharge_template_name": "小额", "media_config_type": 2},
+            {"promotion_id": 4, "series_id": 8, "promotion_url": "https://x/4", "recharge_template_name": "超小额", "media_config_type": 2},
         ]
-        added = asyncio.run(insert_missing_links(session, links))
+        with patch(
+            "app.modules.theater.crud.first_app_by_delivery_mode",
+            new=AsyncMock(side_effect=lambda _s, mode: iaa if mode == "IAA" else iap),
+        ):
+            added = asyncio.run(insert_missing_links(session, links))
         lock_sql = str(calls[0].compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
         self.assertIn("FOR UPDATE", lock_sql)
         self.assertEqual(added, 1)
         fresh = list(session.add_all.call_args.args[0])
         self.assertEqual(len(fresh), 1)
-        self.assertEqual(fresh[0].promotion_id, 3)
+        self.assertEqual((fresh[0].promotion_id, fresh[0].theater_app_id), (3, 22))
 
 
 if __name__ == "__main__":
