@@ -192,6 +192,45 @@ class PromotionLinkItem(BaseModel):
     promotion_create_time: str | None
 
 
+class PromotionLinkCreate(BaseModel):
+    """人工新增：选一部短剧，五个档位各填 URL，空档不建行，至少一条。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    series_id: int = Field(description="剧名，漫剧流转剧库主键")
+    iaa: str | None = Field(None, description="IAA 推广链")
+    medium: str | None = Field(None, description="中额推广链")
+    small: str | None = Field(None, description="小额推广链")
+    extra_small: str | None = Field(None, description="超小额推广链")
+    ultra_small: str | None = Field(None, description="超超小额推广链")
+
+    @model_validator(mode="after")
+    def filled_urls(self) -> PromotionLinkCreate:
+        """空白当未填；非空须 1–2048 字；至少一个档位有 URL。"""
+        has_url = False
+        for field in ("iaa", "medium", "small", "extra_small", "ultra_small"):
+            raw = getattr(self, field)
+            if raw is None:
+                continue
+            url = raw.strip()
+            if not url:
+                setattr(self, field, None)
+                continue
+            if len(url) > 2048:
+                raise ValueError(f"{field} 最长 2048 字")
+            setattr(self, field, url)
+            has_url = True
+        if not has_url:
+            raise ValueError("至少填写一条推广链")
+        return self
+
+
+class PromotionLinkCreateResult(BaseModel):
+    """人工新增出参：本次新建的行。"""
+
+    items: list[PromotionLinkItem]
+
+
 class PromotionLinkUpdate(BaseModel):
     """编辑推广链：剧名不可改，其它都可改。只改传了的字段，至少传一个；剧场传 null 为清空。"""
 

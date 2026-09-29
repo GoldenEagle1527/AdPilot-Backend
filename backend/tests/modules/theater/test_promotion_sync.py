@@ -168,5 +168,47 @@ class MappingTests(unittest.TestCase):
         self.assertTrue(matches_tab(promotion(1, 3), "IAA"))
 
 
+class InsertMissingLinksTests(unittest.TestCase):
+    def test_locks_series_and_skips_id_url_or_template(self) -> None:
+        """落链前锁短剧；已有 promotion_id、同剧同 URL、同剧同档位都跳过。"""
+        from app.modules.theater.crud import insert_missing_links
+
+        session = MagicMock()
+        calls: list[Any] = []
+
+        async def execute(statement: Any) -> Any:
+            calls.append(statement)
+            result = MagicMock()
+            sql = str(statement.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
+            if "FOR UPDATE" in sql:
+                return result
+            if "promotion_id" in sql and "IN" in sql.upper():
+                result.scalars.return_value.all.return_value = [1]
+                return result
+            # 已有：id=1 的链；URL https://x/2；档位 超小额（拦住 id=4）
+            result.all.return_value = [
+                (8, "https://x/1", "IAA"),
+                (8, "https://x/2", "中额"),
+                (8, "https://old", "超小额"),
+            ]
+            return result
+
+        session.execute = execute
+        session.add_all = MagicMock()
+        links = [
+            {"promotion_id": 1, "series_id": 8, "promotion_url": "https://x/1", "recharge_template_name": "IAA"},
+            {"promotion_id": 2, "series_id": 8, "promotion_url": "https://x/2", "recharge_template_name": "中额"},
+            {"promotion_id": 3, "series_id": 8, "promotion_url": "https://x/3", "recharge_template_name": "小额"},
+            {"promotion_id": 4, "series_id": 8, "promotion_url": "https://x/4", "recharge_template_name": "超小额"},
+        ]
+        added = asyncio.run(insert_missing_links(session, links))
+        lock_sql = str(calls[0].compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
+        self.assertIn("FOR UPDATE", lock_sql)
+        self.assertEqual(added, 1)
+        fresh = list(session.add_all.call_args.args[0])
+        self.assertEqual(len(fresh), 1)
+        self.assertEqual(fresh[0].promotion_id, 3)
+
+
 if __name__ == "__main__":
     unittest.main()

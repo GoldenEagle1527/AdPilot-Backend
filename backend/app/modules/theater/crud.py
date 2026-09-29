@@ -20,6 +20,67 @@ from app.modules.theater.model import (
 )
 
 
+async def get_series_for_update(session: AsyncSession, series_id: int) -> ManhuaSeries | None:
+    """锁住一条未删除短剧，给人工新增和定时落链串行用。"""
+    result = await session.execute(
+        select(ManhuaSeries).where(ManhuaSeries.id == series_id, ManhuaSeries.is_deleted == 0).with_for_update()
+    )
+    return result.scalar_one_or_none()
+
+
+async def existing_promotion_urls(session: AsyncSession, series_id: int) -> set[str]:
+    """某部短剧已有的推广链 URL（未删除）。"""
+    result = await session.execute(
+        select(TheaterPromotionLink.promotion_url).where(
+            TheaterPromotionLink.series_id == series_id,
+            TheaterPromotionLink.is_deleted == 0,
+        )
+    )
+    return set(result.scalars().all())
+
+
+async def existing_promotion_templates(session: AsyncSession, series_id: int) -> set[str]:
+    """某部短剧已有的出价面板档位（未删除）。同剧同档位只留一条，人工和定时互斥。"""
+    result = await session.execute(
+        select(TheaterPromotionLink.recharge_template_name).where(
+            TheaterPromotionLink.series_id == series_id,
+            TheaterPromotionLink.is_deleted == 0,
+            TheaterPromotionLink.recharge_template_name != "",
+        )
+    )
+    return set(result.scalars().all())
+
+
+async def series_has_running_task(session: AsyncSession, series_id: int) -> bool:
+    """这部短剧是否有爬虫处理中的同步任务（调常读期间不持锁，人工这时写入会和落库撞上）。"""
+    result = await session.execute(
+        select(TheaterPromotionTask.id)
+        .where(
+            TheaterPromotionTask.series_id == series_id,
+            TheaterPromotionTask.is_deleted == 0,
+            TheaterPromotionTask.status == PromotionTaskStatus.RUNNING,
+        )
+        .limit(1)
+    )
+    return result.scalar_one_or_none() is not None
+
+
+async def close_open_tasks_for_series(session: AsyncSession, series_id: int, *, reason: str, finished_at: datetime) -> None:
+    """人工补链后，关掉同剧还没跑完的初始/排队任务，避免稍后定时再插一遍。处理中的不关，入口应先拦。"""
+    await session.execute(
+        update(TheaterPromotionTask)
+        .where(
+            TheaterPromotionTask.series_id == series_id,
+            TheaterPromotionTask.is_deleted == 0,
+            TheaterPromotionTask.status.in_(
+                (PromotionTaskStatus.PENDING, PromotionTaskStatus.QUEUED)
+            ),
+        )
+        .values(status=PromotionTaskStatus.FAILED, reason=reason, finished_at=finished_at)
+        .execution_options(synchronize_session=False)
+    )
+
+
 async def page_platforms(
     session: AsyncSession,
     filters: list[ColumnElement[bool]],
@@ -216,14 +277,55 @@ async def get_task_with_series(
 
 
 async def insert_missing_links(session: AsyncSession, links: Iterable[dict[str, Any]]) -> int:
-    """按常读 promotion_id 去重插入推广链，表里已有的跳过不覆盖（保住人工编辑）。返回插入条数。"""
-    incoming = {link["promotion_id"]: link for link in links}
-    if not incoming:
+    """插入常读拉到的推广链。按 promotion_id、同剧同 URL、同剧同档位去重，不覆盖已有行（含人工）。
+
+    先锁相关短剧行，与人工新增串行，避免调常读回来落库时和人工各插一条。
+    """
+    items = list(links)
+    if not items:
         return 0
-    result = await session.execute(
+    series_ids = {int(link["series_id"]) for link in items}
+    await session.execute(select(ManhuaSeries.id).where(ManhuaSeries.id.in_(series_ids)).with_for_update())
+
+    incoming = {int(link["promotion_id"]): link for link in items}
+    by_id = await session.execute(
         select(TheaterPromotionLink.promotion_id).where(TheaterPromotionLink.promotion_id.in_(list(incoming)))
     )
-    existing = set(result.scalars().all())
-    fresh = [link for promotion_id, link in incoming.items() if promotion_id not in existing]
+    seen_ids = set(by_id.scalars().all())
+
+    occupied = await session.execute(
+        select(
+            TheaterPromotionLink.series_id,
+            TheaterPromotionLink.promotion_url,
+            TheaterPromotionLink.recharge_template_name,
+        ).where(
+            TheaterPromotionLink.is_deleted == 0,
+            TheaterPromotionLink.series_id.in_(series_ids),
+        )
+    )
+    seen_urls: set[tuple[int, str]] = set()
+    seen_templates: set[tuple[int, str]] = set()
+    for series_id, url, template in occupied.all():
+        sid = int(series_id)
+        seen_urls.add((sid, url))
+        if template:
+            seen_templates.add((sid, template))
+
+    fresh: list[dict[str, Any]] = []
+    for promotion_id, link in incoming.items():
+        sid = int(link["series_id"])
+        url = link["promotion_url"]
+        template = link.get("recharge_template_name") or ""
+        if promotion_id in seen_ids:
+            continue
+        if (sid, url) in seen_urls:
+            continue
+        if template and (sid, template) in seen_templates:
+            continue
+        fresh.append(link)
+        seen_ids.add(promotion_id)
+        seen_urls.add((sid, url))
+        if template:
+            seen_templates.add((sid, template))
     session.add_all(TheaterPromotionLink(**link) for link in fresh)
     return len(fresh)

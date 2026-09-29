@@ -19,6 +19,8 @@ from app.modules.theater.schema import (
     PlatformItem,
     PlatformQuery,
     PlatformUpdate,
+    PromotionLinkCreate,
+    PromotionLinkCreateResult,
     PromotionLinkItem,
     PromotionLinkQuery,
     PromotionLinkUpdate,
@@ -27,6 +29,7 @@ from app.modules.theater.schema import (
 )
 from app.modules.theater.service import (
     create_app,
+    create_promotion_links,
     list_apps,
     list_platforms,
     list_promotion_links,
@@ -125,6 +128,16 @@ async def get_promotion_links(
 ) -> dict[str, Any]:
     """按首发日期段、剧场、剧名、启用状态筛选推广链，按创建时间倒序。"""
     return success(await list_promotion_links(session, query))
+
+
+@router.post(
+    "/promotion-links",
+    response_model=Envelope[PromotionLinkCreateResult],
+    summary="人工新增端原生推广链",
+)
+async def post_promotion_links(body: PromotionLinkCreate, session: SessionDep) -> dict[str, Any]:
+    """选一部短剧，按 IAA/中额/小额/超小额/超超小额填 URL，每个非空档位落一行。"""
+    return success(await create_promotion_links(session, body))
 
 
 @router.patch(
