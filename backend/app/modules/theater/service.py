@@ -10,19 +10,27 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.envelope import ApiError
 from app.core.pagination import PageParams, page_data
-from app.core.times import BEIJING, beijing_iso
+from app.core.times import BEIJING, beijing_iso, beijing_now
 from app.modules.material.model import ManhuaSeries
+from app.modules.theater.changdu import MEDIA_CONFIG_TYPES
 from app.modules.theater.crud import (
     app_name_taken,
+    close_open_tasks_for_series,
+    existing_promotion_templates,
+    existing_promotion_urls,
     get_app,
     get_platform,
     get_promotion_link,
+    get_series_for_update,
     page_apps,
     page_platforms,
     page_promotion_links,
     page_promotion_tasks,
+    series_has_running_task,
 )
 from app.modules.theater.model import (
+    DeliveryMode,
+    PromotionLinkSource,
     PromotionTaskStatus,
     TheaterApp,
     TheaterPlatform,
@@ -36,9 +44,19 @@ from app.modules.theater.schema import (
     AppStatusUpdate,
     PlatformQuery,
     PlatformUpdate,
+    PromotionLinkCreate,
     PromotionLinkQuery,
     PromotionLinkUpdate,
     PromotionTaskQuery,
+)
+
+# 人工新增档位：入参字段 → 出价面板名；顺序即出参 items 顺序
+MANUAL_LINK_TIERS: tuple[tuple[str, str, DeliveryMode], ...] = (
+    ("iaa", "IAA", DeliveryMode.IAA),
+    ("medium", "中额", DeliveryMode.IAP),
+    ("small", "小额", DeliveryMode.IAP),
+    ("extra_small", "超小额", DeliveryMode.IAP),
+    ("ultra_small", "超超小额", DeliveryMode.IAP),
 )
 
 THEATER_TYPE_LABELS = {TheaterType.MINI_PROGRAM: "小程序", TheaterType.NATIVE: "端原生"}
@@ -271,6 +289,48 @@ async def list_promotion_links(session: AsyncSession, query: PromotionLinkQuery)
         session, promotion_link_filters(query), offset=params.offset, limit=params.page_size
     )
     return page_data([promotion_link_item(*row) for row in rows], total, params)
+
+
+async def create_promotion_links(session: AsyncSession, body: PromotionLinkCreate) -> dict[str, Any]:
+    """按档位批量人工新增。锁短剧行；同步处理中拒绝；同剧同 URL / 同档位已有则跳过。
+
+    写成功后关掉同剧 pending/queued 任务，避免定时稍后又落一遍。剧场先空着，可事后编辑补。
+    """
+    series = await get_series_for_update(session, body.series_id)
+    if series is None:
+        raise ApiError(404, "短剧不存在")
+    if await series_has_running_task(session, series.id):
+        raise ApiError(409, "该短剧正在同步推广链，请稍后再试")
+    seen_urls = await existing_promotion_urls(session, series.id)
+    seen_templates = await existing_promotion_templates(session, series.id)
+    now = beijing_now()
+    rows: list[TheaterPromotionLink] = []
+    for field, template, mode in MANUAL_LINK_TIERS:
+        url = getattr(body, field)
+        if not url or url in seen_urls or template in seen_templates:
+            continue
+        seen_urls.add(url)
+        seen_templates.add(template)
+        rows.append(
+            TheaterPromotionLink(
+                series_id=series.id,
+                source=PromotionLinkSource.MANUAL,
+                promotion_url=url,
+                recharge_template_name=template,
+                media_config_type=MEDIA_CONFIG_TYPES[mode],
+                publish_time=series.estimate_publish_time,
+                promotion_create_time=now,
+                is_enabled=True,
+            )
+        )
+    if not rows:
+        raise ApiError(409, "推广链已存在")
+    session.add_all(rows)
+    await close_open_tasks_for_series(session, series.id, reason="已人工新增推广链", finished_at=now)
+    await session.commit()
+    for row in rows:
+        await session.refresh(row)
+    return {"items": [promotion_link_item(row, series.book_name, None) for row in rows]}
 
 
 async def update_promotion_link(session: AsyncSession, link_id: int, body: PromotionLinkUpdate) -> dict[str, Any]:

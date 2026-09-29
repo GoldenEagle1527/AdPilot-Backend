@@ -1,9 +1,10 @@
-"""端原生推广链：列表入参与过滤、出参回填；编辑入参约束和只改传了的字段。"""
+"""端原生推广链：列表入参与过滤、出参回填；人工新增；编辑入参约束和只改传了的字段。"""
 
 from __future__ import annotations
 
 import asyncio
 import unittest
+from contextlib import ExitStack
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -12,9 +13,10 @@ from pydantic import ValidationError
 from app.core.envelope import ApiError
 from app.core.times import BEIJING
 from app.modules.material.model import ManhuaSeries
-from app.modules.theater.model import TheaterApp, TheaterPromotionLink
-from app.modules.theater.schema import PromotionLinkQuery, PromotionLinkUpdate
+from app.modules.theater.model import PromotionLinkSource, TheaterApp, TheaterPromotionLink
+from app.modules.theater.schema import PromotionLinkCreate, PromotionLinkQuery, PromotionLinkUpdate
 from app.modules.theater.service import (
+    create_promotion_links,
     list_promotion_links,
     promotion_link_filters,
     update_promotion_link,
@@ -82,6 +84,112 @@ class ListTests(unittest.TestCase):
         self.assertEqual(with_app["book_name"], "甲剧")
         self.assertEqual(with_app["publish_time"], "2026-09-20T10:00:00+08:00")
         self.assertIsNone(with_app["promotion_create_time"])
+
+
+class CreateBodyTests(unittest.TestCase):
+    def test_rules(self) -> None:
+        """至少一条非空 URL；空白当未填；超长拒绝；多传字段拒绝。"""
+        with self.assertRaises(ValidationError):
+            PromotionLinkCreate(series_id=8)
+        with self.assertRaises(ValidationError):
+            PromotionLinkCreate(series_id=8, iaa="  ", medium="")
+        with self.assertRaises(ValidationError):
+            PromotionLinkCreate(series_id=8, iaa="x" * 2049)
+        with self.assertRaises(ValidationError):
+            PromotionLinkCreate(series_id=8, iaa="https://a", book_name="甲")
+        body = PromotionLinkCreate(series_id=8, iaa="  https://a  ", medium="", small=None)
+        self.assertEqual(body.iaa, "https://a")
+        self.assertIsNone(body.medium)
+        self.assertIsNone(body.small)
+
+
+class CreateTests(unittest.TestCase):
+    def _session(self) -> MagicMock:
+        session = MagicMock()
+        session.commit = AsyncMock()
+        session.refresh = AsyncMock()
+        session.add_all = MagicMock()
+        return session
+
+    def _patches(self, series, *, urls=None, templates=None, running=False):
+        return ExitStack(), (
+            patch(f"{SERVICE}.get_series_for_update", new=AsyncMock(return_value=series)),
+            patch(f"{SERVICE}.series_has_running_task", new=AsyncMock(return_value=running)),
+            patch(f"{SERVICE}.existing_promotion_urls", new=AsyncMock(return_value=set(urls or ()))),
+            patch(f"{SERVICE}.existing_promotion_templates", new=AsyncMock(return_value=set(templates or ()))),
+            patch(f"{SERVICE}.close_open_tasks_for_series", new=AsyncMock()),
+        )
+
+    def _run_create(self, session, body, series, **kwargs):
+        stack, patches = self._patches(series, **kwargs)
+        with stack:
+            for item in patches:
+                stack.enter_context(item)
+            return asyncio.run(create_promotion_links(session, body))
+
+    def test_one_row_per_filled_tier(self) -> None:
+        """每个非空档位一行；来源 manual、IAA=3 其余=2；剧场空；首发取短剧预估时间。"""
+        series = ManhuaSeries(book_name="甲剧")
+        series.id = 8
+        series.estimate_publish_time = datetime(2026, 9, 20, 10, tzinfo=BEIJING)
+        session = self._session()
+        body = PromotionLinkCreate(
+            series_id=8,
+            iaa="https://iaa",
+            medium="https://mid",
+            ultra_small="https://ultra",
+        )
+        data = self._run_create(session, body, series)
+        rows = session.add_all.call_args.args[0]
+        self.assertEqual(len(rows), 3)
+        self.assertEqual(
+            [(r.recharge_template_name, r.promotion_url, r.media_config_type, r.source) for r in rows],
+            [
+                ("IAA", "https://iaa", 3, PromotionLinkSource.MANUAL),
+                ("中额", "https://mid", 2, PromotionLinkSource.MANUAL),
+                ("超超小额", "https://ultra", 2, PromotionLinkSource.MANUAL),
+            ],
+        )
+        self.assertTrue(all(r.theater_app_id is None and r.task_id is None and r.promotion_id is None for r in rows))
+        self.assertTrue(all(r.publish_time == series.estimate_publish_time for r in rows))
+        self.assertEqual(len(data["items"]), 3)
+        self.assertEqual(data["items"][0]["book_name"], "甲剧")
+        self.assertIsNone(data["items"][0]["theater_app_name"])
+
+    def test_skips_existing_url_or_template_and_blocks_running(self) -> None:
+        """同剧已有 URL 或档位跳过；全是已有则 409；有 running 任务则 409。"""
+        series = ManhuaSeries(book_name="甲剧")
+        series.id = 8
+        series.estimate_publish_time = None
+        session = self._session()
+        data = self._run_create(
+            session,
+            PromotionLinkCreate(series_id=8, iaa="https://iaa", medium="https://mid", small="https://s"),
+            series,
+            urls={"https://iaa"},
+            templates={"中额"},
+        )
+        rows = session.add_all.call_args.args[0]
+        self.assertEqual([(r.recharge_template_name, r.promotion_url) for r in rows], [("小额", "https://s")])
+        self.assertEqual(len(data["items"]), 1)
+
+        with self.assertRaises(ApiError) as caught:
+            self._run_create(session, PromotionLinkCreate(series_id=8, iaa="https://iaa"), series, urls={"https://iaa"})
+        self.assertEqual((caught.exception.status_code, caught.exception.message), (409, "推广链已存在"))
+
+        with self.assertRaises(ApiError) as caught:
+            self._run_create(session, PromotionLinkCreate(series_id=8, iaa="https://new"), series, running=True)
+        self.assertEqual(caught.exception.message, "该短剧正在同步推广链，请稍后再试")
+
+    def test_missing_series_is_404(self) -> None:
+        """短剧不存在或已删都是 404。"""
+        session = self._session()
+        with (
+            patch(f"{SERVICE}.get_series_for_update", new=AsyncMock(return_value=None)),
+            self.assertRaises(ApiError) as caught,
+        ):
+            asyncio.run(create_promotion_links(session, PromotionLinkCreate(series_id=9, iaa="https://a")))
+        self.assertEqual(caught.exception.message, "短剧不存在")
 
 
 class UpdateBodyTests(unittest.TestCase):
