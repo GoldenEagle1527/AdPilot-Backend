@@ -76,3 +76,36 @@ async def page_link_rules(
     )
     result = await session.execute(link_page_stmt(filters, offset=offset, limit=limit))
     return list(result.scalars().all()), total
+
+
+def get_drama_rule_stmt(rule_id: int) -> Select[tuple[UniRobotRule]]:
+    """一条未删除的按剧条件规则。按推广链接不在这里。"""
+    return select(UniRobotRule).where(
+        UniRobotRule.id == rule_id,
+        UniRobotRule.rule_kind == RuleKind.DRAMA_CONDITION,
+        UniRobotRule.is_deleted == 0,
+    )
+
+
+async def get_drama_rule(session: AsyncSession, rule_id: int) -> UniRobotRule | None:
+    """取一条未删除的按剧条件规则。"""
+    result = await session.execute(get_drama_rule_stmt(rule_id))
+    return result.scalar_one_or_none()
+
+
+def drama_page_stmt(
+    filters: list[ColumnElement[bool]], *, offset: int, limit: int
+) -> Select[tuple[UniRobotRule]]:
+    """按创建时间倒序的按剧条件分页查询。类型由 filters 限定。"""
+    return link_page_stmt(filters, offset=offset, limit=limit)
+
+
+async def page_drama_rules(
+    session: AsyncSession,
+    filters: list[ColumnElement[bool]],
+    *,
+    offset: int,
+    limit: int,
+) -> tuple[list[UniRobotRule], int]:
+    """按创建时间倒序分页。返回 (行, 总数)。"""
+    return await page_link_rules(session, filters, offset=offset, limit=limit)

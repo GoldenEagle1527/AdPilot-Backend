@@ -99,3 +99,58 @@ class DramaRuleWrite(RuleClock):
         if self.recovery_min > self.recovery_max:
             raise ValueError("回收率区间的下限不能大于上限")
         return self
+
+
+class DramaRuleQuery(BaseModel):
+    """按剧条件规则的列表。名称和开关都不传就是全部。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    page: int = Field(1, ge=1, description="页码，从 1 起")
+    page_size: int = Field(20, ge=1, le=100, description="每页条数，最大 100")
+    name: str | None = Field(None, description="规则名称，模糊，不传为全部")
+    is_enabled: bool | None = Field(None, description="开关：true 开启、false 关闭，不传为全部")
+
+
+class DramaSwitchWrite(BaseModel):
+    """只改按剧条件规则的开关。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    is_enabled: bool = Field(description="开关：true 开启、false 关闭")
+
+
+class DramaScheduleWrite(BaseModel):
+    """只改按剧条件规则每天触发的时分。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schedule_hour: int = Field(ge=0, le=23, description="每天触发的小时，0–23")
+    schedule_minute: int = Field(ge=0, le=59, description="每天触发的分钟，0–59")
+
+
+class DramaRuleItem(BaseModel):
+    """一条按剧条件规则。"""
+
+    id: str
+    name: str
+    template_id: str
+    platform_id: str
+    max_videos_per_series: int
+    schedule_hour: int
+    schedule_minute: int
+    is_enabled: bool
+    stat_span: str
+    cost_min: str
+    cost_max: str
+    recovery_min: str
+    recovery_max: str
+    created_at: str
+    updated_at: str
+
+
+class DramaDeleted(BaseModel):
+    """软删后的出参。"""
+
+    id: str
+    deleted: bool

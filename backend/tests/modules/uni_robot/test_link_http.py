@@ -131,12 +131,13 @@ class QueryShapeTests(unittest.TestCase):
 
 
 class RouteTests(unittest.TestCase):
-    def test_only_link_rule_routes_are_mounted(self) -> None:
-        """应用只挂按推广链接这一组，没有按剧条件。"""
+    def test_both_rule_groups_are_mounted(self) -> None:
+        """应用挂按推广链接和按剧条件两组。按推广链接的方法不变。"""
         from main import create_app
 
         paths = create_app().openapi()["paths"]
         found = {path: set(paths[path]) for path in paths if "/uni-robot/" in path}
+        drama = "/api/v1/uni-robot/drama-rules"
         self.assertEqual(
             found,
             {
@@ -144,9 +145,12 @@ class RouteTests(unittest.TestCase):
                 f"{PREFIX}/{{rule_id}}": {"get", "put", "delete"},
                 f"{PREFIX}/{{rule_id}}/switch": {"patch"},
                 f"{PREFIX}/{{rule_id}}/schedule": {"patch"},
+                drama: {"get", "post"},
+                f"{drama}/{{rule_id}}": {"get", "put", "delete"},
+                f"{drama}/{{rule_id}}/switch": {"patch"},
+                f"{drama}/{{rule_id}}/schedule": {"patch"},
             },
         )
-        self.assertFalse(any("drama" in path for path in paths))
 
 
 class LinkHttpTests(unittest.TestCase):
