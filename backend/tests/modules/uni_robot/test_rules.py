@@ -61,11 +61,13 @@ class FakeSession:
 
     def __init__(self, results: list[list[Any]] | None = None) -> None:
         self.results = list(results or [])
+        self.statements: list[Any] = []
         self.added: list[Any] = []
         self.commits = 0
 
-    async def execute(self, _statement: Any) -> FakeResult:
+    async def execute(self, statement: Any) -> FakeResult:
         """不看 SQL，按调用次序返回下一份预置结果。用尽后给空结果。"""
+        self.statements.append(statement)
         rows = self.results.pop(0) if self.results else []
         return FakeResult(rows)
 
@@ -132,6 +134,7 @@ class CatalogBoundaryTests(unittest.TestCase):
         """业务模块、应用入口、迁移环境都不引用假目录。"""
         roots = [
             BACKEND / "app" / "modules" / "uni_robot",
+            BACKEND / "app" / "modules" / "uni_template",
             BACKEND / "main.py",
             BACKEND / "alembic" / "env.py",
         ]

@@ -52,6 +52,7 @@ from app.modules.standard_delivery.model import (
     DeliveryAutoRule,
     DeliveryTaskDraft,
     DeliveryTemplate,
+    TemplateMode,
 )
 from app.modules.standard_delivery.schema import (
     DraftQuery,
@@ -141,9 +142,10 @@ def template_item(row: DeliveryTemplate, subject_name: str) -> dict[str, Any]:
 
 
 def template_filters(query: TemplateQuery) -> list[ColumnElement[bool]]:
-    """模板列表：未删除，收费模式精确，名称模糊，主体精确。"""
+    """标准模板列表：未删除，只要标准投放，收费模式精确，名称模糊，主体精确。"""
     filters: list[ColumnElement[bool]] = [
         DeliveryTemplate.is_deleted == 0,
+        DeliveryTemplate.delivery_mode == TemplateMode.STANDARD,
         DeliveryTemplate.charge_mode == query.charge_mode,
     ]
     name = (query.name or "").strip()
@@ -191,6 +193,7 @@ async def create_template(session: AsyncSession, body: TemplateWrite, allowed: s
         raise ApiError(409, "模板名称已存在")
     row = DeliveryTemplate(
         name=body.name,
+        delivery_mode=TemplateMode.STANDARD,
         charge_mode=body.charge_mode,
         subject_id=subject.id,
         bid_panels=list(body.bid_panels),

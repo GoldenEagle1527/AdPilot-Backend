@@ -16,7 +16,13 @@ from app.modules.account.model import AdvertiserAccount, DeliverySubject, Douyin
 from app.modules.material.model import ManhuaSeries
 from app.modules.material_title.model import MaterialTitle
 from app.modules.material_video.model import MaterialVideo
-from app.modules.standard_delivery.crud import owned_advertisers_stmt, standard_douyin_stmt, visible_videos_stmt
+from app.modules.standard_delivery.crud import (
+    owned_advertisers_stmt,
+    standard_douyin_stmt,
+    standard_template_by_id_stmt,
+    template_name_taken_stmt,
+    visible_videos_stmt,
+)
 from app.modules.standard_delivery.model import DeliveryTaskAccount, DeliveryTaskDraft, DeliveryTemplate
 from app.modules.standard_delivery.schema import DraftQuery, DraftWrite, RuleWrite, TemplateQuery, TemplateWrite
 from app.modules.standard_delivery.service import (
@@ -196,8 +202,17 @@ class FilterTests(unittest.TestCase):
         """模板按收费模式和主体精确筛选，并排除软删。"""
         sql = self._sql(template_filters(TemplateQuery(charge_mode="IAP", subject_id=7)))
         self.assertIn("delivery_template.is_deleted = 0", sql)
+        self.assertIn("delivery_template.delivery_mode = 'standard'", sql)
         self.assertIn("delivery_template.charge_mode = 'IAP'", sql)
         self.assertIn("delivery_template.subject_id = 7", sql)
+
+    def test_standard_lookup_ignores_uni_templates(self) -> None:
+        """按 id 取模板和重名检查都只看标准行，全域同名不挡。"""
+        by_id = str(standard_template_by_id_stmt(11).compile(compile_kwargs={"literal_binds": True}))
+        taken = str(template_name_taken_stmt("IAA", "免费模板", None).compile(compile_kwargs={"literal_binds": True}))
+        self.assertIn("delivery_template.delivery_mode = 'standard'", by_id)
+        self.assertIn("delivery_template.delivery_mode = 'standard'", taken)
+        self.assertNotIn("delivery_mode = 'uni'", by_id)
 
     def test_draft_filters_are_scoped_to_the_pitcher(self) -> None:
         """草稿只看当前投手，并能按短剧、预约筛选。"""
@@ -254,6 +269,12 @@ class CreateTemplateTests(unittest.TestCase):
         self.assertEqual(item["bid_panels"], ["面板A"])
         self.assertEqual(item["ads_per_account"], 2)
         self.assertEqual(session.commits, 1)
+        row = session.added[0]
+        self.assertEqual(row.delivery_mode, "standard")
+        self.assertIsNone(row.project_budget)
+        self.assertIsNone(row.roi_coefficient)
+        self.assertIsNone(row.aigc_dynamic_creative)
+        self.assertIsNone(row.title_select_mode)
 
 
 class CreateDraftTests(unittest.TestCase):

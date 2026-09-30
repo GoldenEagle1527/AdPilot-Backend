@@ -178,15 +178,18 @@ class DramaHttpTests(unittest.TestCase):
         self.assertEqual(extra.status_code, 422)
         self.assertEqual(session.added, [])
 
-    def test_create_without_catalog_does_not_insert(self) -> None:
-        """没注入目录时，新建不能确认模板，也不落库。"""
-        session = FakeSession()
+    def test_default_catalog_rejects_platform_without_a_theater_lookup(self) -> None:
+        """模板命中后平台仍然拒绝，且不再发第二条 SQL。"""
+        session = FakeSession([[FAKE_TEMPLATES[1].id]])
         client = http_client(session, None)
         res = client.post(PREFIX, json=write_body())
-        self.assertEqual(res.status_code, 503)
-        self.assertEqual(res.json()["message"], "全域目录尚未接入")
+        self.assertEqual(res.status_code, 400)
+        self.assertEqual(res.json()["message"], "剧场平台不存在")
         self.assertEqual(session.added, [])
         self.assertEqual(session.commits, 0)
+        self.assertEqual(len(session.statements), 1)
+        sql = str(session.statements[0].compile(compile_kwargs={"literal_binds": True}))
+        self.assertNotIn("theater_platforms", sql)
 
     def test_duplicate_name_is_conflict(self) -> None:
         """同类型重名是 409。"""
@@ -276,15 +279,18 @@ class DramaHttpTests(unittest.TestCase):
         self.assertEqual(catalog.platform_calls, [])
         self.assertEqual(session.commits, 0)
 
-    def test_update_without_catalog_does_not_save(self) -> None:
-        """没注入目录时，整表保存不写库。"""
+    def test_default_catalog_rejects_update_before_save(self) -> None:
+        """线上目录没有这条全域模板时，整表保存不写库。"""
         row = live_drama()
         session = FakeSession([[row]])
         client = http_client(session, None)
         res = client.put(f"{PREFIX}/7", json=write_body())
-        self.assertEqual(res.status_code, 503)
+        self.assertEqual(res.status_code, 400)
+        self.assertEqual(res.json()["message"], "全域模板不存在")
         self.assertEqual(row.name, "按剧")
         self.assertEqual(session.commits, 0)
+        sql = str(session.statements[1].compile(compile_kwargs={"literal_binds": True}))
+        self.assertIn("delivery_template.delivery_mode = 'uni'", sql)
 
     def test_update_duplicate_name_is_conflict(self) -> None:
         """改成已有名称是 409，原行不动。"""

@@ -22,6 +22,7 @@ from app.modules.standard_delivery.model import (
     DeliveryTaskTitle,
     DeliveryTaskVideo,
     DeliveryTemplate,
+    TemplateMode,
 )
 
 
@@ -83,28 +84,43 @@ async def get_subject(session: AsyncSession, subject_id: int) -> DeliverySubject
     return result.scalar_one_or_none()
 
 
-async def get_template_row(session: AsyncSession, template_id: int) -> TemplateRow | None:
-    """取未删除的模板，连带主体。"""
-    result = await session.execute(
+def standard_template_by_id_stmt(template_id: int) -> Select[tuple[DeliveryTemplate, DeliverySubject]]:
+    """一条未删除的标准模板，连带主体。全域模板不在这里。"""
+    return (
         select(DeliveryTemplate, DeliverySubject)
         .join(DeliverySubject, DeliverySubject.id == DeliveryTemplate.subject_id)
-        .where(DeliveryTemplate.id == template_id, DeliveryTemplate.is_deleted == 0)
+        .where(
+            DeliveryTemplate.id == template_id,
+            DeliveryTemplate.delivery_mode == TemplateMode.STANDARD,
+            DeliveryTemplate.is_deleted == 0,
+        )
     )
+
+
+async def get_template_row(session: AsyncSession, template_id: int) -> TemplateRow | None:
+    """取未删除的标准模板，连带主体。"""
+    result = await session.execute(standard_template_by_id_stmt(template_id))
     return result.one_or_none()
 
 
-async def template_name_taken(
-    session: AsyncSession, charge_mode: str, name: str, exclude_id: int | None
-) -> bool:
-    """同一收费模式下未删除的模板是否已有这个名字。"""
+def template_name_taken_stmt(charge_mode: str, name: str, exclude_id: int | None) -> Select[tuple[int]]:
+    """同一收费模式下，未删除的标准模板是否已有这个名字。全域同名不算。"""
     stmt = select(DeliveryTemplate.id).where(
+        DeliveryTemplate.delivery_mode == TemplateMode.STANDARD,
         DeliveryTemplate.charge_mode == charge_mode,
         DeliveryTemplate.name == name,
         DeliveryTemplate.is_deleted == 0,
     )
     if exclude_id is not None:
         stmt = stmt.where(DeliveryTemplate.id != exclude_id)
-    result = await session.execute(stmt.limit(1))
+    return stmt.limit(1)
+
+
+async def template_name_taken(
+    session: AsyncSession, charge_mode: str, name: str, exclude_id: int | None
+) -> bool:
+    """同一收费模式下未删除的标准模板是否已有这个名字。"""
+    result = await session.execute(template_name_taken_stmt(charge_mode, name, exclude_id))
     return result.scalar_one_or_none() is not None
 
 

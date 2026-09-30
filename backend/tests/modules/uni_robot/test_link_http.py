@@ -209,15 +209,19 @@ class LinkHttpTests(unittest.TestCase):
         self.assertIn("stat_span", extra.json()["message"])
         self.assertEqual(session.added, [])
 
-    def test_create_without_catalog_does_not_insert(self) -> None:
-        """没注入目录时，新建不能确认模板，也不落库。"""
+    def test_default_catalog_reads_uni_templates(self) -> None:
+        """线上目录查全域模板表。没有这条时 400，不落库，也不查剧场。"""
         session = FakeSession()
         client = http_client(session, None)
         res = client.post(PREFIX, json=write_body())
-        self.assertEqual(res.status_code, 503)
-        self.assertEqual(res.json()["message"], "全域目录尚未接入")
+        self.assertEqual(res.status_code, 400)
+        self.assertEqual(res.json()["message"], "全域模板不存在")
         self.assertEqual(session.added, [])
         self.assertEqual(session.commits, 0)
+        sql = str(session.statements[0].compile(compile_kwargs={"literal_binds": True}))
+        self.assertIn("delivery_template.delivery_mode = 'uni'", sql)
+        self.assertIn("delivery_template.is_deleted = 0", sql)
+        self.assertNotIn("theater_platforms", sql)
 
     def test_duplicate_name_is_conflict(self) -> None:
         """同类型重名是 409。"""

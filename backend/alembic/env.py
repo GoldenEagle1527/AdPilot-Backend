@@ -22,6 +22,7 @@ def load_models() -> None:
     import app.modules.account.model  # noqa: F401
     import app.modules.standard_delivery.model  # noqa: F401
     import app.modules.uni_robot.model  # noqa: F401
+    import app.modules.uni_template.model  # noqa: F401
 
 
 config = context.config

@@ -9,9 +9,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import require_token
 from app.core.db import get_session
-from app.core.envelope import ApiError, Envelope, success
+from app.core.envelope import Envelope, success
 from app.core.pagination import PageData
 from app.modules.uni_robot.port import UniRobotCatalog
+from app.modules.uni_template.catalog import DatabaseUniRobotCatalog
 from app.modules.uni_robot.schema import (
     DramaDeleted,
     DramaRuleItem,
@@ -54,9 +55,9 @@ router = APIRouter(
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
 
 
-def get_catalog() -> UniRobotCatalog:
-    """目录由调用方注入。未注入时，新建和整表保存不能确认模板和平台。"""
-    raise ApiError(503, "全域目录尚未接入")
+def get_catalog(session: SessionDep) -> UniRobotCatalog:
+    """模板查未删除的全域模板。剧场平台没有来源时拒绝。"""
+    return DatabaseUniRobotCatalog(session)
 
 
 CatalogDep = Annotated[UniRobotCatalog, Depends(get_catalog)]

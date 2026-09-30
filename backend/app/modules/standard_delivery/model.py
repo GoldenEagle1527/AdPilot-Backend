@@ -36,6 +36,41 @@ class ChargeMode(StrEnum):
     IAP = "IAP"
 
 
+class TemplateMode(StrEnum):
+    """模板属于标准投放还是全域投放。列名用 delivery_mode，和主体、抖音号一致。"""
+
+    STANDARD = "standard"
+    UNI = "uni"
+
+
+class TitleSelectMode(StrEnum):
+    """全域模板的标题选择。手动从标题库挑，或按类型自动给。"""
+
+    MANUAL = "manual"
+    AUTO = "auto"
+
+
+# 标准行不写全域列；全域行不写每账户广告条数，出价面板留空。
+_TEMPLATE_SHAPE = (
+    "("
+    "delivery_mode = 'standard' "
+    "AND project_budget IS NULL "
+    "AND roi_coefficient IS NULL "
+    "AND aigc_dynamic_creative IS NULL "
+    "AND title_select_mode IS NULL "
+    "AND ads_per_account BETWEEN 1 AND 100"
+    ") OR ("
+    "delivery_mode = 'uni' "
+    "AND project_budget IS NOT NULL AND project_budget > 0 AND project_budget <= 99999999.99 "
+    "AND roi_coefficient IS NOT NULL AND roi_coefficient >= 0 AND roi_coefficient <= 9999.999 "
+    "AND aigc_dynamic_creative IS NOT NULL "
+    "AND title_select_mode IN ('manual', 'auto') "
+    "AND ads_per_account IS NULL "
+    "AND cardinality(bid_panels) = 0"
+    ")"
+)
+
+
 class Placement(StrEnum):
     """版位。抖音必选；头条是在抖音上再加；通投智能选单独一种。"""
 
@@ -58,17 +93,20 @@ GOAL_BY_CHARGE = {
 
 
 class DeliveryTemplate(BaseModel):
-    """投放模板。名称、主体、出价面板、每账户广告条数只留在本系统。"""
+    """投放模板。标准与全域共用名称、主体、收费模式、时间和软删。
+
+    标准行写出价面板和每账户广告条数。全域行写项目预算、ROI 系数、AIGC 和标题选择。
+    标准接口只读写 delivery_mode=standard，出参不带全域列。
+    """
 
     __tablename__ = "delivery_template"
     __table_args__ = (
         CheckConstraint("charge_mode IN ('IAA', 'IAP')", name="ck_delivery_template_charge"),
-        CheckConstraint(
-            "ads_per_account BETWEEN 1 AND 100",
-            name="ck_delivery_template_ads",
-        ),
+        CheckConstraint("delivery_mode IN ('standard', 'uni')", name="ck_delivery_template_delivery_mode"),
+        CheckConstraint(_TEMPLATE_SHAPE, name="ck_delivery_template_mode_shape"),
         Index(
-            "uq_delivery_template_charge_name_alive",
+            "uq_delivery_template_mode_charge_name_alive",
+            "delivery_mode",
             "charge_mode",
             "name",
             unique=True,
@@ -79,28 +117,53 @@ class DeliveryTemplate(BaseModel):
             "charge_mode",
             postgresql_where=text("is_deleted = 0"),
         ),
-        {"comment": "漫剧标准投放模板。不存巨量创建项目的提交体。"},
+        Index(
+            "ix_delivery_template_mode_charge_alive",
+            "delivery_mode",
+            "charge_mode",
+            postgresql_where=text("is_deleted = 0"),
+        ),
+        {"comment": "投放模板。delivery_mode 区分标准与全域。标准行不写全域列。不存巨量提交体。"},
     )
 
     name: Mapped[str] = mapped_column(String(128), nullable=False, comment="模板名称")
+    delivery_mode: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        default=TemplateMode.STANDARD,
+        server_default=text("'standard'"),
+        comment="standard 标准投放、uni 全域投放",
+    )
     charge_mode: Mapped[str] = mapped_column(
-        String(8), nullable=False, comment="收费模式：IAA 免费、IAP 付费，创建后不可改"
+        String(8), nullable=False, comment="投放变现模式：IAA 免费、IAP 付费"
     )
     subject_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey("delivery_subject.id", ondelete="RESTRICT"),
         nullable=False,
-        comment="投放主体，须为标准投放且收费模式一致",
+        comment="投放主体。标准模板须为标准投放，全域模板须为全域投放，收费模式一致",
     )
     bid_panels: Mapped[list[str]] = mapped_column(
         ARRAY(String(64)),
         nullable=False,
         default=list,
         server_default=text("ARRAY[]::varchar[]"),
-        comment="出价面板，从主体的 bid_panel 里多选。免费可空",
+        comment="出价面板，从主体的 bid_panel 里多选。免费可空。全域模板为空数组",
     )
-    ads_per_account: Mapped[int] = mapped_column(
-        Integer, nullable=False, comment="每账户广告条数，1–100"
+    ads_per_account: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, comment="每账户广告条数，1–100。仅标准模板，全域为空"
+    )
+    project_budget: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 2), nullable=True, comment="项目预算，单位元。仅全域模板"
+    )
+    roi_coefficient: Mapped[Decimal | None] = mapped_column(
+        Numeric(10, 3), nullable=True, comment="ROI 系数。仅全域模板"
+    )
+    aigc_dynamic_creative: Mapped[bool | None] = mapped_column(
+        Boolean, nullable=True, comment="AIGC 动态创意。仅全域模板"
+    )
+    title_select_mode: Mapped[str | None] = mapped_column(
+        String(16), nullable=True, comment="标题选择：manual 手动、auto 自动。仅全域模板"
     )
 
 
