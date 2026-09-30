@@ -4973,6 +4973,45 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
   <div class="container">
     <!-- Header -->
     <div class="header">
+<style id="guide-jump-style">
+  .guide-jump {
+    margin: 0 0 0.35rem;
+    color: var(--text);
+    font-family: "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+    font-size: 13px;
+    line-height: 1.45;
+  }
+  .guide-jump-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.2rem 0.85rem;
+    margin: 0;
+  }
+  .guide-jump-pages {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 0.65rem;
+    margin: 0.12rem 0 0;
+    padding: 0 0 0.15rem;
+    list-style: none;
+    font-size: 12px;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+  .guide-jump-pages li { flex: none; }
+  .guide-jump a { color: inherit; text-underline-offset: 0.15em; }
+  .guide-jump [aria-current="page"] { font-weight: 700; text-decoration: none; }
+  .guide-jump .is-off { opacity: 0.38; }
+  html[data-present="true"] .guide-jump,
+  html[data-embed="true"] .guide-jump { display: none !important; }
+</style>
+<nav id="guide-jump" class="guide-jump" aria-label="导览">
+  <div class="guide-jump-row"><a href="../../index.html#startup">返回导览</a><a href="../sequence-uni-template-task-20260930-061256/uni-template-task.html">上一张</a><span class="is-off">下一张</span></div>
+  <ol class="guide-jump-pages"><li><a href="../architecture-request-entry-20260930-061256/request-entry.html">先看整栋楼</a></li><li><a href="../architecture-system-admin-20260930-061256/system-admin.html">系统管理</a></li><li><a href="../architecture-account-20260930-061256/account.html">账户</a></li><li><a href="../architecture-oceanengine-20260930-061256/oceanengine.html">巨量</a></li><li><a href="../architecture-material-20260930-061256/material.html">漫剧库</a></li><li><a href="../architecture-material-title-20260930-061256/material-title.html">标题</a></li><li><a href="../architecture-material-video-20260930-061256/material-video.html">视频素材</a></li><li><a href="../architecture-file-upload-20260930-061256/file-upload.html">文件上传</a></li><li><a href="../architecture-theater-20260930-061256/theater.html">剧场</a></li><li><a href="../architecture-standard-delivery-20260930-061256/standard-delivery.html">标准投放</a></li><li><a href="../architecture-uni-template-20260930-061256/uni-template.html">全域模板</a></li><li><a href="../architecture-uni-native-task-20260930-061256/uni-native-task.html">端原生任务</a></li><li><a href="../architecture-uni-robot-20260930-061256/uni-robot.html">机器人规则</a></li><li><a href="../architecture-uni-native-auto-run-20260930-061256/uni-native-auto-run.html">端原生执行记录</a></li><li><a href="../sequence-login-20260930-061256/login.html">登录</a></li><li><a href="../sequence-standard-draft-20260930-061256/standard-draft.html">保存一条标准投放草稿</a></li><li><a href="../sequence-uni-template-task-20260930-061256/uni-template-task.html">从全域模板到端原生任务</a></li><li><span aria-current="page">启动时的假数据和真客户端</span></li></ol>
+</nav>
+
       <div class="header-row"
            data-preset-badge-signal-flow="信号流"
            data-preset-badge-blueprint="蓝图 / 修订 01"

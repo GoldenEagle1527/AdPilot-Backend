@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>架构导览</title>
+  <style>
+    :root {
+      --bg: #f3f0e8;
+      --paper: #fffdf8;
+      --ink: #1c1915;
+      --muted: #5e584e;
+      --line: #e3dccf;
+      --link: #0e4d7a;
+      --nav-bg: rgba(255, 253, 248, 0.94);
+      --mark: #efe8d8;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+      font-size: 17px;
+      line-height: 1.7;
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: 15.5rem minmax(0, 42rem);
+      justify-content: center;
+      gap: 2.5rem;
+      align-items: start;
+      padding: 1.5rem 1.25rem 4rem;
+    }
+    .toc {
+      position: sticky;
+      top: 0;
+      max-height: 100vh;
+      overflow: auto;
+      padding: 0.75rem 0 1rem;
+      background: transparent;
+    }
+    .toc p {
+      margin: 0 0 0.4rem;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+    }
+    .toc a {
+      display: block;
+      padding: 0.22rem 0.55rem;
+      margin: 0 -0.55rem;
+      color: var(--ink);
+      text-decoration: none;
+      border-radius: 6px;
+      font-size: 14px;
+      line-height: 1.45;
+    }
+    .toc a:hover { background: var(--mark); }
+    .toc a[aria-current="true"] {
+      background: var(--mark);
+      color: var(--link);
+      font-weight: 650;
+    }
+    .toc-top {
+      margin-bottom: 0.35rem;
+      color: var(--link);
+    }
+    main { min-width: 0; }
+    h1 {
+      margin: 0 0 0.8rem;
+      font-size: 2rem;
+      line-height: 1.25;
+      font-weight: 680;
+    }
+    h2 {
+      margin: 0 0 0.7rem;
+      font-size: 1.35rem;
+      line-height: 1.35;
+      scroll-margin-top: 0.75rem;
+    }
+    section {
+      margin-top: 2.4rem;
+      padding-top: 1.4rem;
+      border-top: 1px solid var(--line);
+    }
+    p { margin: 0 0 0.85rem; }
+    ol, ul { margin: 0 0 0.85rem; padding-left: 1.35rem; }
+    li + li { margin-top: 0.35rem; }
+    a { color: var(--link); }
+    code {
+      font-family: "JetBrains Mono", "Sarasa Mono SC", "Source Code Pro", ui-monospace, monospace;
+      font-size: 0.86em;
+      background: var(--mark);
+      padding: 0.08em 0.35em;
+      border-radius: 4px;
+    }
+    .fig {
+      margin: 0 0 0.9rem;
+    }
+    .fig a {
+      display: inline-block;
+      padding: 0.28rem 0.7rem;
+      border: 1px solid #c9d7e4;
+      border-radius: 999px;
+      background: #f4f8fb;
+      text-decoration: none;
+      font-weight: 600;
+    }
+    .fig a:hover { background: #e7f1f8; }
+    .totop {
+      position: fixed;
+      right: 1rem;
+      bottom: 1rem;
+      z-index: 5;
+      padding: 0.4rem 0.75rem;
+      border-radius: 999px;
+      background: var(--ink);
+      color: #fffdf8;
+      text-decoration: none;
+      font-size: 13px;
+      box-shadow: 0 6px 18px rgba(28, 25, 21, 0.18);
+    }
+    .totop:hover { background: #34302a; }
+    @media (max-width: 860px) {
+      .layout {
+        grid-template-columns: 1fr;
+        gap: 0.5rem;
+        padding-top: 0;
+      }
+      .toc {
+        position: sticky;
+        top: 0;
+        z-index: 4;
+        display: flex;
+        gap: 0.35rem;
+        max-height: none;
+        overflow-x: auto;
+        padding: 0.55rem 0;
+        background: var(--nav-bg);
+        border-bottom: 1px solid var(--line);
+      }
+      .toc p { display: none; }
+      .toc a {
+        flex: none;
+        margin: 0;
+        padding: 0.28rem 0.6rem;
+        background: var(--paper);
+        border: 1px solid var(--line);
+        white-space: nowrap;
+      }
+      h2 { scroll-margin-top: 3.4rem; }
+    }
+  </style>
+</head>
+<body>
+  <div id="top" class="layout">
+    <nav class="toc" aria-label="章节">
+      <p>跳到任意一节</p>
+      <a class="toc-top" href="#top">返回顶部</a><a href="#building">先看整栋楼</a><a href="#system-admin">系统管理</a><a href="#account">账户</a><a href="#oceanengine">巨量</a><a href="#material">漫剧库</a><a href="#title">标题</a><a href="#video">视频素材</a><a href="#upload">文件上传</a><a href="#theater">剧场</a><a href="#standard">标准投放</a><a href="#uni-template">全域模板</a><a href="#uni-task">端原生任务</a><a href="#robot">机器人规则</a><a href="#auto-run">端原生执行记录</a><a href="#login">登录</a><a href="#draft">保存一条标准投放草稿</a><a href="#template-task">从全域模板到端原生任务</a><a href="#startup">启动时的假数据和真客户端</a>
+    </nav>
+    <main>
+      <h1>架构导览</h1>
+      <p>这份说明给会读代码、但还没碰过后端的同学。先看整栋楼怎么通电，再进每个房间看它记住什么、现在还不肯做什么，最后跟三条真正会跑的业务走一遍。</p>
+      <p>图里的字是中文。代码里的英文名字原样留着，第一次出现时用一句话说明它是什么。改表结构的脚本叫迁移，本文不展开那些文件。</p>
+      <p>对应代码在分支 <code>feat/delivery/standard-draft</code>，提交 <code>6643359</code>。</p>
+      <section id="building">
+<h2>先看整栋楼</h2>
+<p class="fig"><a href=".archify/architecture-request-entry-20260930-061256/request-entry.html">请求怎么进入系统</a></p>
+<p>你在客户端里访问的是一个接口：一个用地址来查询或保存数据的入口。这些入口都挂在同一个进程上。进程的入口是 <code>main.py</code> 里的 <code>create_app</code>，启动时用配置文件 <code>deployment/dev.yaml</code> 或 <code>deployment/prod.yaml</code> 里的地址和端口听请求。成功和失败都包成同一套响应，三个字段是 <code>code</code>、<code>message</code>、<code>data</code>。</p>
+<p>一次普通业务请求这样走：</p>
+<ol>
+<li>请求进进程。</li>
+<li>除了登录、健康检查、巨量授权回调，其余请求都要在请求头里带 <code>Authorization: Bearer</code>，后面是登录时拿到的令牌。</li>
+<li>令牌先被解开，再按里面的会话号去内存库核对。内存库是 Redis，登录会话放在 0 号库。同一账号只留最新一次登录，旧的那次会被标成「账号已在其他地方登录」。</li>
+<li>对上之后，请求才进对应的业务模块，去读写数据库。这里的数据库是 PostgreSQL，业务表都在里面。</li>
+</ol>
+<p>旁边还有三条不跟这次网页请求绑在一起的路：</p>
+<ul>
+<li>上传文件进对象存储。代码里的客户端叫 TOS，配了火山引擎的桶才传得上去。文件字节不进业务表，接口只把公网地址还给你。</li>
+<li>巨量开放平台默认不访问。配置 <code>oceanengine.mock</code> 缺省是真，启动时装的是假客户端，不发外网请求。</li>
+<li>漫剧同步是另一个进程。它用 Celery 定时，每分钟拉一次常读的短剧列表，写进漫剧表。队列用 Redis 的 1 号库，结果用 2 号库，不跟登录会话混放。</li>
+</ul>
+<p>本机进程默认只连本机的数据库和 Redis。要连远程必须显式打开 <code>ADPILOT_ALLOW_REMOTE</code>。</p>
+</section><section id="system-admin">
+<h2>系统管理</h2>
+<p class="fig"><a href=".archify/architecture-system-admin-20260930-061256/system-admin.html">系统管理记什么</a></p>
+<p>这是后台的组织机构。它记住部门、用户、角色、菜单，以及一个人能看哪些部门的数据。登录时要的身份和菜单，就是从这些表算出来的。</p>
+<p>用户表叫 <code>users</code>。角色和菜单变了，会去刷新这个人还没过期的登录会话。停用用户、删除用户、重置密码，会把这个人的会话清掉。</p>
+<p>它不签发登录令牌，也不保存投放草稿，不连接巨量。</p>
+</section><section id="account">
+<h2>账户</h2>
+<p class="fig"><a href=".archify/architecture-account-20260930-061256/account.html">账户模块记什么</a></p>
+<p>账户管的是投放要用的本地资料：广告主、投放主体、抖音号、商品库，以及它们和投手的分配。接口挂在巨量那条地址下面，路径前缀是 <code>/api/v1/oceanengine</code>，没有自己的另一套前缀。</p>
+<p>改名、分配投手、解绑都写在本地。解绑是软删：行还在，只是标成已删除，同步不会把它加回列表。</p>
+<p>手动同步广告主时，如果 <code>oceanengine.mock</code> 还开着，只统计库里已经有的广告主，不打开放平台。关掉之后，才会按应用去拉名单、余额和公司名。</p>
+<p>它不创建标准投放草稿，也不提交端原生任务。</p>
+</section><section id="oceanengine">
+<h2>巨量</h2>
+<p class="fig"><a href=".archify/architecture-oceanengine-20260930-061256/oceanengine.html">巨量模块做什么</a></p>
+<p>这条路由前缀是 <code>/api/v1/oceanengine</code>。它负责授权链接、授权回调换票、创建项目、按地址登记视频、往商品库追加商品、读报表、暂停或启用广告。账户接口也挂在这里。</p>
+<p>真客户端 <code>OceanEngineClient</code> 只发 HTTP。假客户端 <code>FakeOceanEngineClient</code> 不发 HTTP，项目号和商品号改走数据库里的序列。两种客户端启动时只装一个，业务代码只从运行时取出已经装上的那一个。</p>
+<p>标准投放草稿和端原生任务不会走到这些创建接口。</p>
+</section><section id="material">
+<h2>漫剧库</h2>
+<p class="fig"><a href=".archify/architecture-material-20260930-061256/material.html">漫剧库从哪来</a></p>
+<p>漫剧表叫 <code>manhua_series</code>。你能调的接口只做两件事：按条件分页查询，以及把同样的筛选导出成表格。查询本身不会去拉外网。</p>
+<p>新行是定时进程写的。它按库里最晚的常读创建时间，向常读再要 100 条，然后落库。空库时不带时间条件。同一时刻有锁，锁被占用就跳过这一轮。拉取失败会通知钉钉，那次失败不在查询接口里。</p>
+<p>这些短剧不会从这里提交到巨量。</p>
+</section><section id="title">
+<h2>标题</h2>
+<p class="fig"><a href=".archify/architecture-material-title-20260930-061256/material-title.html">标题库记什么</a></p>
+<p>标题表叫 <code>material_titles</code>。你可以按分类批量加标题，也可以改名、改分类、软删。上传者是当前登录用户。改和删只针对自己上传的；有一条不是自己的，整批都不动。</p>
+<p>标题只留在本地，不上传到巨量，也不单独生成投放任务。后面的草稿和端原生任务会来引用这些编号。</p>
+</section><section id="video">
+<h2>视频素材</h2>
+<p class="fig"><a href=".archify/architecture-material-video-20260930-061256/material-video.html">视频素材记什么</a></p>
+<p>视频表叫 <code>material_videos</code>，旁边还有标签、共享人和投手三张关系表。这里记的是「这条素材是谁的、给谁看、分给哪个投手」，以及公有还是私有。</p>
+<p>文件本身的字节不在这里。字节要先走文件上传，拿到地址之后，再在这里登记一条素材。</p>
+<p>它不把视频传到巨量，也不创建广告。</p>
+</section><section id="upload">
+<h2>文件上传</h2>
+<p class="fig"><a href=".archify/architecture-file-upload-20260930-061256/file-upload.html">文件上传去哪</a></p>
+<p>上传接口在 <code>/api/v1/files/upload</code>。它读入一个文件，转到对象存储，返回公网地址和对象键。不写业务表。</p>
+<p>对象存储的密钥、地域和桶没配时，上传会失败。现在是整份文件先读进内存再传，很大的文件还没有改成边读边传。</p>
+</section><section id="theater">
+<h2>剧场</h2>
+<p class="fig"><a href=".archify/architecture-theater-20260930-061256/theater.html">剧场模块记什么</a></p>
+<p>剧场有两张表：平台 <code>theater_platforms</code>，应用 <code>theater_apps</code>。你可以查平台，改三项开关：是否启用、是否小程序、是否端原生。平台名称和平台码不能改。应用要挂在已启用、并且支持所选剧场类型的平台上。</p>
+<p>这条分支里没有推广链同步，剧场模块自己也不拉常读。后面的机器人想用剧场平台时，线上目录还没有把这张表接过去。</p>
+</section><section id="standard">
+<h2>标准投放</h2>
+<p class="fig"><a href=".archify/architecture-standard-delivery-20260930-061256/standard-delivery.html">标准投放记在本地</a></p>
+<p>标准投放有三块本地数据：模板、任务草稿、自动规则。地址前缀是 <code>/api/v1/standard-delivery</code>。免费和付费各看各的菜单，对不上菜单就进不去。</p>
+<p>模板和后面的全域模板共用一张表 <code>delivery_template</code>。列 <code>delivery_mode</code> 区分两边：<code>standard</code> 是标准投放，<code>uni</code> 是全域投放。标准行和全域行能填的字段不一样。</p>
+<p>草稿表是 <code>delivery_task_draft</code>。一次草稿只有一个抖音号，多个广告账户共用这一个号。号必须是已经启用的标准号。保存前会核对：模板在、短剧在、账户属于当前投手、视频属于这部剧而且你看得见、标题是你自己的、商品库分给你了或者是兜底库。</p>
+<p>自动规则只是把短剧名单和执行时间存下来。到点不会跑，也不会调巨量。</p>
+<p>本地留下的是模板、抖音号、短剧、账户、视频、标题、商品库、预算和优化目标。没有发给巨量的是：创建项目、创建单元，以及任何巨量提交体。草稿里也不存推广链、产品主图、卖点、行动号召、事件资产、地域编码、巨量商品编号、巨量视频编号。</p>
+</section><section id="uni-template">
+<h2>全域模板</h2>
+<p class="fig"><a href=".archify/architecture-uni-template-20260930-061256/uni-template.html">全域模板记什么</a></p>
+<p>全域模板的地址前缀是 <code>/api/v1/uni-templates</code>。它写的仍是 <code>delivery_template</code> 里 <code>delivery_mode</code> 为 <code>uni</code> 的行，不另建一张模板表。主体必须是全域投放。</p>
+<p>模板人人都能看见。抖音号分配在另一张表 <code>delivery_template_douyin</code>，只替换当前投手自己的号，空数组表示清空。保存模板本身不会顺便分配抖音号。</p>
+<p>它不创建端原生任务，也不调用巨量。</p>
+</section><section id="uni-task">
+<h2>端原生任务</h2>
+<p class="fig"><a href=".archify/architecture-uni-native-task-20260930-061256/uni-native-task.html">端原生任务只保存在本地</a></p>
+<p>地址前缀是 <code>/api/v1/uni-native-tasks</code>。投手只能看、改、删自己的任务。新增和保存都把状态写成 <code>saved</code>，意思是已保存、还没提交。执行时间 <code>executed_at</code> 保持为空。</p>
+<p>任务表是 <code>uni_native_task</code>。下面挂着账户、推广链、视频、标题和批量标题。这些都是本地编号或你提交的链接文字，不是巨量侧的素材号。</p>
+<p>它不上传素材，也不调用巨量。核对时不读剧场表。</p>
+</section><section id="robot">
+<h2>机器人规则</h2>
+<p class="fig"><a href=".archify/architecture-uni-robot-20260930-061256/uni-robot.html">机器人规则停在核对</a></p>
+<p>地址前缀是 <code>/api/v1/uni-robot</code>。这里准备了两组规则：按推广链接，按剧条件。规则表是 <code>uni_robot_rule</code>。查询可以列出还没删除的行。</p>
+<p>新增和整表保存会先问目录两件事：全域模板在不在，剧场平台在不在。线上用的目录 <code>DatabaseUniRobotCatalog</code> 会去模板表确认全域行；剧场平台则一律拒绝，不查剧场表，也不写一个假平台。所以这两条写路径目前返回「剧场平台不存在」，到不了规则表。</p>
+<p>开关和改每天的时分，只改已经存在的行。没有定时执行，也不创建任务，不调巨量。</p>
+</section><section id="auto-run">
+<h2>端原生执行记录</h2>
+<p class="fig"><a href=".archify/architecture-uni-native-auto-run-20260930-061256/uni-native-auto-run.html">执行记录只供查询</a></p>
+<p>地址前缀是 <code>/api/v1/uni-native-auto-runs</code>。你可以按规则类型、规则和剧名查执行记录，也可以看这一次失败的短剧和原因。</p>
+<p>页面不能手建。写入函数叫 <code>record_run</code>，注释写明是留给以后的执行器。启动过程和现在的接口都不会调用它。这里不跑机器人，也不调用巨量。</p>
+</section><section id="login">
+<h2>登录</h2>
+<p class="fig"><a href=".archify/sequence-login-20260930-061256/login.html">登录怎样留下会话</a></p>
+<p>登录地址是 <code>POST /api/v1/auth/login</code>。这一条不用带令牌。</p>
+<p>你提交账号和密码。系统按登录账号去 <code>users</code> 查人，再验密码。密码不对，返回未授权，不写会话。账号停用，返回禁止，也不签发令牌。</p>
+<p>密码对而且账号启用时，系统算出这个人的身份和有效菜单，写进 Redis。同一账号旧的会话被标成冲突，只留这一次。返回给你的是令牌，类型是 <code>bearer</code>。之后别的接口把这个令牌放进请求头。令牌本身不存菜单的解释，菜单编号是登录时一并放进会话里的。</p>
+</section><section id="draft">
+<h2>保存一条标准投放草稿</h2>
+<p class="fig"><a href=".archify/sequence-standard-draft-20260930-061256/standard-draft.html">标准投放草稿怎样保存</a></p>
+<p>地址是 <code>POST /api/v1/standard-delivery/task-drafts</code>。要先登录，并且当前收费模式的菜单对得上。</p>
+<p>接口先把草稿要挂的现成数据一次核完：标准模板、已启用的标准抖音号、短剧、属于你的广告账户、你看得见的视频、你自己的标题、分给你的商品库。有一项对不上，整份不保存。</p>
+<p>都对上之后，才写入草稿行，并把账户、视频、标题换成这次提交的名单。然后把数据库事务提交。整个过程没有调用巨量，也没有生成巨量提交体。</p>
+<p>改一条已有草稿是整表重写，同样不打巨量。收费模式必须和原来的模板一致。</p>
+</section><section id="template-task">
+<h2>从全域模板到端原生任务</h2>
+<p class="fig"><a href=".archify/sequence-uni-template-task-20260930-061256/uni-template-task.html">全域模板怎样变成端原生任务</a></p>
+<p>你先在全域模板里保存一条 <code>delivery_mode</code> 为 <code>uni</code> 的模板。那一步只留下模板和可选的抖音号分配，不创建任务。</p>
+<p>之后调用 <code>POST /api/v1/uni-native-tasks</code>，在请求里带上 <code>template_id</code>。任务接口只接受未删除的全域模板。预算和 ROI 系数可以沿用模板，也可以在这次提交里盖掉。接着核对短剧、你的视频、你的标题，以及全域抖音号和广告账户的配对。剧场表不参与。</p>
+<p>写入之后，状态是 <code>saved</code>，执行时间为空。视频和标题存的是本地编号。没有上传素材，没有调用巨量。</p>
+</section><section id="startup">
+<h2>启动时的假数据和真客户端</h2>
+<p class="fig"><a href=".archify/architecture-ocean-startup-20260930-061256/ocean-startup.html">启动时假数据和真客户端</a></p>
+<p>进程启动时先连接数据库和 Redis，再按 <code>oceanengine.mock</code> 选客户端。这个开关缺省是真。</p>
+<p>开关打开时，装上 <code>FakeOceanEngineClient</code>。它不发 HTTP。换票只返回固定的假令牌。装完之后，启动过程再调用一次 <code>ensure_oceanengine_seed</code>：如果库里还没有，就写入两套应用、一条共享组织、授权关系、一个叫「番茄漫剧测试户」的广告主，以及两行报表。这些是本地种子，不是从开放平台拉下来的。已经有的行不会重复插。</p>
+<p>开关关闭时，装上 <code>OceanEngineClient</code>。之后的巨量接口才会向 <code>api.oceanengine.com</code> 发请求。访问令牌存在 <code>oe_token</code>。快过期时，用库里的刷新令牌去换新票，换成功会立刻提交，避免新票被回滚。密钥没配时，取出真客户端会直接告诉你巨量未配置。</p>
+<p>标准投放草稿、全域模板、端原生任务，两条路都不走这个客户端。</p>
+</section>
+    </main>
+  </div>
+  <a class="totop" href="#top">返回顶部</a>
+  <script>
+    (function () {
+      var links = Array.prototype.slice.call(document.querySelectorAll('.toc a[href^="#"]'))
+        .filter(function (a) { return a.getAttribute('href') !== '#top'; });
+      var sections = links.map(function (a) {
+        return document.querySelector(a.getAttribute('href'));
+      }).filter(Boolean);
+      if (!('IntersectionObserver' in window) || !sections.length) return;
+      var current = null;
+      var obs = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+          if (!entry.isIntersecting) return;
+          if (current === entry.target) return;
+          current = entry.target;
+          links.forEach(function (a) { a.removeAttribute('aria-current'); });
+          var hit = document.querySelector('.toc a[href="#' + entry.target.id + '"]');
+          if (hit) hit.setAttribute('aria-current', 'true');
+        });
+      }, { rootMargin: '-15% 0px -75% 0px', threshold: 0 });
+      sections.forEach(function (section) { obs.observe(section); });
+    })();
+  </script>
+</body>
+</html>
