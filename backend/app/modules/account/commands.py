@@ -911,11 +911,7 @@ async def assign_product_library_pitchers(
 
 
 async def sync_advertisers(session: AsyncSession, oe_app_id: int | None) -> dict[str, int]:
-    """手动同步广告主。mock 只把种子对齐到表；关闭 mock 时按传入的应用同步。"""
-    if get_settings().oceanengine.mock:
-        from app.modules.account.seed import ensure_oceanengine_seed
-
-        await ensure_oceanengine_seed(session)
+    """手动同步广告主。mock 只统计库里已有的广告主；关闭 mock 时按传入的应用同步。"""
     apps = await _sync_target_apps(session, oe_app_id)
     await _reject_open_advertiser_sync(session, apps)
     runs = await _open_advertiser_runs(session, apps)

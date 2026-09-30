@@ -12,7 +12,6 @@ from app.core.config import get_settings
 from app.core.pagination import PageParams, page_data
 from app.core.times import beijing_now
 from app.modules.account.model import AdvertiserAccount, OeApp, OeOrganization, OeOrganizationGrant, OeToken
-from app.modules.oceanengine.runtime import _prepare
 from app.modules.oceanengine.schema import AdvertiserQuery
 from app.modules.system_admin.domain.models import User
 
@@ -45,7 +44,6 @@ def organization_token_valid(
 
 async def list_organizations(session: AsyncSession) -> list[dict[str, Any]]:
     """授权组织。只读表。自研和三方两行都返回，不按配置的应用过滤。"""
-    await _prepare(session)
     now = beijing_now()
     stmt = (
         select(
@@ -106,8 +104,7 @@ async def list_organizations(session: AsyncSession) -> list[dict[str, Any]]:
 
 
 async def list_advertisers(session: AsyncSession, query: AdvertiserQuery) -> dict[str, Any]:
-    """广告主分页。只读表。mock 时先落种子，不打开放平台。"""
-    await _prepare(session)
+    """广告主分页。只读表。"""
     params = PageParams(page=query.page, page_size=query.page_size)
     filters = [AdvertiserAccount.is_deleted == 0, OeOrganization.is_deleted == 0]
     app_id = _configured_ocean_app_id()

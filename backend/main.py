@@ -9,7 +9,7 @@ from app.core.access_log import apply_access_log
 from app.core.auth import router as auth_router
 from app.core.config import get_settings
 from app.core.cors import apply_cors
-from app.core.db import dispose_engine, init_engine
+from app.core.db import dispose_engine, get_session, init_engine
 from app.core.envelope import register_exception_handlers
 from app.core.health import router as health_router
 from app.core.redis_client import close_redis, init_redis
@@ -29,13 +29,28 @@ from app.modules.uni_template import router as uni_template_router
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    """启动时接库和 Redis，关掉时释放连接。"""
+    """启动时接库和 Redis。mock 时选定假客户端并写一次巨量种子。"""
     settings = get_settings()
     init_engine(settings)
     init_redis(settings)
+    from app.modules.oceanengine.client_factory import install_ocean_client_for_settings
+
+    install_ocean_client_for_settings(settings)
+    if settings.oceanengine.mock:
+        await _seed_oceanengine()
     yield
     await close_redis()
     await dispose_engine()
+
+
+async def _seed_oceanengine() -> None:
+    """幂等写入应用、组织、番茄漫剧测试户和两行报表。只在启动调用。"""
+    from app.modules.account.seed import ensure_oceanengine_seed
+
+    async for session in get_session():
+        await ensure_oceanengine_seed(session)
+        await session.commit()
+        break
 
 
 def create_app() -> FastAPI:
