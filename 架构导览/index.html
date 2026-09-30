@@ -4,6 +4,17 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>架构导览</title>
+  <script>
+    (function () {
+      var key = "adpilot-arch-guide-theme";
+      var theme = null;
+      try { theme = localStorage.getItem(key); } catch (e) {}
+      if (theme !== "light" && theme !== "dark") {
+        theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      }
+      document.documentElement.setAttribute("data-theme", theme);
+    })();
+  </script>
   <style>
     :root {
       --bg: #f3f0e8;
@@ -14,6 +25,18 @@
       --link: #0e4d7a;
       --nav-bg: rgba(255, 253, 248, 0.94);
       --mark: #efe8d8;
+    }
+    /* Same surfaces as the Archify diagram dark theme. */
+    html[data-theme="dark"] {
+      color-scheme: dark;
+      --bg: #020617;
+      --paper: #0f172a;
+      --ink: #ffffff;
+      --muted: #94a3b8;
+      --line: #1e293b;
+      --link: #22d3ee;
+      --nav-bg: rgba(2, 6, 23, 0.94);
+      --mark: #1e293b;
     }
     * { box-sizing: border-box; }
     html { scroll-behavior: smooth; }
@@ -27,7 +50,7 @@
     }
     .layout {
       display: grid;
-      grid-template-columns: 15.5rem minmax(0, 42rem);
+      grid-template-columns: minmax(14rem, 18rem) minmax(0, 42rem);
       justify-content: center;
       gap: 2.5rem;
       align-items: start;
@@ -37,8 +60,9 @@
       position: sticky;
       top: 0;
       max-height: 100vh;
-      overflow: auto;
-      padding: 0.75rem 0 1rem;
+      overflow-x: clip;
+      overflow-y: auto;
+      padding: 0.75rem 0.35rem 1rem 0;
       background: transparent;
     }
     .toc p {
@@ -49,14 +73,31 @@
     }
     .toc a {
       display: block;
-      padding: 0.22rem 0.55rem;
-      margin: 0 -0.55rem;
+      padding: 0.22rem 0.4rem;
+      margin: 0;
       color: var(--ink);
       text-decoration: none;
       border-radius: 6px;
       font-size: 14px;
       line-height: 1.45;
+      white-space: normal;
+      overflow-wrap: anywhere;
     }
+    .theme-toggle {
+      display: inline-flex;
+      align-items: center;
+      margin: 0 0 0.55rem;
+      padding: 0.16rem 0.7rem;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--paper);
+      color: var(--ink);
+      font: inherit;
+      font-size: 13px;
+      line-height: 1.4;
+      cursor: pointer;
+    }
+    .theme-toggle:hover { background: var(--mark); }
     .toc a:hover { background: var(--mark); }
     .toc a[aria-current="true"] {
       background: var(--mark);
@@ -102,13 +143,14 @@
     .fig a {
       display: inline-block;
       padding: 0.28rem 0.7rem;
-      border: 1px solid #c9d7e4;
+      border: 1px solid var(--line);
       border-radius: 999px;
-      background: #f4f8fb;
+      background: var(--paper);
+      color: var(--link);
       text-decoration: none;
       font-weight: 600;
     }
-    .fig a:hover { background: #e7f1f8; }
+    .fig a:hover { background: var(--mark); }
     .totop {
       position: fixed;
       right: 1rem;
@@ -117,12 +159,12 @@
       padding: 0.4rem 0.75rem;
       border-radius: 999px;
       background: var(--ink);
-      color: #fffdf8;
+      color: var(--bg);
       text-decoration: none;
       font-size: 13px;
       box-shadow: 0 6px 18px rgba(28, 25, 21, 0.18);
     }
-    .totop:hover { background: #34302a; }
+    .totop:hover { background: color-mix(in srgb, var(--ink) 82%, var(--bg)); }
     @media (max-width: 860px) {
       .layout {
         grid-template-columns: 1fr;
@@ -150,6 +192,7 @@
         border: 1px solid var(--line);
         white-space: nowrap;
       }
+      .theme-toggle { margin: 0; }
       h2 { scroll-margin-top: 3.4rem; }
     }
   </style>
@@ -158,6 +201,7 @@
   <div id="top" class="layout">
     <nav class="toc" aria-label="章节">
       <p>跳到任意一节</p>
+      <button type="button" id="theme-toggle" class="theme-toggle" aria-pressed="false">浅色</button>
       <a class="toc-top" href="#top">返回顶部</a><a href="#building">先看整栋楼</a><a href="#system-admin">系统管理</a><a href="#account">账户</a><a href="#oceanengine">巨量</a><a href="#material">漫剧库</a><a href="#title">标题</a><a href="#video">视频素材</a><a href="#upload">文件上传</a><a href="#theater">剧场</a><a href="#standard">标准投放</a><a href="#uni-template">全域模板</a><a href="#uni-task">端原生任务</a><a href="#robot">机器人规则</a><a href="#auto-run">端原生执行记录</a><a href="#login">登录</a><a href="#draft">保存一条标准投放草稿</a><a href="#template-task">从全域模板到端原生任务</a><a href="#startup">启动时的假数据和真客户端</a>
     </nav>
     <main>
@@ -290,6 +334,46 @@
     </main>
   </div>
   <a class="totop" href="#top">返回顶部</a>
+  <script>
+    (function () {
+      var key = "adpilot-arch-guide-theme";
+      var toggle = document.getElementById("theme-toggle");
+      function systemTheme() {
+        return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      }
+      function storedTheme() {
+        try {
+          var value = localStorage.getItem(key);
+          return value === "light" || value === "dark" ? value : null;
+        } catch (e) {
+          return null;
+        }
+      }
+      function apply(theme) {
+        document.documentElement.setAttribute("data-theme", theme);
+        if (!toggle) return;
+        var dark = theme === "dark";
+        toggle.textContent = dark ? "深色" : "浅色";
+        toggle.setAttribute("aria-pressed", dark ? "true" : "false");
+        toggle.setAttribute("aria-label", dark ? "当前深色，切换为浅色" : "当前浅色，切换为深色");
+      }
+      apply(storedTheme() || systemTheme());
+      var media = window.matchMedia("(prefers-color-scheme: dark)");
+      function onSystem(event) {
+        if (storedTheme()) return;
+        apply(event.matches ? "dark" : "light");
+      }
+      if (media.addEventListener) media.addEventListener("change", onSystem);
+      else if (media.addListener) media.addListener(onSystem);
+      if (toggle) {
+        toggle.addEventListener("click", function () {
+          var next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+          try { localStorage.setItem(key, next); } catch (e) {}
+          apply(next);
+        });
+      }
+    })();
+  </script>
   <script>
     (function () {
       var links = Array.prototype.slice.call(document.querySelectorAll('.toc a[href^="#"]'))
