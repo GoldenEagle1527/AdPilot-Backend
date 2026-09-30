@@ -26,15 +26,34 @@ CREATED = datetime(2026, 9, 30, 9, 30, tzinfo=BEIJING)
 BACKEND = Path(__file__).resolve().parents[3]
 
 
+class FakeScalars:
+    """假 scalars()。"""
+
+    def __init__(self, rows: list[Any]) -> None:
+        self._rows = rows
+
+    def all(self) -> list[Any]:
+        """返回全部预置行。"""
+        return list(self._rows)
+
+
 class FakeResult:
     """假 execute 结果。"""
 
     def __init__(self, rows: list[Any]) -> None:
         self._rows = rows
 
+    def scalar_one(self) -> Any:
+        """返回唯一一行。分页总数用。"""
+        return self._rows[0]
+
     def scalar_one_or_none(self) -> Any:
         """返回首行，没有则 None。"""
         return self._rows[0] if self._rows else None
+
+    def scalars(self) -> FakeScalars:
+        """按实体列表返回。"""
+        return FakeScalars(self._rows)
 
 
 class FakeSession:
@@ -131,11 +150,12 @@ class CatalogBoundaryTests(unittest.TestCase):
                     self.assertNotIn("fake_catalog", name, path.name)
                     self.assertNotIn("tests.modules.uni_robot", name, path.name)
 
-    def test_startup_does_not_mount_a_robot_route(self) -> None:
-        """这一轮不挂 HTTP。迁移环境只导入模型。"""
+    def test_startup_mounts_link_rules_without_the_fake(self) -> None:
+        """HTTP 只挂在应用入口。迁移环境只导入模型，两边都不引用假目录。"""
         main_text = (BACKEND / "main.py").read_text(encoding="utf-8")
         env_text = (BACKEND / "alembic" / "env.py").read_text(encoding="utf-8")
-        self.assertNotIn("uni_robot", main_text)
+        self.assertIn("uni_robot", main_text)
+        self.assertNotIn("fake_catalog", main_text)
         self.assertIn("app.modules.uni_robot.model", env_text)
         self.assertNotIn("fake_catalog", env_text)
 

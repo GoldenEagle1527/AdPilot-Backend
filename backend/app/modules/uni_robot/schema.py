@@ -1,4 +1,4 @@
-"""全域漫剧机器人规则的入参。多传字段一律拒绝。"""
+"""全域漫剧机器人规则的入参和出参。多传字段一律拒绝。"""
 
 from __future__ import annotations
 
@@ -30,6 +30,56 @@ class RuleClock(BaseModel):
 
 class LinkRuleWrite(RuleClock):
     """按推广链接创建批量任务。没有统计时间、消耗区间、回收率区间。"""
+
+
+class LinkRuleQuery(BaseModel):
+    """按推广链接规则的列表。名称和开关都不传就是全部。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    page: int = Field(1, ge=1, description="页码，从 1 起")
+    page_size: int = Field(20, ge=1, le=100, description="每页条数，最大 100")
+    name: str | None = Field(None, description="规则名称，模糊，不传为全部")
+    is_enabled: bool | None = Field(None, description="开关：true 开启、false 关闭，不传为全部")
+
+
+class LinkSwitchWrite(BaseModel):
+    """只改按推广链接规则的开关。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    is_enabled: bool = Field(description="开关：true 开启、false 关闭")
+
+
+class LinkScheduleWrite(BaseModel):
+    """只改按推广链接规则每天触发的时分。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schedule_hour: int = Field(ge=0, le=23, description="每天触发的小时，0–23")
+    schedule_minute: int = Field(ge=0, le=59, description="每天触发的分钟，0–59")
+
+
+class LinkRuleItem(BaseModel):
+    """一条按推广链接规则。不含剧条件列。"""
+
+    id: str
+    name: str
+    template_id: str
+    platform_id: str
+    max_videos_per_series: int
+    schedule_hour: int
+    schedule_minute: int
+    is_enabled: bool
+    created_at: str
+    updated_at: str
+
+
+class LinkDeleted(BaseModel):
+    """软删后的出参。"""
+
+    id: str
+    deleted: bool
 
 
 class DramaRuleWrite(RuleClock):

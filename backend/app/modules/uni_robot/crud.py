@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import ColumnElement, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
 
-from app.modules.uni_robot.model import UniRobotRule
+from app.modules.uni_robot.model import RuleKind, UniRobotRule
 
 
 def name_taken_stmt(rule_kind: str, name: str, exclude_id: int | None) -> Select[tuple[int]]:
@@ -28,8 +28,51 @@ async def name_taken(session: AsyncSession, rule_kind: str, name: str, exclude_i
 
 
 async def get_rule(session: AsyncSession, rule_id: int) -> UniRobotRule | None:
-    """取一条未删除的规则。"""
+    """取一条未删除的规则。两种类型都算。"""
     result = await session.execute(
         select(UniRobotRule).where(UniRobotRule.id == rule_id, UniRobotRule.is_deleted == 0)
     )
     return result.scalar_one_or_none()
+
+
+def get_link_rule_stmt(rule_id: int) -> Select[tuple[UniRobotRule]]:
+    """一条未删除的按推广链接规则。按剧条件不在这里。"""
+    return select(UniRobotRule).where(
+        UniRobotRule.id == rule_id,
+        UniRobotRule.rule_kind == RuleKind.PROMOTION_LINK,
+        UniRobotRule.is_deleted == 0,
+    )
+
+
+async def get_link_rule(session: AsyncSession, rule_id: int) -> UniRobotRule | None:
+    """取一条未删除的按推广链接规则。"""
+    result = await session.execute(get_link_rule_stmt(rule_id))
+    return result.scalar_one_or_none()
+
+
+def link_page_stmt(
+    filters: list[ColumnElement[bool]], *, offset: int, limit: int
+) -> Select[tuple[UniRobotRule]]:
+    """按创建时间倒序的按推广链接分页查询。"""
+    return (
+        select(UniRobotRule)
+        .where(*filters)
+        .order_by(UniRobotRule.created_date.desc(), UniRobotRule.id.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+
+
+async def page_link_rules(
+    session: AsyncSession,
+    filters: list[ColumnElement[bool]],
+    *,
+    offset: int,
+    limit: int,
+) -> tuple[list[UniRobotRule], int]:
+    """按创建时间倒序分页。返回 (行, 总数)。"""
+    total = int(
+        (await session.execute(select(func.count()).select_from(UniRobotRule).where(*filters))).scalar_one()
+    )
+    result = await session.execute(link_page_stmt(filters, offset=offset, limit=limit))
+    return list(result.scalars().all()), total
