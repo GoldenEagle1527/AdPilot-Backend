@@ -1,0 +1,123 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "剧场模块记什么",
+    "locale": "zh-CN",
+    "output": "架构导览/.archify/architecture-theater-20260930-061256/theater.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/GoldenEagle1527/AdPilot-Backend",
+      "provider": "github",
+      "revision": "6643359e825abd3e4d1fda4b626c90ef8f0e8dbe"
+    }
+  },
+  "components": [
+    {
+      "id": "caller",
+      "type": "external",
+      "label": "调用方",
+      "sublabel": "已登录后管理剧场",
+      "pos": [
+        32,
+        230
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/modules/theater/controller.py",
+          "line": 25,
+          "end_line": 25,
+          "label": "路由要令牌"
+        }
+      ]
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "剧场接口",
+      "sublabel": "平台开关和应用",
+      "pos": [
+        326,
+        230
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/modules/theater/__init__.py",
+          "line": 1,
+          "end_line": 1,
+          "label": "模块说明"
+        }
+      ]
+    },
+    {
+      "id": "db",
+      "type": "database",
+      "label": "剧场表",
+      "sublabel": "平台表和应用表",
+      "pos": [
+        620,
+        230
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/modules/theater/model.py",
+          "line": 44,
+          "end_line": 54,
+          "label": "平台表"
+        },
+        {
+          "path": "backend/app/modules/theater/model.py",
+          "line": 75,
+          "end_line": 86,
+          "label": "应用表"
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "go",
+      "from": "caller",
+      "to": "api",
+      "label": "剧场请求",
+      "variant": "emphasis"
+    },
+    {
+      "id": "write",
+      "from": "api",
+      "to": "db",
+      "label": "读写剧场"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "这个模块做什么",
+      "items": [
+        "查询平台，改启用、小程序、端原生三个开关。",
+        "在已启用的平台下新增应用，并切换有效无效。"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "它还不做什么",
+      "items": [
+        "这条分支没有推广链同步，也没有常读拉取。",
+        "平台名称和平台码不能改。",
+        "机器人要用的平台来源还没有接上。"
+      ]
+    }
+  ]
+}

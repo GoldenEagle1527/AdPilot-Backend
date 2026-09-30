@@ -1,0 +1,158 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "机器人规则停在核对",
+    "locale": "zh-CN",
+    "output": "架构导览/.archify/architecture-uni-robot-20260930-061256/uni-robot.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/GoldenEagle1527/AdPilot-Backend",
+      "provider": "github",
+      "revision": "6643359e825abd3e4d1fda4b626c90ef8f0e8dbe"
+    }
+  },
+  "components": [
+    {
+      "id": "caller",
+      "type": "external",
+      "label": "调用方",
+      "sublabel": "两条规则各走各的",
+      "pos": [
+        32,
+        230
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/modules/uni_robot/__init__.py",
+          "line": 1,
+          "end_line": 4,
+          "label": "不跑定时"
+        }
+      ]
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "规则接口",
+      "sublabel": "链接规则和剧条件",
+      "pos": [
+        326,
+        230
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/modules/uni_robot/service.py",
+          "line": 1,
+          "end_line": 4,
+          "label": "不创建任务"
+        },
+        {
+          "path": "backend/app/modules/uni_robot/controller.py",
+          "line": 58,
+          "end_line": 60,
+          "label": "装上目录"
+        }
+      ]
+    },
+    {
+      "id": "table",
+      "type": "database",
+      "label": "规则表",
+      "sublabel": "查询只读未删除行",
+      "pos": [
+        620,
+        230
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/modules/uni_robot/model.py",
+          "line": 37,
+          "end_line": 37,
+          "label": "规则表"
+        }
+      ]
+    },
+    {
+      "id": "gate",
+      "type": "security",
+      "label": "平台核对",
+      "sublabel": "线上直接拒绝",
+      "pos": [
+        326,
+        440
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/modules/uni_template/catalog.py",
+          "line": 14,
+          "end_line": 30,
+          "label": "平台没有来源"
+        },
+        {
+          "path": "backend/app/modules/uni_robot/service.py",
+          "line": 40,
+          "end_line": 44,
+          "label": "两边都要过"
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "go",
+      "from": "caller",
+      "to": "api",
+      "label": "规则请求",
+      "variant": "emphasis"
+    },
+    {
+      "id": "list",
+      "from": "api",
+      "to": "table",
+      "label": "查询已有"
+    },
+    {
+      "id": "check",
+      "from": "api",
+      "to": "gate",
+      "label": "新增时核对",
+      "variant": "security"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "这个模块做什么",
+      "items": [
+        "准备了按推广链接和按剧条件两组规则接口。",
+        "保存前要确认全域模板还在，并且确认剧场平台。"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "现在写不进去",
+      "items": [
+        "线上目录里剧场平台一律拒绝，不查剧场表。",
+        "所以新增和整表保存目前到不了规则表。",
+        "不跑定时，也不创建巨量任务。"
+      ]
+    }
+  ]
+}
