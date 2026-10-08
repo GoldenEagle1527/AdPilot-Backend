@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 import uvicorn
 from fastapi import FastAPI
 
-from app.core.access_log import apply_access_log
+from app.core.access_log import api_log_config, apply_access_log
 from app.core.auth import router as auth_router
 from app.core.config import get_settings
 from app.core.cors import apply_cors
@@ -95,6 +95,7 @@ def run() -> None:
         "main:app",
         host=settings.listen_host,
         port=settings.listen_port,
+        log_config=api_log_config(),
     )
 
 

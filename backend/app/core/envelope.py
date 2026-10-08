@@ -10,6 +10,8 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from app.core.access_log import log_unhandled
+
 T = TypeVar("T")
 
 
@@ -65,5 +67,6 @@ def register_exception_handlers(app: FastAPI) -> None:
         return _json(exc.status_code, message)
 
     @app.exception_handler(Exception)
-    async def _unhandled(_request: Request, _exc: Exception) -> JSONResponse:
+    async def _unhandled(_request: Request, exc: Exception) -> JSONResponse:
+        log_unhandled(exc)
         return _json(500, "服务端未处理异常")
