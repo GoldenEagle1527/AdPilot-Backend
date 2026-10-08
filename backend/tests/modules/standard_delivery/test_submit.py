@@ -392,6 +392,49 @@ class SubmitTests(unittest.TestCase):
         )
         self.assertEqual(len(result["accounts"][0]["promotions"]), 1)
 
+    def test_empty_draft_fields_fall_back_to_the_template(self) -> None:
+        """草稿没写的版位、预算、广告状态用模板。定向和主图也读模板。专辑链接仍是草稿自己的。"""
+        draft = _draft()
+        draft.placement = None
+        draft.project_budget = None
+        draft.promotion_operation = None
+        template = _template()
+        template.placement = "aweme"
+        template.project_budget = Decimal("88.00")
+        template.promotion_operation = "ENABLE"
+        template.district = "REGION"
+        template.city_codes = [110000, 310000]
+        template.product_image_id = "img-stored-1"
+        template.product_select = "this_series"
+        template.standard_title_select_mode = "auto"
+        port, _session, _template_row, result = _run(draft=draft, template=template)
+        project = result["accounts"][0]["project"]
+        promo = result["accounts"][0]["promotions"][0]
+        self.assertEqual(project["delivery_range"], {"inventory_catalog": "MANUAL", "inventory_type": ["INVENTORY_AWEME_FEED"]})
+        self.assertEqual(project["delivery_setting"]["budget"], 88.0)
+        self.assertEqual(project["audience"], {"district": "REGION", "city": [110000, 310000]})
+        self.assertEqual(result["accounts"][0]["image_id"], "img-stored-1")
+        self.assertEqual(promo["operation"], "ENABLE")
+        self.assertEqual(port.images, [])
+        self.assertEqual(promo["promotion_materials"]["playlet_series_url_list"], ["https://album.example/only"])
+        self.assertEqual(promo["promotion_materials"]["title_material_list"], [{"title": "标题正好五字"}])
+
+    def test_draft_values_override_the_template(self) -> None:
+        """草稿写了版位、预算和广告状态时，不用模板上的那一份。不限定向不带城市。"""
+        template = _template()
+        template.placement = "universal"
+        template.project_budget = Decimal("88.00")
+        template.promotion_operation = "ENABLE"
+        template.district = "NONE"
+        template.city_codes = None
+        _port, _session, _template_row, result = _run(template=template)
+        project = result["accounts"][0]["project"]
+        self.assertEqual(project["delivery_range"]["inventory_type"], ["INVENTORY_AWEME_FEED", "INVENTORY_FEED"])
+        self.assertEqual(project["delivery_setting"]["budget"], 100.0)
+        self.assertEqual(result["accounts"][0]["promotions"][0]["operation"], "DISABLE")
+        self.assertEqual(project["audience"], {"district": "NONE"})
+        self.assertNotIn("city", project["audience"])
+
 
 class HttpTests(unittest.TestCase):
     def tearDown(self) -> None:

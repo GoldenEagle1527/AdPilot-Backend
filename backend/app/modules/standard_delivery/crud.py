@@ -35,7 +35,9 @@ class SeriesBrief:
 
 
 TemplateRow = tuple[DeliveryTemplate, DeliverySubject]
-DraftRow = tuple[DeliveryTaskDraft, DeliveryTemplate, DeliverySubject, DouyinAccount, SeriesBrief, ProductLibrary]
+DraftRow = tuple[
+    DeliveryTaskDraft, DeliveryTemplate, DeliverySubject, DouyinAccount | None, SeriesBrief, ProductLibrary | None
+]
 RuleRow = tuple[DeliveryAutoRule, DeliveryTemplate]
 
 
@@ -238,6 +240,14 @@ async def get_library_by_no(session: AsyncSession, library_no: int) -> ProductLi
     return result.scalar_one_or_none()
 
 
+async def get_library_by_id(session: AsyncSession, library_id: int) -> ProductLibrary | None:
+    """按本系统商品库主键取未删除的库。"""
+    result = await session.execute(
+        select(ProductLibrary).where(ProductLibrary.id == library_id, ProductLibrary.is_deleted == 0)
+    )
+    return result.scalar_one_or_none()
+
+
 async def library_assigned(session: AsyncSession, library_id: int, user_id: int) -> bool:
     """标准库是否分给了这个投手。"""
     result = await session.execute(
@@ -266,9 +276,9 @@ def _draft_joined():
         )
         .join(DeliveryTemplate, DeliveryTemplate.id == DeliveryTaskDraft.template_id)
         .join(DeliverySubject, DeliverySubject.id == DeliveryTemplate.subject_id)
-        .join(DouyinAccount, DouyinAccount.id == DeliveryTaskDraft.douyin_account_id)
+        .outerjoin(DouyinAccount, DouyinAccount.id == DeliveryTaskDraft.douyin_account_id)
         .join(ManhuaSeries, ManhuaSeries.id == DeliveryTaskDraft.series_id)
-        .join(ProductLibrary, ProductLibrary.id == DeliveryTaskDraft.product_library_id)
+        .outerjoin(ProductLibrary, ProductLibrary.id == DeliveryTaskDraft.product_library_id)
     )
 
 

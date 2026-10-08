@@ -1,7 +1,7 @@
 # 契约：update-template
 
 业务id：standard-delivery
-文档版本：2
+文档版本：3
 方法：PUT
 路径：/api/v1/standard-delivery/templates/{template_id}
 作用：整表保存标准模板。收费模式不可改。标准提交字段与新增相同。
@@ -33,8 +33,19 @@
 | roi_goal | body | number \| null | 否 | 同新增。不要传 `roi_coefficient` |
 | videos_per_ad | body | integer | 是 | 1–30 |
 | titles_per_ad | body | integer | 是 | 1–10 |
+| placement | body | string \| null | 否 | 同新增 |
+| district | body | string \| null | 否 | 同新增 |
+| city_codes | body | integer[] | 否 | 同新增 |
+| project_budget | body | number \| null | 否 | 同新增。不要传 `roi_coefficient` |
+| product_library_id | body | integer \| null | 否 | 同新增 |
+| product_select | body | string \| null | 否 | 同新增 |
+| material_boost | body | boolean | 否 | 同新增。不传为关 |
+| promotion_operation | body | string \| null | 否 | 同新增。广告开关，不是项目开关 |
+| douyin_account_id | body | integer \| null | 否 | 同新增 |
+| product_image_id | body | string \| null | 否 | 同新增 |
+| title_select_mode | body | string \| null | 否 | 同新增。写入标准列，不占用全域 `title_select_mode` |
 
-不收 `charge_mode`、地域、`asset_ids`。多传返回 422。
+不收 `charge_mode`、`roi_coefficient`、`aigc_dynamic_creative`、`asset_ids`。多传返回 422。
 
 ## 响应
 
@@ -60,5 +71,6 @@
 
 | 日期 | 文档版本 | 破坏？ | 变更 | 作者 |
 | --- | --- | --- | --- | --- |
+| 2026-10-08 | 3 | 否 | 可保存广告位置、定向、项目预算、商品策略、素材起量、广告状态、抖音号、主图、标题选择模式 | |
 | 2026-10-08 | 2 | 是 | 保存时必须带上标准提交字段。快照见 [_history/update-template-v1.md](_history/update-template-v1.md) | |
 | 2026-09-29 | 1 | 否 | 初稿 | |

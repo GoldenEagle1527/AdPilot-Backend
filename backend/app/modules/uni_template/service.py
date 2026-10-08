@@ -112,6 +112,16 @@ def _clear_standard_only(row: DeliveryTemplate) -> None:
     row.roi_goal = None
     row.videos_per_ad = None
     row.titles_per_ad = None
+    row.placement = None
+    row.district = None
+    row.city_codes = None
+    row.product_library_id = None
+    row.product_select = None
+    row.material_boost = None
+    row.promotion_operation = None
+    row.douyin_account_id = None
+    row.product_image_id = None
+    row.standard_title_select_mode = None
 
 
 def require_uni_subject(subject: DeliverySubject, charge_mode: str) -> None:

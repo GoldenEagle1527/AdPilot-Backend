@@ -21,6 +21,8 @@ from app.modules.standard_delivery.crud import (
     SeriesBrief,
     accounts_by_drafts,
     get_draft_row,
+    get_library_by_id,
+    get_standard_douyin,
     titles_by_drafts,
     videos_by_drafts,
 )
@@ -92,13 +94,52 @@ def _delivery_range(placement: str) -> dict[str, Any]:
     return {"inventory_catalog": "MANUAL", "inventory_type": inventory}
 
 
-def _delivery_setting(template: DeliveryTemplate, draft: DeliveryTaskDraft) -> dict[str, Any]:
+def _picked_placement(draft: DeliveryTaskDraft, template: DeliveryTemplate) -> str:
+    """草稿写了版位就用草稿，否则用模板。手动版位本身带抖音信息流。"""
+    placement = draft.placement or template.placement
+    if placement not in (Placement.AWEME, Placement.AWEME_FEED, Placement.UNIVERSAL):
+        raise ApiError(400, "广告位置不能为空")
+    return str(placement)
+
+
+def _picked_budget(draft: DeliveryTaskDraft, template: DeliveryTemplate) -> Decimal:
+    """草稿写了项目预算就用草稿，否则用模板。"""
+    budget = draft.project_budget if draft.project_budget is not None else template.project_budget
+    if budget is None:
+        raise ApiError(400, "项目预算不能为空")
+    return budget
+
+
+def _picked_operation(draft: DeliveryTaskDraft, template: DeliveryTemplate) -> str:
+    """广告开关以草稿为准。草稿没写时用模板上的广告状态。"""
+    operation = draft.promotion_operation or template.promotion_operation
+    if operation not in ("ENABLE", "DISABLE"):
+        raise ApiError(400, "广告开关不能为空")
+    return str(operation)
+
+
+def _picked_audience(template: DeliveryTemplate) -> dict[str, Any]:
+    """定向只在模板上。不限不带城市；选了行政区域才带城市编码。"""
+    if template.district == "REGION" and template.city_codes:
+        return {"district": "REGION", "city": [int(code) for code in template.city_codes]}
+    return {"district": "NONE"}
+
+
+def _stored_image_id(template: DeliveryTemplate) -> str | None:
+    """模板上已有 img- 主图时直接用，不再上传新图。"""
+    image_id = (template.product_image_id or "").strip()
+    if image_id.startswith("img-"):
+        return image_id
+    return None
+
+
+def _delivery_setting(template: DeliveryTemplate, draft: DeliveryTaskDraft, budget: Decimal) -> dict[str, Any]:
     """项目排期和日预算。手动投放不把 ROI 放在项目上。"""
     setting: dict[str, Any] = {
         "schedule_type": template.schedule_type,
         "bid_type": template.bid_type,
         "budget_mode": "BUDGET_MODE_DAY",
-        "budget": _num(draft.project_budget),
+        "budget": _num(budget),
     }
     if template.schedule_type == ScheduleType.START_END:
         setting["start_time"] = template.schedule_start_date.isoformat()
@@ -147,8 +188,6 @@ def _reject_unready(template: DeliveryTemplate, draft: DeliveryTaskDraft) -> Non
         raise ApiError(400, "专辑链接不能为空")
     if draft.project_operation not in ("ENABLE", "DISABLE"):
         raise ApiError(400, "项目开关不能为空")
-    if draft.promotion_operation not in ("ENABLE", "DISABLE"):
-        raise ApiError(400, "广告开关不能为空")
 
 
 def _reject_titles(titles: list[MaterialTitle]) -> None:
@@ -174,15 +213,16 @@ def _promotion_body(
     template: DeliveryTemplate,
     douyin: DouyinAccount,
     image_id: str,
+    operation: str,
     videos: list[MaterialVideo],
     titles: list[MaterialTitle],
 ) -> dict[str, Any]:
-    """一条广告的报文。专辑链接只用草稿上的 album_url。"""
+    """一条广告的报文。专辑链接只用草稿上的 album_url，不抄剧场推广链。"""
     body: dict[str, Any] = {
         "advertiser_id": advertiser_id,
         "project_id": project_id,
         "name": name,
-        "operation": draft.promotion_operation,
+        "operation": operation,
         "source": template.ad_source,
         "budget": _num(draft.ad_budget),
         "budget_mode": "BUDGET_MODE_DAY",
@@ -213,8 +253,11 @@ def _project_body(
     douyin: DouyinAccount,
     library: ProductLibrary,
     product_id: int,
+    placement: str,
+    budget: Decimal,
+    audience: dict[str, Any],
 ) -> dict[str, Any]:
-    """创建项目的报文。地域不限，不带城市。"""
+    """创建项目的报文。定向、版位和项目预算已经按草稿是否覆盖解析过。"""
     return {
         "advertiser_id": advertiser_id,
         "name": name,
@@ -223,15 +266,15 @@ def _project_body(
         "ad_type": "ALL",
         "delivery_mode": template.ocean_delivery_mode,
         "operation": draft.project_operation,
-        "delivery_range": _delivery_range(draft.placement),
-        "delivery_setting": _delivery_setting(template, draft),
+        "delivery_range": _delivery_range(placement),
+        "delivery_setting": _delivery_setting(template, draft, budget),
         "optimize_goal": _optimize_goal(draft),
         "related_product": {
             "product_platform_id": int(library.library_no),
             "product_id": product_id,
             "product_setting": "SINGLE",
         },
-        "audience": {"district": "NONE"},
+        "audience": audience,
         "micro_promotion_type": "AWEME",
         "native_setting": {"aweme_id": douyin.aweme_id},
     }
@@ -249,8 +292,17 @@ async def submit_loaded(
     videos: list[MaterialVideo],
     titles: list[MaterialTitle],
 ) -> dict[str, Any]:
-    """按账户建项目，再按模板的条数切广告。不改模板的 delivery_mode。"""
+    """按账户建项目，再按模板的条数切广告。不改模板的 delivery_mode。
+
+    草稿没写的版位、项目预算、广告开关用模板。定向、商品选择方式、主图和标题模式只在模板上。
+    草稿上的标题列表视为对标题模式的覆盖。专辑链接仍只用草稿的 album_url。
+    """
     _reject_unready(template, draft)
+    placement = _picked_placement(draft, template)
+    budget = _picked_budget(draft, template)
+    operation = _picked_operation(draft, template)
+    audience = _picked_audience(template)
+    stored_image = _stored_image_id(template)
     name = _project_name(series.book_name)
     slices = slice_materials(
         videos,
@@ -272,7 +324,11 @@ async def submit_loaded(
                 book_name=series.book_name,
             ),
         )
-        image = await upload_image(session, advertiser_id, "product.png")
+        if stored_image is None:
+            image = await upload_image(session, advertiser_id, "product.png")
+            image_id = str(image["image_id"])
+        else:
+            image_id = stored_image
         project = _project_body(
             advertiser_id=advertiser_id,
             name=name,
@@ -281,6 +337,9 @@ async def submit_loaded(
             douyin=douyin,
             library=library,
             product_id=int(product["product_id"]),
+            placement=placement,
+            budget=budget,
+            audience=audience,
         )
         created = await create_project(
             session,
@@ -310,7 +369,7 @@ async def submit_loaded(
                 "advertiser_id": advertiser_id,
                 "project_id": project_id,
                 "product_id": int(product["product_id"]),
-                "image_id": str(image["image_id"]),
+                "image_id": image_id,
                 "project": project,
                 "promotions": [
                     _promotion_body(
@@ -320,7 +379,8 @@ async def submit_loaded(
                         draft=draft,
                         template=template,
                         douyin=douyin,
-                        image_id=str(image["image_id"]),
+                        image_id=image_id,
+                        operation=operation,
                         videos=chunk_videos,
                         titles=chunk_titles,
                     )
@@ -342,6 +402,18 @@ async def submit_draft(
     draft, template, subject, douyin, series, library = found
     if draft.charge_mode not in allowed:
         raise ApiError(403, "已登录但无对应菜单或组件")
+    if douyin is None:
+        if template.douyin_account_id is None:
+            raise ApiError(400, "抖音号不能为空")
+        douyin = await get_standard_douyin(session, int(template.douyin_account_id))
+        if douyin is None:
+            raise ApiError(400, "抖音号不是已启用的标准号")
+    if library is None:
+        if template.product_library_id is None:
+            raise ApiError(404, "商品库不存在")
+        library = await get_library_by_id(session, int(template.product_library_id))
+        if library is None:
+            raise ApiError(404, "商品库不存在")
     accounts = (await accounts_by_drafts(session, [draft.id])).get(draft.id, [])
     videos = (await videos_by_drafts(session, [draft.id])).get(draft.id, [])
     titles = (await titles_by_drafts(session, [draft.id])).get(draft.id, [])

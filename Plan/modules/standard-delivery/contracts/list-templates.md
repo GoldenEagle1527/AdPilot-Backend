@@ -1,7 +1,7 @@
 # 契约：list-templates
 
 业务id：standard-delivery
-文档版本：2
+文档版本：3
 方法：GET
 路径：/api/v1/standard-delivery/templates
 作用：按收费模式分页列出投放模板。免费、付费分两次查。
@@ -47,6 +47,17 @@
 | roi_goal | string \| null | ROI 目标，三位小数。标准模板不用 `roi_coefficient` |
 | videos_per_ad | integer \| null | 每个广告视频数，1–30 |
 | titles_per_ad | integer \| null | 每个广告标题数，1–10 |
+| placement | string \| null | 广告位置：`aweme` 抖音、`aweme_feed` 抖音加头条、`universal` 通投智选。手动时含抖音信息流 |
+| district | string \| null | 用户定向：`NONE` 不限、`REGION` 行政区域 |
+| city_codes | integer[] | 城市编码。不限时为 `[]` |
+| project_budget | string \| null | 项目预算，元，两位小数。标准模板可以保存 |
+| product_library_id | string \| null | 商品库 `product_library.id`。视频库或小说库 |
+| product_select | string \| null | `this_series` 本剧、`other_series` 非本剧、`manual` 手动选择 |
+| material_boost | boolean | 素材一键起量。产品说明没有这一项，空行按关返回 |
+| promotion_operation | string \| null | 广告开关 `ENABLE` 或 `DISABLE`。不是项目开关 |
+| douyin_account_id | string \| null | 一个标准抖音号 id。不是全域按投手分配的那张表 |
+| product_image_id | string \| null | 产品主图 id，`img-` 前缀 |
+| title_select_mode | string \| null | 标题选择 `manual` 或 `auto`。存在 `standard_title_select_mode`，不占用全域列 |
 | created_at | string | 创建时间 |
 | updated_at | string | 更新时间 |
 
@@ -68,5 +79,6 @@
 
 | 日期 | 文档版本 | 破坏？ | 变更 | 作者 |
 | --- | --- | --- | --- | --- |
+| 2026-10-08 | 3 | 否 | 列表项增加广告位置、定向、项目预算、商品策略、素材起量开关、广告状态、抖音号、产品主图、标题选择模式。旧行可以为空 | |
 | 2026-10-08 | 2 | 否 | 列表项增加巨量投放模式、竞价、投放时间、时段、广告来源、产品名称、卖点、行动号召、ROI、每广告视频数和标题数。旧行这些字段可以为空 | |
 | 2026-09-29 | 1 | 否 | 初稿 | |

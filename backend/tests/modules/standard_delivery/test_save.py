@@ -39,6 +39,9 @@ from app.modules.standard_delivery.service import (
 CREATED = datetime(2026, 9, 29, 12, 0, 0, tzinfo=BEIJING)
 ALLOWED = {"IAA", "IAP"}
 MIGRATION = Path(__file__).resolve().parents[3] / "alembic" / "versions" / "20261008_01_standard_submit_fields.py"
+FIELDS_MIGRATION = (
+    Path(__file__).resolve().parents[3] / "alembic" / "versions" / "20261008_04_standard_template_fields.py"
+)
 _TEMPLATE_FIELDS = {
     "ocean_delivery_mode": "MANUAL",
     "bid_type": "CUSTOM",
@@ -252,7 +255,7 @@ class BodyTests(unittest.TestCase):
             draft_body(city=[110000])
 
     def test_uni_template_rejects_standard_submit_fields(self) -> None:
-        """全域模板入参多了标准提交列就 422。"""
+        """全域模板入参多了标准提交列或标准专用列就 422。"""
         with self.assertRaises(ValidationError):
             UniTemplateWrite(
                 name="全域甲",
@@ -264,6 +267,61 @@ class BodyTests(unittest.TestCase):
                 title_select_mode="manual",
                 ocean_delivery_mode="MANUAL",
             )
+        with self.assertRaises(ValidationError):
+            UniTemplateWrite(
+                name="全域甲",
+                subject_id=1,
+                charge_mode="IAA",
+                project_budget="10",
+                roi_coefficient="1.2",
+                aigc_dynamic_creative=False,
+                title_select_mode="manual",
+                placement="aweme",
+            )
+        with self.assertRaises(ValidationError):
+            UniTemplateWrite(
+                name="全域甲",
+                subject_id=1,
+                charge_mode="IAA",
+                project_budget="10",
+                roi_coefficient="1.2",
+                aigc_dynamic_creative=False,
+                title_select_mode="manual",
+                material_boost=True,
+            )
+        with self.assertRaises(ValidationError):
+            UniTemplateWrite(
+                name="全域甲",
+                subject_id=1,
+                charge_mode="IAA",
+                project_budget="10",
+                roi_coefficient="1.2",
+                aigc_dynamic_creative=False,
+                title_select_mode="manual",
+                product_image_id="img-cover",
+            )
+
+    def test_standard_template_rejects_uni_only_columns(self) -> None:
+        """标准模板不收全域 ROI 系数和 AIGC。标题模式用自己的列。"""
+        with self.assertRaises(ValidationError):
+            template_body(roi_coefficient="1.200")
+        with self.assertRaises(ValidationError):
+            template_body(aigc_dynamic_creative=True)
+
+    def test_audience_and_image_follow_the_template_rules(self) -> None:
+        """不限不能带城市。行政区域必须带城市。主图只收 img- 号。起量开关默认关。"""
+        self.assertFalse(template_body().material_boost)
+        none = template_body(district="NONE")
+        self.assertEqual(none.district.value, "NONE")
+        self.assertEqual(none.city_codes, [])
+        with self.assertRaises(ValidationError):
+            template_body(district="NONE", city_codes=[110000])
+        with self.assertRaises(ValidationError):
+            template_body(district="REGION")
+        with self.assertRaises(ValidationError):
+            template_body(product_image_id="cover")
+        region = template_body(district="REGION", city_codes=[110000, 310000])
+        self.assertEqual(region.city_codes, [110000, 310000])
 
 
 class FilterTests(unittest.TestCase):
@@ -315,6 +373,18 @@ class FilterTests(unittest.TestCase):
         self.assertNotIn("industry", text.lower())
         self.assertNotIn("asset_ids", text)
         self.assertNotIn("city", text)
+
+    def test_standard_field_revision_follows_the_schedule_check(self) -> None:
+        """新修订接在时段检查后面，标准预算放开，全域专用列仍必须为空。"""
+        text = FIELDS_MIGRATION.read_text(encoding="utf-8")
+        self.assertIn('revision: str = "20261008_04"', text)
+        self.assertIn('down_revision: Union[str, None] = "20261008_03"', text)
+        self.assertIn("standard_title_select_mode", text)
+        self.assertIn("material_boost", text)
+        self.assertIn("product_image_id", text)
+        self.assertIn("roi_coefficient IS NULL", text)
+        self.assertIn("aigc_dynamic_creative IS NULL", text)
+        self.assertIn("AND title_select_mode IS NULL", text)
 
     def test_advertisers_belong_to_the_current_pitcher(self) -> None:
         """账户下拉只取当前投手名下仍然有效的户。"""
@@ -372,6 +442,65 @@ class CreateTemplateTests(unittest.TestCase):
         self.assertIsNone(row.roi_coefficient)
         self.assertIsNone(row.aigc_dynamic_creative)
         self.assertIsNone(row.title_select_mode)
+        self.assertFalse(item["material_boost"])
+
+    def test_standard_fields_are_stored_without_uni_columns(self) -> None:
+        """版位、定向、预算、商品策略、广告状态、抖音号、主图和标题模式落在标准行上。"""
+        douyin = DouyinAccount(aweme_id="aweme-1", name="标准号", delivery_mode="standard", enabled=True)
+        douyin.id = 4
+        library = ProductLibrary(
+            name="视频库",
+            library_no=77001,
+            library_kind="video",
+            organization_id=1,
+            library_role="fallback",
+        )
+        library.id = 6
+        session = FakeSession([[make_subject()], [], [douyin], [library]])
+        item = asyncio.run(
+            create_template(
+                session,
+                template_body(
+                    placement="aweme",
+                    district="REGION",
+                    city_codes=[110000],
+                    project_budget="300.50",
+                    product_library_id=6,
+                    product_select="this_series",
+                    material_boost=True,
+                    promotion_operation="ENABLE",
+                    douyin_account_id=4,
+                    product_image_id="img-cover-1",
+                    title_select_mode="manual",
+                ),
+                ALLOWED,
+            )
+        )
+        self.assertEqual(item["placement"], "aweme")
+        self.assertEqual(item["district"], "REGION")
+        self.assertEqual(item["city_codes"], [110000])
+        self.assertEqual(item["project_budget"], "300.50")
+        self.assertEqual(item["product_library_id"], "6")
+        self.assertEqual(item["product_select"], "this_series")
+        self.assertTrue(item["material_boost"])
+        self.assertEqual(item["promotion_operation"], "ENABLE")
+        self.assertEqual(item["douyin_account_id"], "4")
+        self.assertEqual(item["product_image_id"], "img-cover-1")
+        self.assertEqual(item["title_select_mode"], "manual")
+        row = session.added[0]
+        self.assertEqual(row.project_budget, Decimal("300.50"))
+        self.assertEqual(row.standard_title_select_mode, "manual")
+        self.assertIsNone(row.title_select_mode)
+        self.assertIsNone(row.roi_coefficient)
+        self.assertIsNone(row.aigc_dynamic_creative)
+
+    def test_unknown_standard_douyin_is_rejected(self) -> None:
+        """模板上的抖音号必须是已启用的标准号。"""
+        session = FakeSession([[make_subject()], [], []])
+        with self.assertRaises(ApiError) as caught:
+            asyncio.run(create_template(session, template_body(douyin_account_id=4), ALLOWED))
+        self.assertEqual(caught.exception.status_code, 400)
+        self.assertEqual(session.added, [])
 
 
 class CreateDraftTests(unittest.TestCase):

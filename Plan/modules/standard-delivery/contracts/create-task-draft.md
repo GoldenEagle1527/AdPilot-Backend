@@ -1,7 +1,7 @@
 # 契约：create-task-draft
 
 业务id：standard-delivery
-文档版本：2
+文档版本：3
 方法：POST
 路径：/api/v1/standard-delivery/task-drafts
 作用：新增一条投放任务草稿。只落本系统字段，不调用创建项目或创建单元。
@@ -21,20 +21,20 @@
 | schedule_start | body | string \| null | 否 | 预约开始。与结束同时空或同时有值。无时区按北京时间 |
 | schedule_end | body | string \| null | 否 | 预约结束，须晚于开始 |
 | advertiser_ids | body | integer[] | 是 | 巨量广告主 id，与账户列表的 `account_id` 相同。1–100 个，不重复。须是当前投手名下 `sync_status=active` 且未删除的户 |
-| douyin_account_id | body | integer | 是 | 一个 `douyin_account.id`。须 `delivery_mode=standard` 且 `enabled=true`。传数组会 422 |
+| douyin_account_id | body | integer \| null | 否 | 一个 `douyin_account.id`。须 `delivery_mode=standard` 且 `enabled=true`。不传则确认提交用模板上的号。传数组会 422 |
 | series_id | body | integer | 是 | 一部 `manhua_series.id` |
 | video_ids | body | integer[] | 是 | `material_videos.id`，1–200 个，不重复。须属于这部短剧，且当前用户能看见 |
 | title_ids | body | integer[] | 是 | `material_titles.id`，1–100 个，不重复。只收当前用户自己上传的 |
-| placement | body | string | 是 | `aweme`、`aweme_feed`、`universal` |
-| project_budget | body | number | 是 | 项目预算，元，大于 0，最多两位小数 |
+| placement | body | string \| null | 否 | `aweme`、`aweme_feed`、`universal`。不传则确认提交用模板 |
+| project_budget | body | number \| null | 否 | 项目预算，元，大于 0，最多两位小数。不传则确认提交用模板 |
 | ad_budget | body | number | 是 | 广告预算，元，大于 0，最多两位小数 |
 | optimize_goal | body | string | 是 | 免费只能 `AD_CONVERT_TYPE_ACTIVE`，付费只能 `AD_CONVERT_TYPE_PAY` |
-| library_no | body | integer | 是 | `product_library.library_no`。标准库须已分给当前投手；兜底库可用 |
+| library_no | body | integer \| null | 否 | `product_library.library_no`。标准库须已分给当前投手；兜底库可用。不传则确认提交用模板上的商品库 |
 | album_url | body | string | 是 | 手填的短剧专辑链接，一条 `http` 或 `https`。不是剧场推广链 |
 | project_operation | body | string | 是 | 项目开关：`ENABLE` 或 `DISABLE` |
-| promotion_operation | body | string | 是 | 广告开关：`ENABLE` 或 `DISABLE` |
+| promotion_operation | body | string \| null | 否 | 广告开关：`ENABLE` 或 `DISABLE`。不传则确认提交用模板上的广告状态 |
 
-不收地域、城市、`asset_ids`、产品主图、巨量商品 id、巨量视频 id。卖点和行动号召在模板上。多传返回 422。
+不收 `asset_ids`、巨量商品 id、巨量视频 id。定向、产品主图和标题选择模式在模板上。`album_url` 仍是手填链接，不抄剧场 IAA 推广链。多传返回 422。
 
 ## 响应
 
@@ -67,5 +67,6 @@
 
 | 日期 | 文档版本 | 破坏？ | 变更 | 作者 |
 | --- | --- | --- | --- | --- |
+| 2026-10-08 | 3 | 否 | 抖音号、版位、项目预算、商品库、广告开关可以不传，确认提交改用模板 | |
 | 2026-10-08 | 2 | 是 | 增加必填 `album_url`、`project_operation`、`promotion_operation`。不增加地域和 `asset_ids`。快照见 [_history/create-task-draft-v1.md](_history/create-task-draft-v1.md) | |
 | 2026-09-29 | 1 | 否 | 初稿 | |

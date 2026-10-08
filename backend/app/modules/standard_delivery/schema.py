@@ -11,13 +11,16 @@ from zoneinfo import ZoneInfo
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_validator
 
 from app.modules.standard_delivery.model import (
+    AudienceDistrict,
     BidType,
     ChargeMode,
     OceanDeliveryMode,
     OperationStatus,
     OptimizeGoal,
     Placement,
+    ProductSelect,
     ScheduleType,
+    TitleSelectMode,
 )
 
 BEIJING = ZoneInfo("Asia/Shanghai")
@@ -33,6 +36,7 @@ CostBound = Annotated[Decimal, Field(ge=0, le=Decimal("99999999.99"), max_digits
 RoiBound = Annotated[Decimal, Field(ge=0, le=Decimal("9999"), max_digits=8, decimal_places=4)]
 RoiGoal = Annotated[Decimal, Field(ge=0, le=Decimal("9999.999"), max_digits=7, decimal_places=3)]
 _SCHEDULE_TIME = re.compile(r"^[01]{336}$")
+_IMAGE_ID = re.compile(r"^img-[A-Za-z0-9_-]+$")
 
 
 def _aware(value: datetime) -> datetime:
@@ -68,6 +72,36 @@ def _check_delivery_schedule(
     if _SCHEDULE_TIME.fullmatch(schedule_time) is None:
         raise ValueError("投放时段须为 48×7 的 0/1 字符串，空表示不限")
     return schedule_time
+
+
+def _check_template_extras(
+    district: AudienceDistrict | None,
+    city_codes: list[int],
+    product_library_id: int | None,
+    product_select: ProductSelect | None,
+    product_image_id: str | None,
+) -> str | None:
+    """地域和城市成对。商品库和选择方式成对。主图只收 img- 号。"""
+    if any(code <= 0 for code in city_codes):
+        raise ValueError("城市编码须为正整数")
+    if len(city_codes) != len(set(city_codes)):
+        raise ValueError("城市重复")
+    if district is None:
+        if city_codes:
+            raise ValueError("未选地域时不能填写城市")
+    elif district == AudienceDistrict.NONE:
+        if city_codes:
+            raise ValueError("不限地域不能填写城市")
+    elif not city_codes:
+        raise ValueError("按行政区域划分须选择城市")
+    if (product_library_id is None) ^ (product_select is None):
+        raise ValueError("商品库和商品选择须同时填写")
+    if product_image_id is None:
+        return None
+    image_id = product_image_id.strip()
+    if _IMAGE_ID.fullmatch(image_id) is None or len(image_id) > 64:
+        raise ValueError("产品主图须为 img- 开头的图片 id")
+    return image_id
 
 
 def _pair(start: object, end: object, label: str, *, allow_equal: bool) -> None:
@@ -119,6 +153,23 @@ class TemplateWrite(BaseModel):
     roi_goal: RoiGoal | None = Field(None, description="ROI 目标。标准模板不用 roi_coefficient")
     videos_per_ad: int = Field(ge=1, le=30, description="每个广告使用视频数，1–30")
     titles_per_ad: int = Field(ge=1, le=10, description="每个广告使用标题数，1–10")
+    placement: Placement | None = Field(
+        None, description="广告位置：aweme 抖音、aweme_feed 抖音加头条、universal 通投智选。手动时含抖音信息流"
+    )
+    district: AudienceDistrict | None = Field(None, description="用户定向地域：NONE 不限、REGION 行政区域")
+    city_codes: list[int] = Field(default_factory=list, max_length=200, description="城市编码。不限时不传或空数组")
+    project_budget: Money | None = Field(None, description="项目预算，单位元。标准模板可保存")
+    product_library_id: int | None = Field(None, description="商品库 id，product_library.id。视频库或小说库")
+    product_select: ProductSelect | None = Field(
+        None, description="商品选择：this_series 本剧、other_series 非本剧、manual 手动选择"
+    )
+    material_boost: bool = Field(False, description="素材一键起量。产品说明没有这一项，不传则为关")
+    promotion_operation: OperationStatus | None = Field(None, description="广告开关：ENABLE 或 DISABLE。不是项目开关")
+    douyin_account_id: int | None = Field(None, description="一个已启用的标准抖音号 id")
+    product_image_id: str | None = Field(None, max_length=64, description="产品主图 id，img- 前缀")
+    title_select_mode: TitleSelectMode | None = Field(
+        None, description="标题选择：manual 手动、auto 自动。写入标准列，不占用全域 title_select_mode"
+    )
 
     @model_validator(mode="after")
     def panels_match_charge(self) -> TemplateWrite:
@@ -129,6 +180,13 @@ class TemplateWrite(BaseModel):
             raise ValueError("付费模板至少选一个出价面板")
         self.schedule_time = _check_delivery_schedule(
             self.schedule_type, self.schedule_start_date, self.schedule_end_date, self.schedule_time
+        )
+        self.product_image_id = _check_template_extras(
+            self.district,
+            list(self.city_codes),
+            self.product_library_id,
+            self.product_select,
+            self.product_image_id,
         )
         return self
 
@@ -155,6 +213,17 @@ class TemplateUpdate(BaseModel):
     roi_goal: RoiGoal | None = Field(None, description="ROI 目标。不用 roi_coefficient")
     videos_per_ad: int = Field(ge=1, le=30, description="每个广告视频数，1–30")
     titles_per_ad: int = Field(ge=1, le=10, description="每个广告标题数，1–10")
+    placement: Placement | None = Field(None, description="广告位置：aweme、aweme_feed、universal")
+    district: AudienceDistrict | None = Field(None, description="用户定向地域：NONE 或 REGION")
+    city_codes: list[int] = Field(default_factory=list, max_length=200, description="城市编码。不限时为空")
+    project_budget: Money | None = Field(None, description="项目预算，单位元")
+    product_library_id: int | None = Field(None, description="商品库 id")
+    product_select: ProductSelect | None = Field(None, description="this_series、other_series、manual")
+    material_boost: bool = Field(False, description="素材一键起量。不传则为关")
+    promotion_operation: OperationStatus | None = Field(None, description="广告开关 ENABLE 或 DISABLE")
+    douyin_account_id: int | None = Field(None, description="一个已启用的标准抖音号 id")
+    product_image_id: str | None = Field(None, max_length=64, description="产品主图 id，img- 前缀")
+    title_select_mode: TitleSelectMode | None = Field(None, description="标题选择 manual 或 auto")
 
     @model_validator(mode="after")
     def panels_unique(self) -> TemplateUpdate:
@@ -163,6 +232,13 @@ class TemplateUpdate(BaseModel):
             raise ValueError("出价面板重复")
         self.schedule_time = _check_delivery_schedule(
             self.schedule_type, self.schedule_start_date, self.schedule_end_date, self.schedule_time
+        )
+        self.product_image_id = _check_template_extras(
+            self.district,
+            list(self.city_codes),
+            self.product_library_id,
+            self.product_select,
+            self.product_image_id,
         )
         return self
 
@@ -190,6 +266,17 @@ class TemplateItem(BaseModel):
     roi_goal: str | None
     videos_per_ad: int | None
     titles_per_ad: int | None
+    placement: str | None
+    district: str | None
+    city_codes: list[int]
+    project_budget: str | None
+    product_library_id: str | None
+    product_select: str | None
+    material_boost: bool
+    promotion_operation: str | None
+    douyin_account_id: str | None
+    product_image_id: str | None
+    title_select_mode: str | None
     created_at: str
     updated_at: str
 
@@ -221,18 +308,22 @@ class DraftWrite(BaseModel):
     schedule_start: datetime | None = Field(None, description="预约执行开始。与结束同时空或同时有值")
     schedule_end: datetime | None = Field(None, description="预约执行结束")
     advertiser_ids: list[int] = Field(min_length=1, max_length=100, description="巨量广告主 id，与账户列表的 account_id 相同")
-    douyin_account_id: int = Field(description="一个已启用的标准抖音号 id。多个账户共用")
+    douyin_account_id: int | None = Field(
+        None, description="一个已启用的标准抖音号 id。不传则确认提交用模板上的号"
+    )
     series_id: int = Field(description="一部短剧的 manhua_series.id")
     video_ids: list[int] = Field(min_length=1, max_length=200, description="视频素材 id，须属于这部剧")
     title_ids: list[int] = Field(min_length=1, max_length=100, description="当前用户自己的标题 id")
-    placement: Placement = Field(description="版位：aweme、aweme_feed、universal")
-    project_budget: Money = Field(description="项目预算，单位元")
+    placement: Placement | None = Field(None, description="版位。不传则确认提交用模板上的广告位置")
+    project_budget: Money | None = Field(None, description="项目预算，单位元。不传则确认提交用模板")
     ad_budget: Money = Field(description="广告预算，单位元")
     optimize_goal: OptimizeGoal = Field(description="优化目标。免费只能是激活，付费只能是付费")
-    library_no: int = Field(description="商品库的巨量库 id，即 product_library.library_no")
+    library_no: int | None = Field(None, description="商品库的巨量库 id。不传则确认提交用模板上的商品库")
     album_url: AlbumUrlText = Field(description="手填的短剧专辑链接，一条。不是剧场推广链")
     project_operation: OperationStatus = Field(description="项目开关：ENABLE 或 DISABLE")
-    promotion_operation: OperationStatus = Field(description="广告开关：ENABLE 或 DISABLE")
+    promotion_operation: OperationStatus | None = Field(
+        None, description="广告开关。不传则确认提交用模板上的广告状态"
+    )
 
     @field_validator("album_url")
     @classmethod
@@ -292,21 +383,21 @@ class DraftItem(BaseModel):
     pitcher_user_id: str
     schedule_start: str | None
     schedule_end: str | None
-    douyin_account_id: str
-    aweme_id: str
-    douyin_name: str
+    douyin_account_id: str | None
+    aweme_id: str | None
+    douyin_name: str | None
     series_id: str
     book_name: str
     accounts: list[AccountItem]
     videos: list[VideoRef]
     titles: list[TitleRef]
-    placement: str
-    project_budget: str
+    placement: str | None
+    project_budget: str | None
     ad_budget: str
     optimize_goal: str
-    product_library_id: str
-    library_no: int
-    library_name: str
+    product_library_id: str | None
+    library_no: int | None
+    library_name: str | None
     album_url: str | None
     project_operation: str | None
     promotion_operation: str | None

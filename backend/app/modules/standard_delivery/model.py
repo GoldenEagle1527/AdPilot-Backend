@@ -44,10 +44,28 @@ class TemplateMode(StrEnum):
 
 
 class TitleSelectMode(StrEnum):
-    """全域模板的标题选择。手动从标题库挑，或按类型自动给。"""
+    """标题选择。手动从标题库挑，或按类型自动给。
+
+    全域写在 title_select_mode。标准写在 standard_title_select_mode，两列不混用。
+    """
 
     MANUAL = "manual"
     AUTO = "auto"
+
+
+class AudienceDistrict(StrEnum):
+    """用户定向里的地域。不限，或按行政区域选城市。"""
+
+    NONE = "NONE"
+    REGION = "REGION"
+
+
+class ProductSelect(StrEnum):
+    """商品选择。本剧、非本剧，或手动选择。"""
+
+    THIS_SERIES = "this_series"
+    OTHER_SERIES = "other_series"
+    MANUAL = "manual"
 
 
 class OceanDeliveryMode(StrEnum):
@@ -112,15 +130,42 @@ _STANDARD_FILLED = (
     "AND titles_per_ad BETWEEN 1 AND 10"
 )
 
-# 标准行不写全域列；全域行不写标准提交列，出价面板留空。
+# 标准行可以写项目预算和下面这些列。全域专用的 ROI 系数、AIGC、标题列仍必须为空。
+_STANDARD_EXTRAS = (
+    "(placement IS NULL OR placement IN ('aweme', 'aweme_feed', 'universal')) "
+    "AND (district IS NULL OR district IN ('NONE', 'REGION')) "
+    "AND (district IS DISTINCT FROM 'NONE' OR city_codes IS NULL OR cardinality(city_codes) = 0) "
+    "AND (district IS DISTINCT FROM 'REGION' OR (city_codes IS NOT NULL AND cardinality(city_codes) > 0)) "
+    "AND (project_budget IS NULL OR (project_budget > 0 AND project_budget <= 99999999.99)) "
+    "AND (product_select IS NULL OR product_select IN ('this_series', 'other_series', 'manual')) "
+    "AND ((product_library_id IS NULL AND product_select IS NULL) "
+    "OR (product_library_id IS NOT NULL AND product_select IS NOT NULL)) "
+    "AND (promotion_operation IS NULL OR promotion_operation IN ('ENABLE', 'DISABLE')) "
+    "AND (product_image_id IS NULL OR (product_image_id LIKE 'img-%' AND char_length(product_image_id) BETWEEN 5 AND 64)) "
+    "AND (standard_title_select_mode IS NULL OR standard_title_select_mode IN ('manual', 'auto'))"
+)
+# 全域行不写标准专用列。素材起量开关在全域上也留空。
+_UNI_EXTRAS_EMPTY = (
+    "placement IS NULL "
+    "AND district IS NULL "
+    "AND city_codes IS NULL "
+    "AND product_library_id IS NULL "
+    "AND product_select IS NULL "
+    "AND material_boost IS NULL "
+    "AND promotion_operation IS NULL "
+    "AND douyin_account_id IS NULL "
+    "AND product_image_id IS NULL "
+    "AND standard_title_select_mode IS NULL"
+)
+# 标准行不写全域专用列；全域行不写标准提交列，出价面板留空。
 _TEMPLATE_SHAPE = (
     "("
     "delivery_mode = 'standard' "
-    "AND project_budget IS NULL "
     "AND roi_coefficient IS NULL "
     "AND aigc_dynamic_creative IS NULL "
     "AND title_select_mode IS NULL "
     "AND ads_per_account BETWEEN 1 AND 100 "
+    f"AND {_STANDARD_EXTRAS} "
     f"AND (({_STANDARD_LEGACY}) OR ({_STANDARD_FILLED}))"
     ") OR ("
     "delivery_mode = 'uni' "
@@ -130,7 +175,8 @@ _TEMPLATE_SHAPE = (
     "AND title_select_mode IN ('manual', 'auto') "
     "AND ads_per_account IS NULL "
     "AND cardinality(bid_panels) = 0 "
-    f"AND {_STANDARD_LEGACY}"
+    f"AND {_STANDARD_LEGACY} "
+    f"AND {_UNI_EXTRAS_EMPTY}"
     ")"
 )
 
@@ -159,9 +205,11 @@ GOAL_BY_CHARGE = {
 class DeliveryTemplate(BaseModel):
     """投放模板。标准与全域共用名称、主体、收费模式、时间和软删。
 
-    标准行写出价面板、每账户广告条数，以及确认提交要用的巨量字段。
-    全域行写项目预算、ROI 系数、AIGC 和标题选择。标准接口只读写 delivery_mode=standard。
-    标准行的 ROI 用 roi_goal，不用 roi_coefficient。全域行上的标准提交列保持为空。
+    标准行写出价面板、每账户广告条数、确认提交要用的巨量字段，以及版位、定向、项目预算、
+    商品策略、广告开关、一个标准抖音号、产品主图和标准标题选择。
+    全域行写项目预算、ROI 系数、AIGC 和 title_select_mode。标准接口只读写 delivery_mode=standard。
+    标准行的 ROI 用 roi_goal，不用 roi_coefficient。标准标题选择写 standard_title_select_mode。
+    全域行上的标准提交列和标准专用列保持为空。
     """
 
     __tablename__ = "delivery_template"
@@ -188,7 +236,7 @@ class DeliveryTemplate(BaseModel):
             "charge_mode",
             postgresql_where=text("is_deleted = 0"),
         ),
-        {"comment": "投放模板。delivery_mode 区分标准与全域。标准提交列在全域行为空。不存地域和 asset_ids。"},
+        {"comment": "投放模板。delivery_mode 区分标准与全域。标准专用列在全域行为空。不存 asset_ids。"},
     )
 
     name: Mapped[str] = mapped_column(String(128), nullable=False, comment="模板名称")
@@ -266,7 +314,7 @@ class DeliveryTemplate(BaseModel):
         Integer, nullable=True, comment="每个广告使用标题数，1–10。仅标准模板"
     )
     project_budget: Mapped[Decimal | None] = mapped_column(
-        Numeric(12, 2), nullable=True, comment="项目预算，单位元。仅全域模板"
+        Numeric(12, 2), nullable=True, comment="项目预算，单位元。标准和全域都可以写"
     )
     roi_coefficient: Mapped[Decimal | None] = mapped_column(
         Numeric(10, 3), nullable=True, comment="ROI 系数。仅全域模板"
@@ -277,20 +325,65 @@ class DeliveryTemplate(BaseModel):
     title_select_mode: Mapped[str | None] = mapped_column(
         String(16), nullable=True, comment="标题选择：manual 手动、auto 自动。仅全域模板"
     )
+    placement: Mapped[str | None] = mapped_column(
+        String(16),
+        nullable=True,
+        comment="版位：aweme 抖音、aweme_feed 抖音加头条、universal 通投智选。手动版位含抖音信息流。仅标准模板",
+    )
+    district: Mapped[str | None] = mapped_column(
+        String(16), nullable=True, comment="用户定向地域：NONE 不限、REGION 行政区域。仅标准模板"
+    )
+    city_codes: Mapped[list[int] | None] = mapped_column(
+        ARRAY(Integer), nullable=True, comment="行政区域城市编码。不限时为空。仅标准模板"
+    )
+    product_library_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("product_library.id", ondelete="RESTRICT"),
+        nullable=True,
+        comment="商品库 id。视频库或小说库。仅标准模板",
+    )
+    product_select: Mapped[str | None] = mapped_column(
+        String(16),
+        nullable=True,
+        comment="商品选择：this_series 本剧、other_series 非本剧、manual 手动选择。仅标准模板",
+    )
+    material_boost: Mapped[bool | None] = mapped_column(
+        Boolean,
+        nullable=True,
+        comment="素材一键起量开关。产品说明没有这一项，标准模板默认关。仅标准模板",
+    )
+    promotion_operation: Mapped[str | None] = mapped_column(
+        String(16), nullable=True, comment="广告开关 ENABLE 或 DISABLE。不是项目开关。仅标准模板"
+    )
+    douyin_account_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("douyin_account.id", ondelete="RESTRICT"),
+        nullable=True,
+        comment="一个标准抖音号。不使用全域按投手分配的表。仅标准模板",
+    )
+    product_image_id: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, comment="产品主图 id，img- 前缀。仅标准模板"
+    )
+    standard_title_select_mode: Mapped[str | None] = mapped_column(
+        String(16),
+        nullable=True,
+        comment="标准模板标题选择 manual 或 auto。不是全域列 title_select_mode",
+    )
 
 
 class DeliveryTaskDraft(BaseModel):
     """投放任务草稿。一次只有一个抖音号，账户列表共用这一个号。
 
-    album_url 是手填的短剧专辑链接，不是剧场推广链。
-    不存地域、城市、事件资产、巨量商品 id、巨量视频 id、产品主图 id。
+    album_url 是手填的短剧专辑链接，不是剧场推广链，也不从剧场 IAA 链接抄过来。
+    版位、项目预算、商品库、广告开关、抖音号可以留空，确认提交时改用模板上的值。
+    不存事件资产、巨量商品 id、巨量视频 id。
     """
 
     __tablename__ = "delivery_task_draft"
     __table_args__ = (
         CheckConstraint("charge_mode IN ('IAA', 'IAP')", name="ck_delivery_task_draft_charge"),
         CheckConstraint(
-            "placement IN ('aweme', 'aweme_feed', 'universal')",
+            "placement IS NULL OR placement IN ('aweme', 'aweme_feed', 'universal')",
             name="ck_delivery_task_draft_placement",
         ),
         CheckConstraint(
@@ -298,7 +391,10 @@ class DeliveryTaskDraft(BaseModel):
             "(charge_mode = 'IAP' AND optimize_goal = 'AD_CONVERT_TYPE_PAY')",
             name="ck_delivery_task_draft_goal",
         ),
-        CheckConstraint("project_budget > 0 AND ad_budget > 0", name="ck_delivery_task_draft_budget"),
+        CheckConstraint(
+            "(project_budget IS NULL OR project_budget > 0) AND ad_budget > 0",
+            name="ck_delivery_task_draft_budget",
+        ),
         CheckConstraint(
             "(schedule_start IS NULL AND schedule_end IS NULL) OR "
             "(schedule_start IS NOT NULL AND schedule_end IS NOT NULL AND schedule_start < schedule_end)",
@@ -342,11 +438,11 @@ class DeliveryTaskDraft(BaseModel):
     schedule_end: Mapped[datetime | None] = mapped_column(
         _TS, nullable=True, comment="预约执行结束。与开始同时空或同时有值"
     )
-    douyin_account_id: Mapped[int] = mapped_column(
+    douyin_account_id: Mapped[int | None] = mapped_column(
         Integer,
         ForeignKey("douyin_account.id", ondelete="RESTRICT"),
-        nullable=False,
-        comment="唯一的标准抖音号。多个账户共用，不按投手过滤",
+        nullable=True,
+        comment="唯一的标准抖音号。空则确认提交用模板上的号。多个账户共用，不按投手过滤",
     )
     series_id: Mapped[int] = mapped_column(
         Integer,
@@ -354,21 +450,23 @@ class DeliveryTaskDraft(BaseModel):
         nullable=False,
         comment="一部短剧",
     )
-    placement: Mapped[str] = mapped_column(
-        String(16), nullable=False, comment="版位：aweme 抖音、aweme_feed 抖音加头条、universal 通投智能选"
+    placement: Mapped[str | None] = mapped_column(
+        String(16),
+        nullable=True,
+        comment="版位：aweme 抖音、aweme_feed 抖音加头条、universal 通投智选。空则确认提交用模板",
     )
-    project_budget: Mapped[Decimal] = mapped_column(
-        Numeric(12, 2), nullable=False, comment="项目预算，单位元"
+    project_budget: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 2), nullable=True, comment="项目预算，单位元。空则确认提交用模板"
     )
     ad_budget: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, comment="广告预算，单位元")
     optimize_goal: Mapped[str] = mapped_column(
         String(64), nullable=False, comment="优化目标。免费激活，付费付费"
     )
-    product_library_id: Mapped[int] = mapped_column(
+    product_library_id: Mapped[int | None] = mapped_column(
         Integer,
         ForeignKey("product_library.id", ondelete="RESTRICT"),
-        nullable=False,
-        comment="商品库",
+        nullable=True,
+        comment="商品库。空则确认提交用模板上的商品库",
     )
     album_url: Mapped[str | None] = mapped_column(
         String(2048), nullable=True, comment="手填的短剧专辑链接，一条。不是剧场推广链"

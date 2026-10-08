@@ -22,6 +22,7 @@ from app.modules.material_video.model import MaterialVideo
 from app.modules.standard_delivery.crud import (
     accounts_by_drafts,
     get_draft_row,
+    get_library_by_id,
     get_library_by_no,
     get_rule_row,
     get_series,
@@ -164,6 +165,17 @@ def template_item(row: DeliveryTemplate, subject_name: str) -> dict[str, Any]:
         "roi_goal": _roi_goal(row.roi_goal),
         "videos_per_ad": row.videos_per_ad,
         "titles_per_ad": row.titles_per_ad,
+        "placement": row.placement,
+        "district": row.district,
+        "city_codes": [int(code) for code in (row.city_codes or [])],
+        "project_budget": None if row.project_budget is None else _money(row.project_budget),
+        "product_library_id": None if row.product_library_id is None else str(row.product_library_id),
+        "product_select": row.product_select,
+        "material_boost": bool(row.material_boost),
+        "promotion_operation": row.promotion_operation,
+        "douyin_account_id": None if row.douyin_account_id is None else str(row.douyin_account_id),
+        "product_image_id": row.product_image_id,
+        "title_select_mode": row.standard_title_select_mode,
         "created_at": beijing_iso(row.created_date),
         "updated_at": beijing_iso(row.updated_date),
     }
@@ -184,7 +196,17 @@ def _apply_standard_template(row: DeliveryTemplate, body: TemplateWrite | Templa
     row.roi_goal = body.roi_goal
     row.videos_per_ad = body.videos_per_ad
     row.titles_per_ad = body.titles_per_ad
-    row.project_budget = None
+    row.project_budget = body.project_budget
+    row.placement = None if body.placement is None else str(body.placement)
+    row.district = None if body.district is None else str(body.district)
+    row.city_codes = list(body.city_codes) or None
+    row.product_library_id = body.product_library_id
+    row.product_select = None if body.product_select is None else str(body.product_select)
+    row.material_boost = bool(body.material_boost)
+    row.promotion_operation = None if body.promotion_operation is None else str(body.promotion_operation)
+    row.douyin_account_id = body.douyin_account_id
+    row.product_image_id = body.product_image_id
+    row.standard_title_select_mode = None if body.title_select_mode is None else str(body.title_select_mode)
     row.roi_coefficient = None
     row.aigc_dynamic_creative = None
     row.title_select_mode = None
@@ -230,6 +252,21 @@ async def get_template(session: AsyncSession, template_id: int, allowed: set[str
     return template_item(row, subject.name)
 
 
+async def _require_template_links(session: AsyncSession, body: TemplateWrite | TemplateUpdate) -> None:
+    """标准抖音号和商品库都要真实存在。商品库只收视频库或小说库。"""
+    if body.douyin_account_id is not None:
+        douyin = await get_standard_douyin(session, body.douyin_account_id)
+        if douyin is None:
+            raise ApiError(400, "抖音号不是已启用的标准号")
+    if body.product_library_id is None:
+        return
+    library = await get_library_by_id(session, body.product_library_id)
+    if library is None:
+        raise ApiError(404, "商品库不存在")
+    if library.library_kind not in ("video", "novel"):
+        raise ApiError(400, "商品库类型须为视频库或小说库")
+
+
 async def create_template(session: AsyncSession, body: TemplateWrite, allowed: set[str]) -> dict[str, Any]:
     """校验主体和出价面板后新增模板。"""
     _require_mode(body.charge_mode, allowed)
@@ -240,6 +277,7 @@ async def create_template(session: AsyncSession, body: TemplateWrite, allowed: s
     require_panels(body.charge_mode, list(body.bid_panels), subject.bid_panel)
     if await template_name_taken(session, body.charge_mode, body.name, None):
         raise ApiError(409, "模板名称已存在")
+    await _require_template_links(session, body)
     row = DeliveryTemplate(
         name=body.name,
         delivery_mode=TemplateMode.STANDARD,
@@ -271,6 +309,7 @@ async def update_template(
     require_panels(row.charge_mode, list(body.bid_panels), subject.bid_panel)
     if await template_name_taken(session, row.charge_mode, body.name, row.id):
         raise ApiError(409, "模板名称已存在")
+    await _require_template_links(session, body)
     row.name = body.name
     row.subject_id = subject.id
     row.bid_panels = list(body.bid_panels)
@@ -306,9 +345,9 @@ def draft_item(
     row: DeliveryTaskDraft,
     template: DeliveryTemplate,
     subject: DeliverySubject,
-    douyin: DouyinAccount,
+    douyin: DouyinAccount | None,
     series: SeriesBrief,
-    library: ProductLibrary,
+    library: ProductLibrary | None,
     accounts: list[AdvertiserAccount],
     videos: list[MaterialVideo],
     titles: list[MaterialTitle],
@@ -326,9 +365,9 @@ def draft_item(
         "pitcher_user_id": str(row.pitcher_user_id),
         "schedule_start": None if row.schedule_start is None else beijing_iso(row.schedule_start),
         "schedule_end": None if row.schedule_end is None else beijing_iso(row.schedule_end),
-        "douyin_account_id": str(douyin.id),
-        "aweme_id": douyin.aweme_id,
-        "douyin_name": douyin.name,
+        "douyin_account_id": None if douyin is None else str(douyin.id),
+        "aweme_id": None if douyin is None else douyin.aweme_id,
+        "douyin_name": None if douyin is None else douyin.name,
         "series_id": str(series.id),
         "book_name": series.book_name,
         "accounts": [
@@ -342,12 +381,12 @@ def draft_item(
         "videos": [{"id": str(video.id), "name": video.name} for video in videos],
         "titles": [{"id": str(title.id), "title": title.title} for title in titles],
         "placement": row.placement,
-        "project_budget": _money(row.project_budget),
+        "project_budget": None if row.project_budget is None else _money(row.project_budget),
         "ad_budget": _money(row.ad_budget),
         "optimize_goal": row.optimize_goal,
-        "product_library_id": str(library.id),
-        "library_no": int(library.library_no),
-        "library_name": library.name,
+        "product_library_id": None if library is None else str(library.id),
+        "library_no": None if library is None else int(library.library_no),
+        "library_name": None if library is None else library.name,
         "album_url": row.album_url,
         "project_operation": row.project_operation,
         "promotion_operation": row.promotion_operation,
@@ -451,23 +490,25 @@ async def _draft_refs(
 ) -> tuple[
     DeliveryTemplate,
     DeliverySubject,
-    DouyinAccount,
+    DouyinAccount | None,
     SeriesBrief,
     list[AdvertiserAccount],
     list[MaterialVideo],
     list[MaterialTitle],
-    ProductLibrary,
+    ProductLibrary | None,
 ]:
-    """把草稿要挂的现成数据一次核完。抖音号不看投手分配。"""
+    """把草稿要挂的现成数据一次核完。抖音号不看投手分配。留空的字段确认提交时用模板。"""
     found = await get_template_row(session, body.template_id)
     if found is None:
         raise ApiError(404, "模板不存在")
     template, subject = found
     _require_mode(template.charge_mode, allowed)
     _require_goal(template.charge_mode, body.optimize_goal)
-    douyin = await get_standard_douyin(session, body.douyin_account_id)
-    if douyin is None:
-        raise ApiError(400, "抖音号不是已启用的标准号")
+    douyin: DouyinAccount | None = None
+    if body.douyin_account_id is not None:
+        douyin = await get_standard_douyin(session, body.douyin_account_id)
+        if douyin is None:
+            raise ApiError(400, "抖音号不是已启用的标准号")
     series = await get_series(session, body.series_id)
     if series is None:
         raise ApiError(404, "短剧不存在")
@@ -492,7 +533,9 @@ async def _draft_refs(
     )
     if not titles:
         raise ApiError(400, "标题不存在或不属于当前账号")
-    library = await _library_for_user(session, body.library_no, user_id)
+    library: ProductLibrary | None = None
+    if body.library_no is not None:
+        library = await _library_for_user(session, body.library_no, user_id)
     return template, subject, douyin, series, accounts, videos, titles, library
 
 
@@ -500,24 +543,24 @@ def _fill_draft(
     row: DeliveryTaskDraft,
     template: DeliveryTemplate,
     body: DraftWrite,
-    douyin: DouyinAccount,
+    douyin: DouyinAccount | None,
     series: SeriesBrief,
-    library: ProductLibrary,
+    library: ProductLibrary | None,
     user_id: int,
 ) -> None:
-    """把校验过的字段写到草稿行上。一个抖音号，不写成列表。"""
+    """把校验过的字段写到草稿行上。一个抖音号，不写成列表。留空表示用模板。"""
     row.template_id = template.id
     row.charge_mode = template.charge_mode
     row.pitcher_user_id = user_id
     row.schedule_start = body.schedule_start
     row.schedule_end = body.schedule_end
-    row.douyin_account_id = douyin.id
+    row.douyin_account_id = None if douyin is None else douyin.id
     row.series_id = series.id
-    row.placement = body.placement
+    row.placement = None if body.placement is None else str(body.placement)
     row.project_budget = body.project_budget
     row.ad_budget = body.ad_budget
     row.optimize_goal = body.optimize_goal
-    row.product_library_id = library.id
+    row.product_library_id = None if library is None else library.id
     row.album_url = body.album_url
     row.project_operation = body.project_operation
     row.promotion_operation = body.promotion_operation
@@ -534,13 +577,13 @@ async def create_draft(
         template_id=template.id,
         charge_mode=template.charge_mode,
         pitcher_user_id=user_id,
-        douyin_account_id=douyin.id,
+        douyin_account_id=None if douyin is None else douyin.id,
         series_id=series.id,
-        placement=body.placement,
+        placement=None if body.placement is None else str(body.placement),
         project_budget=body.project_budget,
         ad_budget=body.ad_budget,
         optimize_goal=body.optimize_goal,
-        product_library_id=library.id,
+        product_library_id=None if library is None else library.id,
         schedule_start=body.schedule_start,
         schedule_end=body.schedule_end,
         album_url=body.album_url,
