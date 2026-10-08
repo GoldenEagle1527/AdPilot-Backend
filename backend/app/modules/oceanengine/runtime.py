@@ -12,24 +12,28 @@ from app.core.config import get_settings
 from app.core.envelope import ApiError
 from app.core.times import beijing_now
 from app.modules.account.model import OeApp, OeToken
-from app.modules.account.seed import ensure_oceanengine_seed
-from app.modules.oceanengine.client import OceanEngineClient, OceanEngineError
+from app.modules.oceanengine.client import OceanEngineError, OceanEnginePort
 
 _PAGE_SIZE = 100
 _TOKEN_SKEW = timedelta(minutes=5)
+_installed: OceanEnginePort | None = None
 
 
-async def _prepare(session: AsyncSession) -> None:
-    """mock 时先幂等写入种子，不请求开放平台。"""
-    if get_settings().oceanengine.mock:
-        await ensure_oceanengine_seed(session)
+def install_ocean_client(client: OceanEnginePort | None) -> None:
+    """启动时装上真客户端或假客户端。传 None 卸下。"""
+    global _installed
+    _installed = client
 
 
-def _live_client() -> OceanEngineClient:
-    settings = get_settings().oceanengine
-    if not settings.secret:
+def get_ocean_client() -> OceanEnginePort:
+    """取出启动时装上的客户端。真客户端缺 secret 时 503。"""
+    if _installed is None:
         raise ApiError(503, "巨量未配置")
-    return OceanEngineClient(settings)
+    if _installed.requires_stored_token:
+        secret = getattr(getattr(_installed, "_settings", None), "secret", "")
+        if not str(secret or "").strip():
+            raise ApiError(503, "巨量未配置")
+    return _installed
 
 
 def token_needs_refresh(
@@ -51,6 +55,9 @@ def token_needs_refresh(
 
 async def _access_token(session: AsyncSession, app: OeApp | None = None) -> str:
     """取出访问令牌。快过期时先用 refresh_token 续期并立刻提交。"""
+    client = get_ocean_client()
+    if not client.requires_stored_token:
+        return ""
     if app is None:
         app = await _app_for_live(session)
     row = await session.scalar(
@@ -58,7 +65,7 @@ async def _access_token(session: AsyncSession, app: OeApp | None = None) -> str:
     )
     if row is None:
         raise ApiError(503, "巨量未配置")
-    if not get_settings().oceanengine.mock and token_needs_refresh(
+    if token_needs_refresh(
         access_token=row.access_token,
         refresh_token=row.refresh_token,
         access_expire_at=row.access_expire_at,
@@ -72,7 +79,7 @@ async def _access_token(session: AsyncSession, app: OeApp | None = None) -> str:
 
 async def _refresh_stored_token(session: AsyncSession, row: OeToken) -> None:
     """用库里的 refresh_token 换票。成功后立即提交，避免轮换后的新票被回滚。"""
-    client = _live_client()
+    client = get_ocean_client()
     try:
         body = await client.refresh_token(str(row.refresh_token or ""))
     except OceanEngineError as exc:

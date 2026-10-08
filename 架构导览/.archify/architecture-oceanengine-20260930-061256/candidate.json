@@ -1,0 +1,179 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "巨量模块做什么",
+    "locale": "zh-CN",
+    "output": "架构导览/.archify/architecture-oceanengine-20260930-061256/oceanengine.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/GoldenEagle1527/AdPilot-Backend",
+      "provider": "github",
+      "revision": "6643359e825abd3e4d1fda4b626c90ef8f0e8dbe"
+    }
+  },
+  "components": [
+    {
+      "id": "caller",
+      "type": "external",
+      "label": "调用方",
+      "sublabel": "授权项目报表和关停",
+      "pos": [
+        32,
+        230
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/modules/oceanengine/controller.py",
+          "line": 50,
+          "end_line": 50,
+          "label": "路由前缀"
+        }
+      ]
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "巨量接口",
+      "sublabel": "换票建项目和报表",
+      "pos": [
+        326,
+        230
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/modules/oceanengine/delivery.py",
+          "line": 39,
+          "end_line": 45,
+          "label": "创建项目"
+        }
+      ]
+    },
+    {
+      "id": "db",
+      "type": "database",
+      "label": "巨量表",
+      "sublabel": "项目视频商品和报表",
+      "pos": [
+        620,
+        230
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/modules/account/model.py",
+          "line": 513,
+          "end_line": 516,
+          "label": "项目表"
+        }
+      ]
+    },
+    {
+      "id": "client",
+      "type": "backend",
+      "label": "已装客户端",
+      "sublabel": "真假二选一",
+      "pos": [
+        326,
+        440
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/modules/oceanengine/runtime.py",
+          "line": 28,
+          "end_line": 36,
+          "label": "取出客户端"
+        }
+      ]
+    },
+    {
+      "id": "remote",
+      "type": "external",
+      "label": "开放平台",
+      "sublabel": "假客户端不发请求",
+      "pos": [
+        620,
+        440
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/modules/oceanengine/client.py",
+          "line": 92,
+          "end_line": 95,
+          "label": "真客户端"
+        },
+        {
+          "path": "backend/app/modules/oceanengine/fake_client.py",
+          "line": 35,
+          "end_line": 38,
+          "label": "假客户端"
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "go",
+      "from": "caller",
+      "to": "api",
+      "label": "巨量请求",
+      "variant": "emphasis"
+    },
+    {
+      "id": "save",
+      "from": "api",
+      "to": "db",
+      "label": "留下结果"
+    },
+    {
+      "id": "use",
+      "from": "api",
+      "to": "client",
+      "label": "取出客户端"
+    },
+    {
+      "id": "http",
+      "from": "client",
+      "to": "remote",
+      "label": "只有真的才发",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "这个模块做什么",
+      "items": [
+        "授权、建项目、登记视频和商品、拉报表、改广告状态。",
+        "账户管理的接口也挂在这条路由下面。"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "它还不做什么",
+      "items": [
+        "标准投放草稿和端原生任务不会走到这里。",
+        "假客户端不发网络请求，项目号改由数据库序列产生。"
+      ]
+    }
+  ]
+}

@@ -588,8 +588,8 @@ class OeProduct(BaseModel):
     product_library_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("product_library.id", ondelete="RESTRICT"), nullable=False, comment="商品库"
     )
-    drama_name: Mapped[str] = mapped_column(String(512), nullable=False, comment="短剧名")
-    file_url: Mapped[str] = mapped_column(String(2048), nullable=False, comment="文件地址")
+    drama_name: Mapped[str] = mapped_column(String(512), nullable=False, comment="短剧名，写入时用 book_name")
+    file_url: Mapped[str | None] = mapped_column(String(2048), nullable=True, comment="文件地址。上传不再要求")
     ocean_product_id: Mapped[int] = mapped_column(
         BigInteger,
         nullable=False,

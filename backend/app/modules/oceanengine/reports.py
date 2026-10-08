@@ -16,15 +16,13 @@ from app.modules.oceanengine.runtime import (
     _PAGE_SIZE,
     _access_token,
     _app_for_live,
-    _live_client,
     _page_count,
-    _prepare,
+    get_ocean_client,
 )
 
 
 async def list_reports(session: AsyncSession) -> list[dict[str, Any]]:
     """报表不分页。关闭 mock 时先拉当天自定义报表再读快照。"""
-    await _prepare(session)
     if not get_settings().oceanengine.mock:
         await _sync_reports(session)
     return await _report_rows(session)
@@ -50,7 +48,7 @@ def _report_promotion_id(raw: dict[str, Any]) -> int | None:
 
 
 async def _sync_reports(session: AsyncSession) -> None:
-    client = _live_client()
+    client = get_ocean_client()
     app = await _app_for_live(session)
     token = await _access_token(session, app)
     advertiser_ids = (

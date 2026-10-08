@@ -1,0 +1,243 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "启动时假数据和真客户端",
+    "locale": "zh-CN",
+    "output": "架构导览/.archify/architecture-ocean-startup-20260930-061256/ocean-startup.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/GoldenEagle1527/AdPilot-Backend",
+      "provider": "github",
+      "revision": "6643359e825abd3e4d1fda4b626c90ef8f0e8dbe"
+    }
+  },
+  "components": [
+    {
+      "id": "boot",
+      "type": "backend",
+      "label": "启动过程",
+      "sublabel": "先接库再选客户端",
+      "pos": [
+        32,
+        230
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/main.py",
+          "line": 31,
+          "end_line": 43,
+          "label": "启动顺序"
+        }
+      ]
+    },
+    {
+      "id": "cfg",
+      "type": "security",
+      "label": "巨量开关",
+      "sublabel": "缺省走假数据",
+      "pos": [
+        32,
+        36
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/core/config.py",
+          "line": 102,
+          "end_line": 110,
+          "label": "缺省为真"
+        }
+      ]
+    },
+    {
+      "id": "fake",
+      "type": "backend",
+      "label": "假客户端",
+      "sublabel": "不发网络请求",
+      "pos": [
+        32,
+        440
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/modules/oceanengine/fake_client.py",
+          "line": 35,
+          "end_line": 38,
+          "label": "不需要库存令牌"
+        }
+      ]
+    },
+    {
+      "id": "real",
+      "type": "backend",
+      "label": "真客户端",
+      "sublabel": "只发网络请求",
+      "pos": [
+        326,
+        230
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/modules/oceanengine/client.py",
+          "line": 92,
+          "end_line": 95,
+          "label": "需要库存令牌"
+        },
+        {
+          "path": "backend/app/modules/oceanengine/client_factory.py",
+          "line": 10,
+          "end_line": 19,
+          "label": "二选一装上"
+        }
+      ]
+    },
+    {
+      "id": "remote",
+      "type": "external",
+      "label": "开放平台",
+      "sublabel": "换票和投放地址",
+      "pos": [
+        620,
+        230
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/modules/oceanengine/client.py",
+          "line": 108,
+          "end_line": 119,
+          "label": "换票请求"
+        }
+      ]
+    },
+    {
+      "id": "seed",
+      "type": "backend",
+      "label": "启动灌种",
+      "sublabel": "只在假数据时写一次",
+      "pos": [
+        326,
+        440
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/modules/account/seed.py",
+          "line": 31,
+          "end_line": 57,
+          "label": "幂等种子"
+        },
+        {
+          "path": "backend/main.py",
+          "line": 39,
+          "end_line": 40,
+          "label": "仅假数据调用"
+        }
+      ]
+    },
+    {
+      "id": "pg",
+      "type": "database",
+      "label": "本地巨量表",
+      "sublabel": "应用组织广告主报表",
+      "pos": [
+        620,
+        440
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/modules/account/seed.py",
+          "line": 31,
+          "end_line": 32,
+          "label": "写入哪些行"
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "read",
+      "from": "boot",
+      "to": "cfg",
+      "label": "读取开关",
+      "variant": "security"
+    },
+    {
+      "id": "off",
+      "from": "boot",
+      "to": "real",
+      "label": "开关关闭",
+      "variant": "emphasis"
+    },
+    {
+      "id": "on",
+      "from": "boot",
+      "to": "fake",
+      "label": "开关打开"
+    },
+    {
+      "id": "http",
+      "from": "real",
+      "to": "remote",
+      "label": "发送请求",
+      "variant": "dashed"
+    },
+    {
+      "id": "local",
+      "from": "fake",
+      "to": "seed",
+      "label": "不访问外网"
+    },
+    {
+      "id": "save",
+      "from": "seed",
+      "to": "pg",
+      "label": "写入种子"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "两条启动路",
+      "items": [
+        "假数据打开：装上假客户端，再幂等写入测试应用、组织和报表。",
+        "假数据关闭：装上真客户端。缺密钥时稍后取用会失败。"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "种子不是外网数据",
+      "items": [
+        "种子写的是本地测试户和两行报表，不会请求开放平台。",
+        "假客户端换票只返回固定假令牌。",
+        "真客户端才用库里的刷新令牌去换新票。"
+      ]
+    }
+  ]
+}

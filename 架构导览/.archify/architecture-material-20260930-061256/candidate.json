@@ -1,0 +1,186 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "漫剧库从哪来",
+    "locale": "zh-CN",
+    "output": "架构导览/.archify/architecture-material-20260930-061256/material.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/GoldenEagle1527/AdPilot-Backend",
+      "provider": "github",
+      "revision": "6643359e825abd3e4d1fda4b626c90ef8f0e8dbe"
+    }
+  },
+  "components": [
+    {
+      "id": "caller",
+      "type": "external",
+      "label": "调用方",
+      "sublabel": "查询或导出漫剧",
+      "pos": [
+        32,
+        230
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/modules/material/controller.py",
+          "line": 18,
+          "end_line": 18,
+          "label": "查询前缀"
+        }
+      ]
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "漫剧接口",
+      "sublabel": "只查库和导出表",
+      "pos": [
+        326,
+        230
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/modules/material/service.py",
+          "line": 83,
+          "end_line": 83,
+          "label": "分页查询"
+        }
+      ]
+    },
+    {
+      "id": "db",
+      "type": "database",
+      "label": "漫剧表",
+      "sublabel": "短剧名称和价格",
+      "pos": [
+        620,
+        230
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/modules/material/model.py",
+          "line": 11,
+          "end_line": 14,
+          "label": "漫剧表"
+        }
+      ]
+    },
+    {
+      "id": "sync",
+      "type": "backend",
+      "label": "定时同步",
+      "sublabel": "另一进程每分钟一次",
+      "pos": [
+        620,
+        440
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/tasks/sync_manhua_tasks.py",
+          "line": 75,
+          "end_line": 76,
+          "label": "定时入口"
+        },
+        {
+          "path": "backend/app/tasks/celery_app.py",
+          "line": 53,
+          "end_line": 58,
+          "label": "一分钟一次"
+        }
+      ]
+    },
+    {
+      "id": "changdu",
+      "type": "external",
+      "label": "常读列表",
+      "sublabel": "按签名拉一百条",
+      "pos": [
+        620,
+        650
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/modules/material/service.py",
+          "line": 177,
+          "end_line": 189,
+          "label": "常读客户端"
+        },
+        {
+          "path": "backend/app/modules/material/service.py",
+          "line": 366,
+          "end_line": 366,
+          "label": "写入漫剧"
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "go",
+      "from": "caller",
+      "to": "api",
+      "label": "查询导出",
+      "variant": "emphasis"
+    },
+    {
+      "id": "read",
+      "from": "api",
+      "to": "db",
+      "label": "读取漫剧"
+    },
+    {
+      "id": "save",
+      "from": "sync",
+      "to": "db",
+      "label": "写入新行"
+    },
+    {
+      "id": "pull",
+      "from": "sync",
+      "to": "changdu",
+      "label": "拉取列表",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "这个模块做什么",
+      "items": [
+        "网页只分页查询和导出已经落库的漫剧。",
+        "定时进程按库里最晚的创建时间再拉一页。"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "它还不做什么",
+      "items": [
+        "查询接口自己不会去拉常读。",
+        "拉取失败会走钉钉通知，不在这次查询里。",
+        "不把漫剧提交到巨量。"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,166 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "登录怎样留下会话",
+    "locale": "zh-CN",
+    "output": "架构导览/.archify/sequence-login-20260930-061256/login.html",
+    "quality_profile": "showcase",
+    "column_fit": "spread",
+    "viewBox": [
+      1080,
+      640
+    ],
+    "repository": {
+      "url": "https://github.com/GoldenEagle1527/AdPilot-Backend",
+      "provider": "github",
+      "revision": "6643359e825abd3e4d1fda4b626c90ef8f0e8dbe"
+    }
+  },
+  "participants": [
+    {
+      "id": "caller",
+      "type": "external",
+      "label": "调用方",
+      "sublabel": "提交账号和密码",
+      "sources": [
+        {
+          "path": "backend/app/core/auth.py",
+          "line": 243,
+          "end_line": 248,
+          "label": "登录入口"
+        }
+      ]
+    },
+    {
+      "id": "login",
+      "type": "security",
+      "label": "登录接口",
+      "sublabel": "验密后签发令牌",
+      "sources": [
+        {
+          "path": "backend/app/core/auth.py",
+          "line": 248,
+          "end_line": 267,
+          "label": "验密签发"
+        }
+      ]
+    },
+    {
+      "id": "users",
+      "type": "database",
+      "label": "用户表",
+      "sublabel": "密码和有效菜单",
+      "sources": [
+        {
+          "path": "backend/app/modules/system_admin/domain/access.py",
+          "line": 63,
+          "end_line": 72,
+          "label": "查库验密"
+        }
+      ]
+    },
+    {
+      "id": "redis",
+      "type": "database",
+      "label": "内存库",
+      "sublabel": "只留最新一次登录",
+      "sources": [
+        {
+          "path": "backend/app/core/auth.py",
+          "line": 191,
+          "end_line": 206,
+          "label": "顶掉旧会话"
+        }
+      ]
+    }
+  ],
+  "messages": [
+    {
+      "id": "submit",
+      "from": "caller",
+      "to": "login",
+      "y": 180,
+      "label": "提交账号密码",
+      "variant": "emphasis"
+    },
+    {
+      "id": "check",
+      "from": "login",
+      "to": "users",
+      "y": 230,
+      "label": "按账号查库验密",
+      "variant": "security"
+    },
+    {
+      "id": "ok",
+      "from": "users",
+      "to": "login",
+      "y": 280,
+      "label": "身份和菜单",
+      "variant": "return"
+    },
+    {
+      "id": "save",
+      "from": "login",
+      "to": "redis",
+      "y": 340,
+      "label": "顶掉旧会话",
+      "variant": "security"
+    },
+    {
+      "id": "done",
+      "from": "redis",
+      "to": "login",
+      "y": 390,
+      "label": "新会话已写入",
+      "variant": "return"
+    },
+    {
+      "id": "back",
+      "from": "login",
+      "to": "caller",
+      "y": 450,
+      "label": "返回令牌",
+      "variant": "return"
+    }
+  ],
+  "activations": [
+    {
+      "participant": "login",
+      "from": 180,
+      "to": 456,
+      "type": "security"
+    },
+    {
+      "participant": "users",
+      "from": 224,
+      "to": 286,
+      "type": "database"
+    },
+    {
+      "participant": "redis",
+      "from": 334,
+      "to": 396,
+      "type": "database"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "成功时留下什么",
+      "items": [
+        "密码对且账号启用，才把身份和菜单写进内存库。",
+        "同一账号只留最新一次。旧会话标成在别处登录。"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "失败时不写会话",
+      "items": [
+        "账号或密码不对，返回未授权，不写内存库。",
+        "账号停用返回禁止，也不签发令牌。"
+      ]
+    }
+  ]
+}

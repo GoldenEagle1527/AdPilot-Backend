@@ -1,18 +1,14 @@
-"""巨量引擎换票与账户查询。默认 mock，不打真实开放平台。"""
+"""巨量引擎开放平台 HTTP。假回包不在这个类里。"""
 
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, Protocol
 
 import httpx
 
 from app.core.config import OceanEngineSettings, get_settings
 from app.core.envelope import ApiError
-
-_MOCK_COMPANY = (
-    "番茄漫剧~普通-我花-我家-低调-岁月-苏子-我替-我不-萌宝-重生-杭州瑶添IAA-常规-48-king-免费#2"
-)
 
 
 def _app_id_value(app_id: str) -> int | str:
@@ -27,8 +23,78 @@ class OceanEngineError(RuntimeError):
     """巨量引擎 OpenAPI 调用失败。"""
 
 
+class OceanEnginePort(Protocol):
+    """换票、账户、投放和报表。启动时选定真客户端或假客户端。"""
+
+    requires_stored_token: bool
+
+    async def exchange_token(self, auth_code: str) -> dict[str, Any]: ...
+
+    async def refresh_token(self, refresh_token: str) -> dict[str, Any]: ...
+
+    async def list_authorized_accounts(self, access_token: str) -> dict[str, Any]: ...
+
+    async def list_ebp_advertisers(
+        self,
+        access_token: str,
+        enterprise_organization_id: int,
+        *,
+        page: int = 1,
+        page_size: int = 100,
+    ) -> dict[str, Any]: ...
+
+    async def create_ebp_advertiser_task(
+        self, access_token: str, enterprise_organization_id: int
+    ) -> dict[str, Any]: ...
+
+    async def list_ebp_advertiser_tasks(
+        self, access_token: str, enterprise_organization_id: int, task_ids: list[int]
+    ) -> dict[str, Any]: ...
+
+    async def download_ebp_advertiser_task(
+        self, access_token: str, enterprise_organization_id: int, task_id: int
+    ) -> dict[str, Any]: ...
+
+    async def list_customer_center_advertisers(
+        self,
+        access_token: str,
+        cc_account_id: int,
+        *,
+        page: int = 1,
+        page_size: int = 100,
+    ) -> dict[str, Any]: ...
+
+    async def fund_get(self, access_token: str, advertiser_id: int) -> dict[str, Any]: ...
+
+    async def advertiser_public_info(
+        self, access_token: str, advertiser_ids: list[int]
+    ) -> dict[str, Any]: ...
+
+    async def advertiser_info_query(
+        self, access_token: str, account_ids: list[int]
+    ) -> dict[str, Any]: ...
+
+    async def create_project(self, access_token: str, body: dict[str, Any]) -> dict[str, Any]: ...
+
+    async def upload_video(self, access_token: str, body: dict[str, Any]) -> dict[str, Any]: ...
+
+    async def custom_report(
+        self, access_token: str, params: dict[str, Any] | None = None
+    ) -> dict[str, Any]: ...
+
+    async def update_promotion_status(
+        self, access_token: str, body: dict[str, Any]
+    ) -> dict[str, Any]: ...
+
+    async def upload_product(self, access_token: str, body: dict[str, Any]) -> dict[str, Any]: ...
+
+    async def upload_image(self, access_token: str, body: dict[str, Any]) -> dict[str, Any]: ...
+
+
 class OceanEngineClient:
-    """换票、账户查询、建项目、上传、报表与广告状态。mock 不发 HTTP。"""
+    """换票、账户查询、建项目、上传、报表与广告状态。只发 HTTP。"""
+
+    requires_stored_token = True
 
     def __init__(
         self,
@@ -43,14 +109,6 @@ class OceanEngineClient:
 
     async def exchange_token(self, auth_code: str) -> dict[str, Any]:
         """用授权码换 access_token。"""
-        if self._settings.mock:
-            return _envelope(
-                {
-                    "access_token": "mock-access-token",
-                    "refresh_token": "mock-refresh-token",
-                    "advertiser_ids": [],
-                }
-            )
         return await self._request(
             "POST",
             f"{self._settings.api_base}/open_api/oauth2/access_token/",
@@ -64,13 +122,6 @@ class OceanEngineClient:
 
     async def refresh_token(self, refresh_token: str) -> dict[str, Any]:
         """用 refresh_token 换新的访问令牌。"""
-        if self._settings.mock:
-            return _envelope(
-                {
-                    "access_token": "mock-access-token-2",
-                    "refresh_token": "mock-refresh-token-2",
-                }
-            )
         return await self._request(
             "POST",
             f"{self._settings.api_base}/open_api/oauth2/refresh_token/",
@@ -84,18 +135,6 @@ class OceanEngineClient:
 
     async def list_authorized_accounts(self, access_token: str) -> dict[str, Any]:
         """列出授权账户。"""
-        if self._settings.mock:
-            return _envelope(
-                {
-                    "list": [
-                        {
-                            "account_id": 1872115109920903,
-                            "account_name": "深圳发行中心",
-                            "account_type": "PLATFORM_ROLE_ENTERPRISE_BP_ADMIN",
-                        }
-                    ]
-                }
-            )
         return await self._request(
             "GET",
             f"{self._settings.api_base}/open_api/oauth2/advertiser/get/",
@@ -111,19 +150,6 @@ class OceanEngineClient:
         page_size: int = 100,
     ) -> dict[str, Any]:
         """列出企业组织下的 EBP 广告主。默认每页 100，由调用方翻页。"""
-        if self._settings.mock:
-            return _envelope(
-                {
-                    "account_list": [
-                        {
-                            "account_id": 1873916032590219,
-                            "account_name": "番茄漫剧测试户",
-                            "account_type": "AD_NORMAL",
-                        }
-                    ],
-                    "page_info": {"page": 1, "page_size": page_size, "total_page": 1},
-                }
-            )
         return await self._request(
             "GET",
             f"{self._settings.api_base}/open_api/2/ebp/advertiser/list/",
@@ -141,8 +167,6 @@ class OceanEngineClient:
         self, access_token: str, enterprise_organization_id: int
     ) -> dict[str, Any]:
         """超过 1 万条时创建全量账户导出任务。"""
-        if self._settings.mock:
-            return _envelope({"task_id": 1})
         return await self._request(
             "POST",
             f"{self._settings.api_base}/open_api/2/ebp/advertiser/task/create/",
@@ -157,10 +181,6 @@ class OceanEngineClient:
         self, access_token: str, enterprise_organization_id: int, task_ids: list[int]
     ) -> dict[str, Any]:
         """查询导出任务状态。"""
-        if self._settings.mock:
-            return _envelope(
-                {"list": [{"task_id": task_ids[0] if task_ids else 1, "task_status": "COMPLETED"}]}
-            )
         return await self._request(
             "GET",
             f"{self._settings.api_base}/open_api/2/ebp/advertiser/task/list/",
@@ -175,18 +195,6 @@ class OceanEngineClient:
         self, access_token: str, enterprise_organization_id: int, task_id: int
     ) -> dict[str, Any]:
         """下载导出结果。JSON 按开放平台信封解析，文件正文放在 raw_text。"""
-        if self._settings.mock:
-            return _envelope(
-                {
-                    "account_list": [
-                        {
-                            "account_id": 1873916032590219,
-                            "account_name": "番茄漫剧测试户",
-                            "account_type": "AD_NORMAL",
-                        }
-                    ]
-                }
-            )
         url = f"{self._settings.api_base}/open_api/2/ebp/advertiser/task/download/"
         params = {
             "enterprise_organization_id": enterprise_organization_id,
@@ -219,18 +227,6 @@ class OceanEngineClient:
         page_size: int = 100,
     ) -> dict[str, Any]:
         """列出旧版工作台下的广告主。"""
-        if self._settings.mock:
-            return _envelope(
-                {
-                    "list": [
-                        {
-                            "advertiser_id": 1873916032590219,
-                            "advertiser_name": "番茄漫剧测试户",
-                        }
-                    ],
-                    "page_info": {"page": 1, "page_size": page_size, "total_page": 1},
-                }
-            )
         return await self._request(
             "GET",
             f"{self._settings.ad_base}/open_api/2/customer_center/advertiser/list/",
@@ -245,8 +241,6 @@ class OceanEngineClient:
 
     async def fund_get(self, access_token: str, advertiser_id: int) -> dict[str, Any]:
         """查询广告主可用余额，单位元。"""
-        if self._settings.mock:
-            return _envelope({"valid_balance": 100.5, "advertiser_id": advertiser_id})
         return await self._request(
             "GET",
             f"{self._settings.ad_base}/open_api/2/advertiser/fund/get/",
@@ -258,17 +252,6 @@ class OceanEngineClient:
         self, access_token: str, advertiser_ids: list[int]
     ) -> dict[str, Any]:
         """查询广告主公开信息。公司名在 data.advertisers[].company。"""
-        if self._settings.mock:
-            return _envelope(
-                {
-                    "advertisers": [
-                        {
-                            "id": 1873916032590219,
-                            "company": _MOCK_COMPANY,
-                        }
-                    ]
-                }
-            )
         return await self._request(
             "GET",
             f"{self._settings.ad_base}/open_api/2/advertiser/public_info/",
@@ -280,17 +263,6 @@ class OceanEngineClient:
         self, access_token: str, account_ids: list[int]
     ) -> dict[str, Any]:
         """代理商查询广告主主体。account_ids 以 JSON 数组 query 发出。"""
-        if self._settings.mock:
-            return _envelope(
-                {
-                    "account_detail_list": [
-                        {
-                            "advertiser_id": 1873916032590219,
-                            "adv_company_name": _MOCK_COMPANY,
-                        }
-                    ]
-                }
-            )
         return await self._request(
             "GET",
             f"{self._settings.api_base}/open_api/2/agent/advertiser_info/query/",
@@ -299,9 +271,7 @@ class OceanEngineClient:
         )
 
     async def create_project(self, access_token: str, body: dict[str, Any]) -> dict[str, Any]:
-        """创建项目。mock 固定 project_id。"""
-        if self._settings.mock:
-            return _envelope({"project_id": 7000000000000001})
+        """创建项目。"""
         return await self._request(
             "POST",
             f"{self._settings.api_base}/open_api/v3.0/project/create/",
@@ -311,8 +281,6 @@ class OceanEngineClient:
 
     async def upload_video(self, access_token: str, body: dict[str, Any]) -> dict[str, Any]:
         """按 URL 上传广告视频。开放平台要求 multipart，upload_type 为 UPLOAD_BY_URL。"""
-        if self._settings.mock:
-            return _envelope({"video_id": "mock-video-1"})
         form = {
             "advertiser_id": (None, str(body["advertiser_id"])),
             "upload_type": (None, "UPLOAD_BY_URL"),
@@ -328,24 +296,7 @@ class OceanEngineClient:
     async def custom_report(
         self, access_token: str, params: dict[str, Any] | None = None
     ) -> dict[str, Any]:
-        """自定义报表。官方是 GET。mock 返回两条广告指标。"""
-        if self._settings.mock:
-            return _envelope(
-                {
-                    "list": [
-                        {
-                            "promotion_id": 8001,
-                            "stat_cost": 120.0,
-                            "attribution_micro_game_0d_roi": 0.3,
-                        },
-                        {
-                            "promotion_id": 8002,
-                            "stat_cost": 10.0,
-                            "attribution_micro_game_0d_roi": 1.2,
-                        },
-                    ]
-                }
-            )
+        """自定义报表。官方是 GET。"""
         return await self._request(
             "GET",
             f"{self._settings.api_base}/open_api/v3.0/report/custom/get/",
@@ -357,8 +308,6 @@ class OceanEngineClient:
         self, access_token: str, body: dict[str, Any]
     ) -> dict[str, Any]:
         """更新广告启停。data 内含 promotion_id 与 opt_status，DISABLE 为暂停。"""
-        if self._settings.mock:
-            return _envelope({})
         return await self._request(
             "POST",
             f"{self._settings.api_base}/open_api/v3.0/promotion/status/update/",
@@ -367,10 +316,12 @@ class OceanEngineClient:
         )
 
     async def upload_product(self, access_token: str, body: dict[str, Any]) -> dict[str, Any]:
-        """商品库上传。开放平台 path 未定，mock 以外拒绝请求。"""
-        if self._settings.mock:
-            return _envelope({"product_id": 9001})
+        """商品库上传。开放平台 path 未定，拒绝请求，不打开放平台。"""
         raise ApiError(503, "商品库上传接口未定")
+
+    async def upload_image(self, access_token: str, body: dict[str, Any]) -> dict[str, Any]:
+        """产品主图。真实上传未接，不打开放平台。"""
+        raise ApiError(503, "图片上传接口未定")
 
     async def _request(
         self,
@@ -392,10 +343,6 @@ class OceanEngineClient:
                 method, url, headers=headers, params=params, json=json_body, files=files
             )
         return _parse(response)
-
-
-def _envelope(data: dict[str, Any]) -> dict[str, Any]:
-    return {"code": 0, "message": "OK", "data": data}
 
 
 def _parse(response: httpx.Response) -> dict[str, Any]:

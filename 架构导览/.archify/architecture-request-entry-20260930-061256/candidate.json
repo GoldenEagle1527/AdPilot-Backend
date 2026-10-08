@@ -1,0 +1,416 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "请求怎么进入系统",
+    "locale": "zh-CN",
+    "output": "架构导览/.archify/architecture-request-entry-20260930-061256/request-entry.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/GoldenEagle1527/AdPilot-Backend",
+      "provider": "github",
+      "revision": "6643359e825abd3e4d1fda4b626c90ef8f0e8dbe"
+    }
+  },
+  "components": [
+    {
+      "id": "caller",
+      "type": "external",
+      "label": "调用方",
+      "sublabel": "带令牌的网页或客户端",
+      "pos": [
+        32,
+        230
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/main.py",
+          "line": 57,
+          "end_line": 64,
+          "label": "接口约定"
+        }
+      ]
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "接口进程",
+      "sublabel": "启动后按配置监听",
+      "pos": [
+        326,
+        230
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/main.py",
+          "line": 89,
+          "end_line": 96,
+          "label": "进程入口"
+        },
+        {
+          "path": "backend/main.py",
+          "line": 56,
+          "end_line": 68,
+          "label": "组装应用"
+        },
+        {
+          "path": "backend/app/core/envelope.py",
+          "line": 47,
+          "end_line": 48,
+          "label": "统一响应"
+        }
+      ]
+    },
+    {
+      "id": "gate",
+      "type": "security",
+      "label": "令牌校验",
+      "sublabel": "登录和健康检查除外",
+      "pos": [
+        620,
+        230
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/core/auth.py",
+          "line": 161,
+          "end_line": 173,
+          "label": "校验令牌"
+        },
+        {
+          "path": "backend/app/core/auth.py",
+          "line": 139,
+          "end_line": 146,
+          "label": "按会话号读取"
+        }
+      ]
+    },
+    {
+      "id": "mods",
+      "type": "backend",
+      "label": "业务路由",
+      "sublabel": "各业务模块挂在一起",
+      "pos": [
+        914,
+        230
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/main.py",
+          "line": 69,
+          "end_line": 82,
+          "label": "挂上路由"
+        }
+      ]
+    },
+    {
+      "id": "pg",
+      "type": "database",
+      "label": "数据库",
+      "sublabel": "业务表都在这一处",
+      "pos": [
+        1208,
+        230
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/core/db.py",
+          "line": 47,
+          "end_line": 58,
+          "label": "连接池"
+        },
+        {
+          "path": "backend/app/core/config.py",
+          "line": 140,
+          "end_line": 147,
+          "label": "连接地址"
+        }
+      ]
+    },
+    {
+      "id": "redis",
+      "type": "database",
+      "label": "内存库",
+      "sublabel": "会话与后台队列",
+      "pos": [
+        620,
+        36
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/core/redis_client.py",
+          "line": 10,
+          "end_line": 21,
+          "label": "会话连接"
+        },
+        {
+          "path": "backend/app/tasks/celery_app.py",
+          "line": 12,
+          "end_line": 22,
+          "label": "队列分库"
+        }
+      ]
+    },
+    {
+      "id": "tos",
+      "type": "cloud",
+      "label": "对象存储",
+      "sublabel": "文件的公网地址",
+      "pos": [
+        326,
+        440
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/storage/tos.py",
+          "line": 34,
+          "end_line": 45,
+          "label": "上传字节"
+        },
+        {
+          "path": "backend/app/modules/file/service.py",
+          "line": 35,
+          "end_line": 36,
+          "label": "转存文件"
+        }
+      ]
+    },
+    {
+      "id": "ocean",
+      "type": "backend",
+      "label": "巨量端口",
+      "sublabel": "启动时只装一个",
+      "pos": [
+        914,
+        440
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/modules/oceanengine/client_factory.py",
+          "line": 10,
+          "end_line": 19,
+          "label": "按开关选型"
+        },
+        {
+          "path": "backend/app/modules/oceanengine/runtime.py",
+          "line": 28,
+          "end_line": 36,
+          "label": "取出客户端"
+        }
+      ]
+    },
+    {
+      "id": "remote",
+      "type": "external",
+      "label": "开放平台",
+      "sublabel": "真客户端才发请求",
+      "pos": [
+        914,
+        650
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/modules/oceanengine/client.py",
+          "line": 92,
+          "end_line": 119,
+          "label": "换票地址"
+        }
+      ]
+    },
+    {
+      "id": "sync",
+      "type": "backend",
+      "label": "漫剧同步",
+      "sublabel": "另一进程每分钟一次",
+      "pos": [
+        1208,
+        440
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/tasks/celery_app.py",
+          "line": 49,
+          "end_line": 58,
+          "label": "定时任务"
+        },
+        {
+          "path": "backend/app/tasks/sync_manhua_tasks.py",
+          "line": 26,
+          "end_line": 40,
+          "label": "加锁再拉"
+        }
+      ]
+    },
+    {
+      "id": "changdu",
+      "type": "external",
+      "label": "常读短剧",
+      "sublabel": "同步时才去拉",
+      "pos": [
+        1208,
+        650
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/modules/material/service.py",
+          "line": 177,
+          "end_line": 189,
+          "label": "签名客户端"
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "in",
+      "from": "caller",
+      "to": "api",
+      "label": "发起请求",
+      "variant": "emphasis"
+    },
+    {
+      "id": "to-gate",
+      "from": "api",
+      "to": "gate",
+      "label": "业务请求"
+    },
+    {
+      "id": "session",
+      "from": "gate",
+      "to": "redis",
+      "label": "核对会话",
+      "variant": "security"
+    },
+    {
+      "id": "pass",
+      "from": "gate",
+      "to": "mods",
+      "label": "校验通过",
+      "variant": "emphasis"
+    },
+    {
+      "id": "sql",
+      "from": "mods",
+      "to": "pg",
+      "label": "读写表"
+    },
+    {
+      "id": "upload",
+      "from": "api",
+      "to": "tos",
+      "label": "上传文件",
+      "variant": "dashed"
+    },
+    {
+      "id": "ocean-call",
+      "from": "mods",
+      "to": "ocean",
+      "label": "投放相关"
+    },
+    {
+      "id": "http",
+      "from": "ocean",
+      "to": "remote",
+      "label": "真客户端才发",
+      "variant": "dashed"
+    },
+    {
+      "id": "write-series",
+      "from": "sync",
+      "to": "pg",
+      "label": "写入漫剧"
+    },
+    {
+      "id": "pull",
+      "from": "sync",
+      "to": "changdu",
+      "label": "拉取短剧",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "请求怎么进来",
+      "items": [
+        "调用方把请求交给接口进程。成功和失败都收成同一套响应。",
+        "登录、健康检查、巨量授权回调不查会话。别的接口要带令牌。",
+        "令牌先解开，再按会话号到内存库确认这次登录还在。"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "进程旁边有什么",
+      "items": [
+        "数据库存业务表。内存库 0 号库存登录会话。",
+        "后台队列用 1 号库，结果用 2 号库，不跟会话混放。",
+        "上传文件进对象存储，不写进业务表。"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "默认不打巨量",
+      "items": [
+        "配置缺省是假客户端，启动不会访问开放平台。",
+        "标准投放草稿和端原生任务只写本地表。",
+        "漫剧同步在另一个进程，不在这一次请求里面。"
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "同一个接口进程",
+      "wraps": [
+        "api",
+        "gate",
+        "mods"
+      ],
+      "pad": 16
+    }
+  ]
+}

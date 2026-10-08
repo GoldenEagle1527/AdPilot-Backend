@@ -8,7 +8,6 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import get_settings
 from app.core.envelope import ApiError
 from app.modules.account.model import (
     DeliverySubject,
@@ -19,7 +18,7 @@ from app.modules.account.model import (
     ProductLibrary,
 )
 from app.modules.oceanengine.reports import _report_rows, _sync_reports
-from app.modules.oceanengine.runtime import _access_token, _live_client, _prepare
+from app.modules.oceanengine.runtime import _access_token, get_ocean_client
 from app.modules.oceanengine.schema import (
     AutoPauseBody,
     ProductCreate,
@@ -38,20 +37,14 @@ _PROMOTION_BATCH = 10
 
 
 async def create_project(session: AsyncSession, body: ProjectCreate) -> dict[str, Any]:
-    """创建项目。mock 用 oe_project 序列发号；否则开放平台成功后写入。"""
-    await _prepare(session)
+    """创建项目。项目 id 来自客户端。"""
     saved = body.model_dump()
     subject_fk = await _subject_row_id(session, body.subject_id)
-    project_id: int | None = None
-    raw_payload: dict[str, Any] | None = None
-    if not get_settings().oceanengine.mock:
-        client = _live_client()
-        remote = await client.create_project(
-            await _access_token(session),
-            _project_remote_body(body),
-        )
-        raw_payload = remote
-        project_id = int((remote.get("data") or {}).get("project_id") or 0) or None
+    client = get_ocean_client()
+    remote_body = _project_remote_body(body) if client.requires_stored_token else saved
+    remote = await client.create_project(await _access_token(session), remote_body)
+    raw_payload = remote
+    project_id = int((remote.get("data") or {}).get("project_id") or 0) or None
     row = OeProject(
         advertiser_id=body.advertiser_id,
         name=body.name,
@@ -72,16 +65,12 @@ async def create_project(session: AsyncSession, body: ProjectCreate) -> dict[str
 
 
 async def upload_video(session: AsyncSession, body: VideoCreate) -> dict[str, Any]:
-    """登记视频。mock 用 oe_video 序列发号。"""
-    await _prepare(session)
+    """登记视频。视频 id 来自客户端。"""
     saved = body.model_dump()
-    video_id = ""
-    raw_payload: dict[str, Any] | None = None
-    if not get_settings().oceanengine.mock:
-        client = _live_client()
-        remote = await client.upload_video(await _access_token(session), saved)
-        raw_payload = remote
-        video_id = str((remote.get("data") or {}).get("video_id") or "")
+    client = get_ocean_client()
+    remote = await client.upload_video(await _access_token(session), saved)
+    raw_payload = remote
+    video_id = str((remote.get("data") or {}).get("video_id") or "")
     row = OeVideo(
         advertiser_id=body.advertiser_id,
         video_url=body.video_url,
@@ -97,37 +86,33 @@ async def upload_video(session: AsyncSession, body: VideoCreate) -> dict[str, An
     return {**saved, "video_id": video_id, "status": "完成"}
 
 
-async def upload_product(
-    session: AsyncSession, library_id: int, body: ProductCreate
-) -> dict[str, Any]:
-    """写入 oe_product。库不存在则 404。同一事务把 uploaded_count 加 1。
+async def upload_product(session: AsyncSession, body: ProductCreate) -> dict[str, Any]:
+    """按 library_no 写入 oe_product。库不存在则 404。同一事务把 uploaded_count 加 1。
 
-    兜底库怎么选由商品库服务决定。这里不改派库：标准库且调用方没传投手时，
-    仍按传入的库 id 写入。
+    假客户端发 product_id，不走 503。真客户端仍因开放平台 path 未定而 503，这里不改派库。
     """
-    await _prepare(session)
     library = await session.scalar(
         select(ProductLibrary)
-        .where(ProductLibrary.id == library_id, ProductLibrary.is_deleted == 0)
+        .where(ProductLibrary.library_no == body.library_no, ProductLibrary.is_deleted == 0)
         .with_for_update()
     )
     if library is None:
         raise ApiError(404, "商品库不存在")
-    product_id: int | None = None
-    raw_payload: dict[str, Any] | None = None
-    if not get_settings().oceanengine.mock:
-        client = _live_client()
-        remote = await client.upload_product(
-            await _access_token(session),
-            {**body.model_dump(), "library_id": library_id},
-        )
-        raw_payload = remote
-        product_id = int((remote.get("data") or {}).get("product_id") or 0) or None
+    client = get_ocean_client()
+    remote = await client.upload_product(
+        await _access_token(session),
+        {
+            "advertiser_id": body.advertiser_id,
+            "library_no": body.library_no,
+            "book_name": body.book_name,
+        },
+    )
+    product_id = int((remote.get("data") or {}).get("product_id") or 0) or None
     row = OeProduct(
         product_library_id=library.id,
-        drama_name=body.drama_name,
-        file_url=body.file_url,
-        raw_payload=raw_payload,
+        drama_name=body.book_name,
+        file_url=None,
+        raw_payload=remote,
     )
     if product_id is not None:
         row.ocean_product_id = product_id
@@ -136,22 +121,40 @@ async def upload_product(
     await session.flush()
     await session.refresh(row)
     return {
-        "library_id": library_id,
+        "advertiser_id": body.advertiser_id,
+        "library_no": int(library.library_no),
+        "book_name": body.book_name,
         "product_id": int(row.ocean_product_id),
-        "drama_name": body.drama_name,
-        "file_url": body.file_url,
     }
+
+
+async def upload_image(
+    session: AsyncSession, advertiser_id: int, filename: str, content: bytes
+) -> dict[str, Any]:
+    """上传本地图片。概念上是 UPLOAD_BY_FILE。不接受 URL，也不打开放平台的活请求。"""
+    if not content:
+        raise ApiError(400, "图片文件为空")
+    client = get_ocean_client()
+    remote = await client.upload_image(
+        await _access_token(session),
+        {
+            "advertiser_id": advertiser_id,
+            "upload_type": "UPLOAD_BY_FILE",
+            "filename": filename,
+            "image_file": content,
+        },
+    )
+    image_id = str((remote.get("data") or {}).get("id") or "")
+    if not image_id or image_id.startswith("local-"):
+        raise ApiError(502, "图片 id 无效")
+    return {"advertiser_id": advertiser_id, "image_id": image_id}
 
 
 async def update_promotions(
     session: AsyncSession, body: PromotionStatusBody
 ) -> list[dict[str, Any]]:
     """批量改广告启停，写入 oe_promotion。"""
-    await _prepare(session)
-    accepted = list(body.promotion_ids)
-    failures: list[str] = []
-    if not get_settings().oceanengine.mock:
-        accepted, failures = await _push_promotion_status(session, body)
+    accepted, failures = await _push_promotion_status(session, body)
     results: list[dict[str, Any]] = []
     for promotion_id in accepted:
         await _upsert_promotion(session, body.advertiser_id, promotion_id, body.opt_status)
@@ -163,9 +166,8 @@ async def update_promotions(
 
 
 async def run_auto_pause(session: AsyncSession, body: AutoPauseBody) -> dict[str, list[int]]:
-    """按报表阈值关停。关闭 mock 时先拉当天自定义报表。"""
-    await _prepare(session)
-    if not get_settings().oceanengine.mock:
+    """按报表阈值关停。真客户端先拉当天自定义报表。"""
+    if get_ocean_client().requires_stored_token:
         await _sync_reports(session)
     rows = await _report_rows(session)
     paused: list[int] = []
@@ -221,7 +223,7 @@ async def _push_promotion_status(
     session: AsyncSession, body: PromotionStatusBody
 ) -> tuple[list[int], list[str]]:
     """每批最多 10 条。errors 里的广告不进入成功列表。"""
-    client = _live_client()
+    client = get_ocean_client()
     token = await _access_token(session)
     accepted: list[int] = []
     messages: list[str] = []
