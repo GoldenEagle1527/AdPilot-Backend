@@ -1,14 +1,14 @@
 # 契约：update-template
 
 业务id：standard-delivery
-文档版本：2
+文档版本：1
 方法：PUT
 路径：/api/v1/standard-delivery/templates/{template_id}
-作用：整表保存标准模板。收费模式不可改。标准提交字段与新增相同。
+作用：整表保存模板的名称、主体、出价面板和每账户广告条数。收费模式不可改。
 
 作者：
 状态：draft
-更新日期：2026-10-08
+更新日期：2026-09-29
 
 ## 请求
 
@@ -20,21 +20,8 @@
 | subject_id | body | integer | 是 | 同新增。仍须是标准投放，且收费模式与这条模板一致 |
 | bid_panels | body | string[] | 否 | 同新增。付费模板保存后不能是空的 |
 | ads_per_account | body | integer | 是 | 1–100 |
-| ocean_delivery_mode | body | string | 是 | 同新增 |
-| bid_type | body | string | 是 | 同新增 |
-| schedule_type | body | string | 是 | 同新增 |
-| schedule_start_date | body | string \| null | 否 | 同新增 |
-| schedule_end_date | body | string \| null | 否 | 同新增 |
-| schedule_time | body | string \| null | 否 | 同新增。空表示不限 |
-| ad_source | body | string | 是 | 同新增 |
-| product_name | body | string | 是 | 同新增，最多 20 字 |
-| selling_points | body | string[] | 否 | 同新增 |
-| call_to_action_buttons | body | string[] | 否 | 同新增 |
-| roi_goal | body | number \| null | 否 | 同新增。不要传 `roi_coefficient` |
-| videos_per_ad | body | integer | 是 | 1–30 |
-| titles_per_ad | body | integer | 是 | 1–10 |
 
-不收 `charge_mode`、地域、`asset_ids`。多传返回 422。
+不收 `charge_mode`。多传返回 422。
 
 ## 响应
 
@@ -60,5 +47,4 @@
 
 | 日期 | 文档版本 | 破坏？ | 变更 | 作者 |
 | --- | --- | --- | --- | --- |
-| 2026-10-08 | 2 | 是 | 保存时必须带上标准提交字段。快照见 [_history/update-template-v1.md](_history/update-template-v1.md) | |
 | 2026-09-29 | 1 | 否 | 初稿 | |

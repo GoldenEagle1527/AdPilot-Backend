@@ -1,14 +1,14 @@
 # 契约：list-templates
 
 业务id：standard-delivery
-文档版本：1
+文档版本：2
 方法：GET
 路径：/api/v1/standard-delivery/templates
 作用：按收费模式分页列出投放模板。免费、付费分两次查。
 
 作者：
 状态：draft
-更新日期：2026-09-29
+更新日期：2026-10-08
 
 ## 请求
 
@@ -34,6 +34,19 @@
 | subject_name | string | 主体名称 |
 | bid_panels | string[] | 出价面板 |
 | ads_per_account | integer | 每账户广告条数，1–100 |
+| ocean_delivery_mode | string \| null | 巨量投放模式 `MANUAL` 或 `PROCEDURAL`。不是本表列 `delivery_mode` |
+| bid_type | string \| null | `CUSTOM` 稳定成本、`NO_BID` 最大转化 |
+| schedule_type | string \| null | `SCHEDULE_FROM_NOW` 或 `SCHEDULE_START_END` |
+| schedule_start_date | string \| null | `yyyy-MM-dd`。只有自选起止才有 |
+| schedule_end_date | string \| null | `yyyy-MM-dd`。只有自选起止才有 |
+| schedule_time | string \| null | 空表示不限。有值则为 48×7 的 `0/1` 串 |
+| ad_source | string \| null | 广告来源 |
+| product_name | string \| null | 产品名称，最多 20 字 |
+| selling_points | string[] | 产品卖点 |
+| call_to_action_buttons | string[] | 行动号召 |
+| roi_goal | string \| null | ROI 目标，三位小数。标准模板不用 `roi_coefficient` |
+| videos_per_ad | integer \| null | 每个广告视频数，1–30 |
+| titles_per_ad | integer \| null | 每个广告标题数，1–10 |
 | created_at | string | 创建时间 |
 | updated_at | string | 更新时间 |
 
@@ -55,4 +68,5 @@
 
 | 日期 | 文档版本 | 破坏？ | 变更 | 作者 |
 | --- | --- | --- | --- | --- |
+| 2026-10-08 | 2 | 否 | 列表项增加巨量投放模式、竞价、投放时间、时段、广告来源、产品名称、卖点、行动号召、ROI、每广告视频数和标题数。旧行这些字段可以为空 | |
 | 2026-09-29 | 1 | 否 | 初稿 | |

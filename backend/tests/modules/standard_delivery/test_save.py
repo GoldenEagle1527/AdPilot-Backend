@@ -6,6 +6,7 @@ import asyncio
 import unittest
 from datetime import datetime
 from decimal import Decimal
+from pathlib import Path
 from typing import Any
 
 from pydantic import ValidationError
@@ -25,6 +26,7 @@ from app.modules.standard_delivery.crud import (
 )
 from app.modules.standard_delivery.model import DeliveryTaskAccount, DeliveryTaskDraft, DeliveryTemplate
 from app.modules.standard_delivery.schema import DraftQuery, DraftWrite, RuleWrite, TemplateQuery, TemplateWrite
+from app.modules.uni_template.schema import TemplateWrite as UniTemplateWrite
 from app.modules.standard_delivery.service import (
     create_draft,
     create_template,
@@ -36,6 +38,23 @@ from app.modules.standard_delivery.service import (
 
 CREATED = datetime(2026, 9, 29, 12, 0, 0, tzinfo=BEIJING)
 ALLOWED = {"IAA", "IAP"}
+MIGRATION = Path(__file__).resolve().parents[3] / "alembic" / "versions" / "20261008_01_standard_submit_fields.py"
+_TEMPLATE_FIELDS = {
+    "ocean_delivery_mode": "MANUAL",
+    "bid_type": "CUSTOM",
+    "schedule_type": "SCHEDULE_FROM_NOW",
+    "ad_source": "来源甲",
+    "product_name": "产品甲",
+    "selling_points": ["卖点一"],
+    "call_to_action_buttons": ["立即观看"],
+    "videos_per_ad": 3,
+    "titles_per_ad": 2,
+}
+_DRAFT_FIELDS = {
+    "album_url": "https://example.com/album/1",
+    "project_operation": "ENABLE",
+    "promotion_operation": "DISABLE",
+}
 
 
 class FakeResult:
@@ -122,6 +141,7 @@ def template_body(**kwargs: Any) -> TemplateWrite:
         "subject_id": 7,
         "bid_panels": [],
         "ads_per_account": 2,
+        **_TEMPLATE_FIELDS,
     }
     data.update(kwargs)
     return TemplateWrite(**data)
@@ -141,6 +161,7 @@ def draft_body(**kwargs: Any) -> DraftWrite:
         "ad_budget": "50.50",
         "optimize_goal": "AD_CONVERT_TYPE_ACTIVE",
         "library_no": 77001,
+        **_DRAFT_FIELDS,
     }
     data.update(kwargs)
     return DraftWrite(**data)
@@ -192,6 +213,58 @@ class BodyTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             RuleWrite(name="规则甲", template_id=11, series_ids=[8, 9], cost_min="1")
 
+    def test_schedule_time_is_empty_or_a_week_grid(self) -> None:
+        """时段空着表示不限。有值必须是 48×7 的 0/1。"""
+        self.assertIsNone(template_body().schedule_time)
+        with self.assertRaises(ValidationError):
+            template_body(schedule_time="01")
+        grid = "01" * 168
+        self.assertEqual(len(template_body(schedule_time=grid).schedule_time), 336)
+
+    def test_start_end_needs_both_dates(self) -> None:
+        """自选起止必须成对，从今天起不能带日期。"""
+        with self.assertRaises(ValidationError):
+            template_body(schedule_type="SCHEDULE_START_END")
+        with self.assertRaises(ValidationError):
+            template_body(schedule_start_date="2026-10-08")
+        body = template_body(
+            schedule_type="SCHEDULE_START_END",
+            schedule_start_date="2026-10-08",
+            schedule_end_date="2026-10-09",
+        )
+        self.assertEqual(body.schedule_start_date.isoformat(), "2026-10-08")
+
+    def test_counts_stay_inside_the_template_range(self) -> None:
+        """每个广告 1–30 个视频、1–10 个标题。"""
+        with self.assertRaises(ValidationError):
+            template_body(videos_per_ad=31)
+        with self.assertRaises(ValidationError):
+            template_body(titles_per_ad=0)
+
+    def test_album_url_is_one_http_string(self) -> None:
+        """专辑链接是一条 http(s)。不收地域和 asset_ids。"""
+        self.assertEqual(draft_body().album_url, "https://example.com/album/1")
+        with self.assertRaises(ValidationError):
+            draft_body(album_url="iaa-link")
+        with self.assertRaises(ValidationError):
+            draft_body(asset_ids=[1])
+        with self.assertRaises(ValidationError):
+            draft_body(city=[110000])
+
+    def test_uni_template_rejects_standard_submit_fields(self) -> None:
+        """全域模板入参多了标准提交列就 422。"""
+        with self.assertRaises(ValidationError):
+            UniTemplateWrite(
+                name="全域甲",
+                subject_id=1,
+                charge_mode="IAA",
+                project_budget="10",
+                roi_coefficient="1.2",
+                aigc_dynamic_creative=False,
+                title_select_mode="manual",
+                ocean_delivery_mode="MANUAL",
+            )
+
 
 class FilterTests(unittest.TestCase):
     def _sql(self, items: list[Any]) -> str:
@@ -229,6 +302,19 @@ class FilterTests(unittest.TestCase):
         self.assertIn("douyin_account.enabled IS true", where)
         self.assertNotIn("douyin_pitcher", sql)
         self.assertNotIn("owner_user_id", where)
+
+    def test_migration_revises_the_local_chain_head(self) -> None:
+        """只新增这一条。down_revision 接本地链头，不建短剧行业表。"""
+        text = MIGRATION.read_text(encoding="utf-8")
+        self.assertIn('revision: str = "20261008_01"', text)
+        self.assertIn('down_revision: Union[str, None] = "20260930_04"', text)
+        self.assertIn("ocean_delivery_mode", text)
+        self.assertIn("album_url", text)
+        self.assertIn("roi_goal", text)
+        self.assertNotIn("roi_coefficient", text.split("def upgrade", 1)[1].split("def downgrade", 1)[0])
+        self.assertNotIn("industry", text.lower())
+        self.assertNotIn("asset_ids", text)
+        self.assertNotIn("city", text)
 
     def test_advertisers_belong_to_the_current_pitcher(self) -> None:
         """账户下拉只取当前投手名下仍然有效的户。"""
@@ -268,6 +354,17 @@ class CreateTemplateTests(unittest.TestCase):
         self.assertEqual(item["subject_name"], "甲主体")
         self.assertEqual(item["bid_panels"], ["面板A"])
         self.assertEqual(item["ads_per_account"], 2)
+        self.assertEqual(item["ocean_delivery_mode"], "MANUAL")
+        self.assertEqual(item["bid_type"], "CUSTOM")
+        self.assertEqual(item["schedule_type"], "SCHEDULE_FROM_NOW")
+        self.assertIsNone(item["schedule_time"])
+        self.assertEqual(item["ad_source"], "来源甲")
+        self.assertEqual(item["product_name"], "产品甲")
+        self.assertEqual(item["selling_points"], ["卖点一"])
+        self.assertEqual(item["call_to_action_buttons"], ["立即观看"])
+        self.assertIsNone(item["roi_goal"])
+        self.assertEqual(item["videos_per_ad"], 3)
+        self.assertEqual(item["titles_per_ad"], 2)
         self.assertEqual(session.commits, 1)
         row = session.added[0]
         self.assertEqual(row.delivery_mode, "standard")
@@ -338,6 +435,9 @@ class CreateDraftTests(unittest.TestCase):
         self.assertEqual(item["aweme_id"], "aweme-1")
         self.assertEqual(item["douyin_account_id"], "4")
         self.assertEqual([row["advertiser_id"] for row in item["accounts"]], [90001, 90002])
+        self.assertEqual(item["album_url"], "https://example.com/album/1")
+        self.assertEqual(item["project_operation"], "ENABLE")
+        self.assertEqual(item["promotion_operation"], "DISABLE")
         drafts = [row for row in session.added if isinstance(row, DeliveryTaskDraft)]
         links = [row for row in session.added if isinstance(row, DeliveryTaskAccount)]
         self.assertEqual(len(drafts), 1)

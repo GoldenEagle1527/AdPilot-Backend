@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import re
+from datetime import date
 from decimal import Decimal
 from typing import Any, TypeVar
 
@@ -118,6 +119,20 @@ def _roi(value: Decimal) -> str:
     return format(value.quantize(Decimal("0.0001")), "f")
 
 
+def _roi_goal(value: Decimal | None) -> str | None:
+    """标准模板的 ROI 目标保留三位小数。空就空。"""
+    if value is None:
+        return None
+    return format(value.quantize(Decimal("0.001")), "f")
+
+
+def _day(value: date | None) -> str | None:
+    """日期收成 yyyy-MM-dd。"""
+    if value is None:
+        return None
+    return value.isoformat()
+
+
 def _order(rows: list[T], wanted: list[int], key) -> list[T]:
     """按请求里的 id 顺序重排。缺一条就返回空列表，调用方再报错。"""
     found = {key(row): row for row in rows}
@@ -136,9 +151,43 @@ def template_item(row: DeliveryTemplate, subject_name: str) -> dict[str, Any]:
         "subject_name": subject_name,
         "bid_panels": list(row.bid_panels or []),
         "ads_per_account": row.ads_per_account,
+        "ocean_delivery_mode": row.ocean_delivery_mode,
+        "bid_type": row.bid_type,
+        "schedule_type": row.schedule_type,
+        "schedule_start_date": _day(row.schedule_start_date),
+        "schedule_end_date": _day(row.schedule_end_date),
+        "schedule_time": row.schedule_time,
+        "ad_source": row.ad_source,
+        "product_name": row.product_name,
+        "selling_points": list(row.selling_points or []),
+        "call_to_action_buttons": list(row.call_to_action_buttons or []),
+        "roi_goal": _roi_goal(row.roi_goal),
+        "videos_per_ad": row.videos_per_ad,
+        "titles_per_ad": row.titles_per_ad,
         "created_at": beijing_iso(row.created_date),
         "updated_at": beijing_iso(row.updated_date),
     }
+
+
+def _apply_standard_template(row: DeliveryTemplate, body: TemplateWrite | TemplateUpdate) -> None:
+    """把标准提交字段写上，并清空全域列。标准行不用 roi_coefficient。"""
+    row.ocean_delivery_mode = body.ocean_delivery_mode
+    row.bid_type = body.bid_type
+    row.schedule_type = body.schedule_type
+    row.schedule_start_date = body.schedule_start_date
+    row.schedule_end_date = body.schedule_end_date
+    row.schedule_time = body.schedule_time
+    row.ad_source = body.ad_source
+    row.product_name = body.product_name
+    row.selling_points = list(body.selling_points)
+    row.call_to_action_buttons = list(body.call_to_action_buttons)
+    row.roi_goal = body.roi_goal
+    row.videos_per_ad = body.videos_per_ad
+    row.titles_per_ad = body.titles_per_ad
+    row.project_budget = None
+    row.roi_coefficient = None
+    row.aigc_dynamic_creative = None
+    row.title_select_mode = None
 
 
 def template_filters(query: TemplateQuery) -> list[ColumnElement[bool]]:
@@ -199,6 +248,7 @@ async def create_template(session: AsyncSession, body: TemplateWrite, allowed: s
         bid_panels=list(body.bid_panels),
         ads_per_account=body.ads_per_account,
     )
+    _apply_standard_template(row, body)
     session.add(row)
     await session.commit()
     await session.refresh(row)
@@ -225,6 +275,7 @@ async def update_template(
     row.subject_id = subject.id
     row.bid_panels = list(body.bid_panels)
     row.ads_per_account = body.ads_per_account
+    _apply_standard_template(row, body)
     row.updated_date = beijing_now()
     await session.commit()
     await session.refresh(row)
@@ -297,6 +348,9 @@ def draft_item(
         "product_library_id": str(library.id),
         "library_no": int(library.library_no),
         "library_name": library.name,
+        "album_url": row.album_url,
+        "project_operation": row.project_operation,
+        "promotion_operation": row.promotion_operation,
         "created_at": beijing_iso(row.created_date),
         "updated_at": beijing_iso(row.updated_date),
     }
@@ -464,6 +518,9 @@ def _fill_draft(
     row.ad_budget = body.ad_budget
     row.optimize_goal = body.optimize_goal
     row.product_library_id = library.id
+    row.album_url = body.album_url
+    row.project_operation = body.project_operation
+    row.promotion_operation = body.promotion_operation
 
 
 async def create_draft(
@@ -486,6 +543,9 @@ async def create_draft(
         product_library_id=library.id,
         schedule_start=body.schedule_start,
         schedule_end=body.schedule_end,
+        album_url=body.album_url,
+        project_operation=body.project_operation,
+        promotion_operation=body.promotion_operation,
     )
     session.add(row)
     await session.flush()

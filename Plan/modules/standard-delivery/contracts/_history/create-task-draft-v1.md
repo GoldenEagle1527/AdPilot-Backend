@@ -1,7 +1,7 @@
 # 契约：create-task-draft
 
 业务id：standard-delivery
-文档版本：2
+文档版本：1
 方法：POST
 路径：/api/v1/standard-delivery/task-drafts
 作用：新增一条投放任务草稿。只落本系统字段，不调用创建项目或创建单元。
@@ -10,7 +10,7 @@
 
 作者：
 状态：draft
-更新日期：2026-10-08
+更新日期：2026-09-29
 
 ## 请求
 
@@ -30,11 +30,8 @@
 | ad_budget | body | number | 是 | 广告预算，元，大于 0，最多两位小数 |
 | optimize_goal | body | string | 是 | 免费只能 `AD_CONVERT_TYPE_ACTIVE`，付费只能 `AD_CONVERT_TYPE_PAY` |
 | library_no | body | integer | 是 | `product_library.library_no`。标准库须已分给当前投手；兜底库可用 |
-| album_url | body | string | 是 | 手填的短剧专辑链接，一条 `http` 或 `https`。不是剧场推广链 |
-| project_operation | body | string | 是 | 项目开关：`ENABLE` 或 `DISABLE` |
-| promotion_operation | body | string | 是 | 广告开关：`ENABLE` 或 `DISABLE` |
 
-不收地域、城市、`asset_ids`、产品主图、巨量商品 id、巨量视频 id。卖点和行动号召在模板上。多传返回 422。
+不收推广链、产品主图、卖点、行动号召、事件资产、地域、巨量商品 id、巨量视频 id。多传返回 422。
 
 ## 响应
 
@@ -67,5 +64,4 @@
 
 | 日期 | 文档版本 | 破坏？ | 变更 | 作者 |
 | --- | --- | --- | --- | --- |
-| 2026-10-08 | 2 | 是 | 增加必填 `album_url`、`project_operation`、`promotion_operation`。不增加地域和 `asset_ids`。快照见 [_history/create-task-draft-v1.md](_history/create-task-draft-v1.md) | |
 | 2026-09-29 | 1 | 否 | 初稿 | |

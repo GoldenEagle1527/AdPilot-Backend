@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
+from sqlalchemy import select
 
 from app.core.envelope import ApiError, Envelope, success
 from app.core.pagination import PageData
@@ -18,6 +19,7 @@ from app.modules.oceanengine.schema import (
     AuthorizeQuery,
     AutoPauseBody,
     AutoPauseResult,
+    ImageItem,
     OAuthCallbackQuery,
     OAuthTokenData,
     OrganizationList,
@@ -40,6 +42,7 @@ from app.modules.oceanengine.service import (
     oauth_callback,
     run_auto_pause,
     update_promotions,
+    upload_image,
     upload_product,
     upload_video,
 )
@@ -190,19 +193,44 @@ async def post_video(
 
 
 @router.post(
-    "/product-libraries/{library_id}/products",
+    "/products",
     response_model=Envelope[ProductItem],
     summary="商品库上传",
 )
 async def post_product(
-    library_id: int,
     session: SessionDep,
-    _principal: Menu32,
+    principal: Menu32,
     body: ProductCreate,
 ) -> dict[str, Any]:
-    """向商品库追加一条剧。库 id 必须是 choose_library 选出的那一个。"""
-    await _assert_upload_library(session, _principal, library_id)
-    data = await upload_product(session, library_id, body)
+    """按 library_no 追加一条剧。库必须是 choose_library 选出的那一个。"""
+    library = await session.scalar(
+        select(ProductLibrary).where(
+            ProductLibrary.library_no == body.library_no,
+            ProductLibrary.is_deleted == 0,
+        )
+    )
+    if library is None:
+        raise ApiError(404, "商品库不存在")
+    await _assert_upload_library(session, principal, library.id)
+    data = await upload_product(session, body)
+    await session.commit()
+    return success(data)
+
+
+@router.post(
+    "/images",
+    response_model=Envelope[ImageItem],
+    summary="上传产品主图",
+)
+async def post_image(
+    session: SessionDep,
+    _principal: Menu32,
+    advertiser_id: Annotated[int, Form()],
+    image_file: Annotated[UploadFile, File()],
+) -> dict[str, Any]:
+    """本地文件上传。不收图片 URL。"""
+    content = await image_file.read()
+    data = await upload_image(session, advertiser_id, image_file.filename or "image", content)
     await session.commit()
     return success(data)
 

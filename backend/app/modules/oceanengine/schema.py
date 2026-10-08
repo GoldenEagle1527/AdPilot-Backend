@@ -124,19 +124,29 @@ class VideoItem(VideoCreate):
 
 
 class ProductCreate(BaseModel):
-    """商品库上传一条剧。"""
+    """按巨量库号上传一条剧。不再收 drama_name 和 file_url。"""
 
     model_config = ConfigDict(extra="forbid")
 
-    drama_name: str = Field(min_length=1)
-    file_url: str = Field(min_length=1)
+    advertiser_id: int
+    library_no: int
+    book_name: str = Field(min_length=1, max_length=512)
 
 
-class ProductItem(ProductCreate):
-    """已登记的商品。"""
+class ProductItem(BaseModel):
+    """已登记的商品。product_id 来自客户端。"""
 
-    library_id: int
+    advertiser_id: int
+    library_no: int
+    book_name: str
     product_id: int
+
+
+class ImageItem(BaseModel):
+    """产品主图。image_id 不是视频的 local- 号。"""
+
+    advertiser_id: int
+    image_id: str
 
 
 class ReportItem(BaseModel):

@@ -214,6 +214,10 @@ class FakeOceanEngineClient:
         return _envelope({})
 
     async def upload_product(self, access_token: str, body: dict[str, Any]) -> dict[str, Any]:
-        """商品 id 取 oe_product 序列，从 9001 起。"""
+        """商品 id 取 oe_product 序列，从 9001 起。不返回 503。"""
         product_id = await _next_sequence(OE_PRODUCT_ID_SEQ)
         return _envelope({"product_id": product_id})
+
+    async def upload_image(self, access_token: str, body: dict[str, Any]) -> dict[str, Any]:
+        """图片 id 用 img- 前缀。视频 id 才是 local-。概念上是 UPLOAD_BY_FILE。"""
+        return _envelope({"id": f"img-{uuid.uuid4().hex}", "upload_type": "UPLOAD_BY_FILE"})

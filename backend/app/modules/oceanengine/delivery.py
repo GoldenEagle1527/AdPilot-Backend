@@ -86,17 +86,14 @@ async def upload_video(session: AsyncSession, body: VideoCreate) -> dict[str, An
     return {**saved, "video_id": video_id, "status": "完成"}
 
 
-async def upload_product(
-    session: AsyncSession, library_id: int, body: ProductCreate
-) -> dict[str, Any]:
-    """写入 oe_product。库不存在则 404。同一事务把 uploaded_count 加 1。
+async def upload_product(session: AsyncSession, body: ProductCreate) -> dict[str, Any]:
+    """按 library_no 写入 oe_product。库不存在则 404。同一事务把 uploaded_count 加 1。
 
-    兜底库怎么选由商品库服务决定。这里不改派库：标准库且调用方没传投手时，
-    仍按传入的库 id 写入。
+    假客户端发 product_id，不走 503。真客户端仍因开放平台 path 未定而 503，这里不改派库。
     """
     library = await session.scalar(
         select(ProductLibrary)
-        .where(ProductLibrary.id == library_id, ProductLibrary.is_deleted == 0)
+        .where(ProductLibrary.library_no == body.library_no, ProductLibrary.is_deleted == 0)
         .with_for_update()
     )
     if library is None:
@@ -104,15 +101,18 @@ async def upload_product(
     client = get_ocean_client()
     remote = await client.upload_product(
         await _access_token(session),
-        {**body.model_dump(), "library_id": library_id},
+        {
+            "advertiser_id": body.advertiser_id,
+            "library_no": body.library_no,
+            "book_name": body.book_name,
+        },
     )
-    raw_payload = remote
     product_id = int((remote.get("data") or {}).get("product_id") or 0) or None
     row = OeProduct(
         product_library_id=library.id,
-        drama_name=body.drama_name,
-        file_url=body.file_url,
-        raw_payload=raw_payload,
+        drama_name=body.book_name,
+        file_url=None,
+        raw_payload=remote,
     )
     if product_id is not None:
         row.ocean_product_id = product_id
@@ -121,11 +121,33 @@ async def upload_product(
     await session.flush()
     await session.refresh(row)
     return {
-        "library_id": library_id,
+        "advertiser_id": body.advertiser_id,
+        "library_no": int(library.library_no),
+        "book_name": body.book_name,
         "product_id": int(row.ocean_product_id),
-        "drama_name": body.drama_name,
-        "file_url": body.file_url,
     }
+
+
+async def upload_image(
+    session: AsyncSession, advertiser_id: int, filename: str, content: bytes
+) -> dict[str, Any]:
+    """上传本地图片。概念上是 UPLOAD_BY_FILE。不接受 URL，也不打开放平台的活请求。"""
+    if not content:
+        raise ApiError(400, "图片文件为空")
+    client = get_ocean_client()
+    remote = await client.upload_image(
+        await _access_token(session),
+        {
+            "advertiser_id": advertiser_id,
+            "upload_type": "UPLOAD_BY_FILE",
+            "filename": filename,
+            "image_file": content,
+        },
+    )
+    image_id = str((remote.get("data") or {}).get("id") or "")
+    if not image_id or image_id.startswith("local-"):
+        raise ApiError(502, "图片 id 无效")
+    return {"advertiser_id": advertiser_id, "image_id": image_id}
 
 
 async def update_promotions(

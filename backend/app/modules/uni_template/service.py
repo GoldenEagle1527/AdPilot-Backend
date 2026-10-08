@@ -97,6 +97,23 @@ def template_filters(query: TemplateQuery) -> list[ColumnElement[bool]]:
     return filters
 
 
+def _clear_standard_only(row: DeliveryTemplate) -> None:
+    """全域行不写标准提交列。这些列和 delivery_mode 不是一回事。"""
+    row.ocean_delivery_mode = None
+    row.bid_type = None
+    row.schedule_type = None
+    row.schedule_start_date = None
+    row.schedule_end_date = None
+    row.schedule_time = None
+    row.ad_source = None
+    row.product_name = None
+    row.selling_points = []
+    row.call_to_action_buttons = []
+    row.roi_goal = None
+    row.videos_per_ad = None
+    row.titles_per_ad = None
+
+
 def require_uni_subject(subject: DeliverySubject, charge_mode: str) -> None:
     """模板只能挂全域投放、且变现模式相同的主体。"""
     if subject.delivery_mode != TemplateMode.UNI:
@@ -153,6 +170,7 @@ async def create_template(session: AsyncSession, body: TemplateWrite) -> dict[st
         aigc_dynamic_creative=body.aigc_dynamic_creative,
         title_select_mode=body.title_select_mode,
     )
+    _clear_standard_only(row)
     session.add(row)
     await session.commit()
     await session.refresh(row)
@@ -179,6 +197,7 @@ async def update_template(
     row.title_select_mode = body.title_select_mode
     row.bid_panels = []
     row.ads_per_account = None
+    _clear_standard_only(row)
     row.updated_date = beijing_now()
     await session.commit()
     await session.refresh(row)

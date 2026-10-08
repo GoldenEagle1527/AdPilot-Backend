@@ -5,6 +5,7 @@ from app.modules.oceanengine.delivery import (
     create_project,
     run_auto_pause,
     update_promotions,
+    upload_image,
     upload_product,
     upload_video,
 )
@@ -22,6 +23,7 @@ __all__ = [
     "run_auto_pause",
     "sync_from_oceanengine",
     "update_promotions",
+    "upload_image",
     "upload_product",
     "upload_video",
 ]

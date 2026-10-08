@@ -1,14 +1,14 @@
 # 契约：get-task-draft
 
 业务id：standard-delivery
-文档版本：1
+文档版本：2
 方法：GET
 路径：/api/v1/standard-delivery/task-drafts/{draft_id}
 作用：取当前投手自己的一条任务草稿。别人的按不存在。
 
 作者：
 状态：draft
-更新日期：2026-09-29
+更新日期：2026-10-08
 
 ## 请求
 
@@ -47,6 +47,9 @@
 | product_library_id | string | 商品库行 id |
 | library_no | integer | 巨量商品库 id |
 | library_name | string | 商品库名称 |
+| album_url | string \| null | 手填的短剧专辑链接，一条。不是剧场推广链 |
+| project_operation | string \| null | 项目开关 `ENABLE` 或 `DISABLE` |
+| promotion_operation | string \| null | 广告开关 `ENABLE` 或 `DISABLE` |
 | created_at | string | 创建时间 |
 | updated_at | string | 更新时间 |
 
@@ -68,4 +71,5 @@
 
 | 日期 | 文档版本 | 破坏？ | 变更 | 作者 |
 | --- | --- | --- | --- | --- |
+| 2026-10-08 | 2 | 否 | 增加 `album_url`、`project_operation`、`promotion_operation`。不返回地域、城市、`asset_ids` | |
 | 2026-09-29 | 1 | 否 | 初稿 | |

@@ -88,6 +88,8 @@ class OceanEnginePort(Protocol):
 
     async def upload_product(self, access_token: str, body: dict[str, Any]) -> dict[str, Any]: ...
 
+    async def upload_image(self, access_token: str, body: dict[str, Any]) -> dict[str, Any]: ...
+
 
 class OceanEngineClient:
     """换票、账户查询、建项目、上传、报表与广告状态。只发 HTTP。"""
@@ -314,8 +316,12 @@ class OceanEngineClient:
         )
 
     async def upload_product(self, access_token: str, body: dict[str, Any]) -> dict[str, Any]:
-        """商品库上传。开放平台 path 未定，拒绝请求。"""
+        """商品库上传。开放平台 path 未定，拒绝请求，不打开放平台。"""
         raise ApiError(503, "商品库上传接口未定")
+
+    async def upload_image(self, access_token: str, body: dict[str, Any]) -> dict[str, Any]:
+        """产品主图。真实上传未接，不打开放平台。"""
+        raise ApiError(503, "图片上传接口未定")
 
     async def _request(
         self,

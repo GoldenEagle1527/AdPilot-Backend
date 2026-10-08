@@ -37,6 +37,17 @@ class FakeClientTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(body["data"]["access_token"], "mock-access-token")
         self.assertEqual(body["data"]["refresh_token"], "mock-refresh-token")
 
+    async def test_upload_image_id_is_not_a_video_id(self) -> None:
+        """主图 id 不能长得像视频的 local- 号。概念上是文件上传。"""
+        body = await FakeOceanEngineClient().upload_image(
+            "",
+            {"advertiser_id": 1, "upload_type": "UPLOAD_BY_FILE", "filename": "a.png"},
+        )
+        image_id = body["data"]["id"]
+        self.assertTrue(image_id.startswith("img-"))
+        self.assertFalse(image_id.startswith("local-"))
+        self.assertEqual(body["data"]["upload_type"], "UPLOAD_BY_FILE")
+
     async def test_upload_video_id_is_local_uuid(self) -> None:
         body = await FakeOceanEngineClient().upload_video("", {"advertiser_id": 1, "video_url": "https://example.test/a.mp4"})
         video_id = body["data"]["video_id"]
@@ -85,6 +96,14 @@ class FakeClientTests(unittest.IsolatedAsyncioTestCase):
 
 
 class RealClientTests(unittest.IsolatedAsyncioTestCase):
+    async def test_upload_image_stays_unavailable(self) -> None:
+        """真客户端不打开放平台。"""
+        client = OceanEngineClient(OceanEngineSettings(mock=True))
+        with self.assertRaises(ApiError) as raised:
+            await client.upload_image("token", {"advertiser_id": 1})
+        self.assertEqual(raised.exception.status_code, 503)
+        self.assertEqual(raised.exception.message, "图片上传接口未定")
+
     async def test_upload_product_stays_unavailable(self) -> None:
         client = OceanEngineClient(OceanEngineSettings(mock=True))
         with self.assertRaises(ApiError) as raised:
