@@ -178,8 +178,8 @@ class DramaHttpTests(unittest.TestCase):
         self.assertEqual(extra.status_code, 422)
         self.assertEqual(session.added, [])
 
-    def test_default_catalog_rejects_platform_without_a_theater_lookup(self) -> None:
-        """模板命中后平台仍然拒绝，且不再发第二条 SQL。"""
+    def test_default_catalog_looks_up_the_platform_after_the_template(self) -> None:
+        """模板命中后按未删除的剧场平台查。查不到就 400，不落库。"""
         session = FakeSession([[FAKE_TEMPLATES[1].id]])
         client = http_client(session, None)
         res = client.post(PREFIX, json=write_body())
@@ -187,9 +187,13 @@ class DramaHttpTests(unittest.TestCase):
         self.assertEqual(res.json()["message"], "剧场平台不存在")
         self.assertEqual(session.added, [])
         self.assertEqual(session.commits, 0)
-        self.assertEqual(len(session.statements), 1)
-        sql = str(session.statements[0].compile(compile_kwargs={"literal_binds": True}))
-        self.assertNotIn("theater_platforms", sql)
+        self.assertEqual(len(session.statements), 2)
+        template_sql = str(session.statements[0].compile(compile_kwargs={"literal_binds": True}))
+        platform_sql = str(session.statements[1].compile(compile_kwargs={"literal_binds": True}))
+        self.assertIn("delivery_template", template_sql)
+        self.assertNotIn("theater_platforms", template_sql)
+        self.assertIn("theater_platforms", platform_sql)
+        self.assertIn("is_deleted = 0", platform_sql)
 
     def test_duplicate_name_is_conflict(self) -> None:
         """同类型重名是 409。"""

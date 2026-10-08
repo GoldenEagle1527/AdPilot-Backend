@@ -11,8 +11,9 @@ from app.core.auth import require_token
 from app.core.db import get_session
 from app.core.envelope import Envelope, success
 from app.core.pagination import PageData
-from app.modules.uni_native_task.schema import DeletedItem, TaskItem, TaskQuery, TaskWrite
+from app.modules.uni_native_task.schema import DeletedItem, SubmitResult, TaskItem, TaskQuery, TaskWrite
 from app.modules.uni_native_task.service import create_task, delete_task, get_task, list_tasks, update_task
+from app.modules.uni_native_task.submit import submit_task
 
 router = APIRouter(
     prefix="/api/v1/uni-native-tasks",
@@ -63,3 +64,9 @@ async def put_task(
 async def remove_task(task_id: int, session: SessionDep, principal: PrincipalDep) -> dict[str, Any]:
     """软删自己的任务。"""
     return success(await delete_task(session, task_id, _user_id(principal)))
+
+
+@router.post("/{task_id}/submit", response_model=Envelope[SubmitResult], summary="确认提交端原生投放任务")
+async def post_task_submit(task_id: int, session: SessionDep, principal: PrincipalDep) -> dict[str, Any]:
+    """按任务组项目和广告报文。状态保持已保存，不把素材标成传完。"""
+    return success(await submit_task(session, task_id, _user_id(principal)))

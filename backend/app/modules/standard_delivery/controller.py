@@ -19,11 +19,13 @@ from app.modules.standard_delivery.schema import (
     RuleItem,
     RuleQuery,
     RuleWrite,
+    SubmitResult,
     TemplateItem,
     TemplateQuery,
     TemplateUpdate,
     TemplateWrite,
 )
+from app.modules.standard_delivery.submit import submit_draft
 from app.modules.standard_delivery.service import (
     create_draft,
     create_rule,
@@ -204,6 +206,19 @@ async def remove_task_draft(draft_id: int, session: SessionDep, principal: Princ
     """软删自己的草稿。"""
     allowed = await _allowed(session, principal, DRAFT_MENU)
     return success(await delete_draft(session, draft_id, _user_id(principal), allowed))
+
+
+@router.post(
+    "/task-drafts/{draft_id}/submit",
+    response_model=Envelope[SubmitResult],
+    summary="确认提交投放任务草稿",
+)
+async def post_task_draft_submit(
+    draft_id: int, session: SessionDep, principal: PrincipalDep
+) -> dict[str, Any]:
+    """按草稿组项目和广告报文。项目、商品、主图走已装上的客户端。"""
+    allowed = await _allowed(session, principal, DRAFT_MENU)
+    return success(await submit_draft(session, draft_id, _user_id(principal), allowed))
 
 
 @router.get(

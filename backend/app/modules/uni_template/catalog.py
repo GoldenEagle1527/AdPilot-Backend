@@ -1,18 +1,20 @@
 """给全域漫剧机器人用的线上目录。
 
-模板查 delivery_template 里未删除的全域行。剧场平台还没有来源，缺失时拒绝，不写假平台。
+模板查 delivery_template 里未删除的全域行。剧场平台查未删除的 theater_platforms。
 """
 
 from __future__ import annotations
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.envelope import ApiError
+from app.modules.theater.model import TheaterPlatform
 from app.modules.uni_template.crud import alive_uni_template_id_stmt
 
 
 class DatabaseUniRobotCatalog:
-    """UniRobotCatalog 的线上实现。模板打真实表，平台一律失败关闭。"""
+    """UniRobotCatalog 的线上实现。模板和平台都打真实表，不写假平台。"""
 
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
@@ -25,6 +27,13 @@ class DatabaseUniRobotCatalog:
         return template_id
 
     async def require_platform(self, platform_id: int) -> int:
-        """剧场平台还没有给机器人用的来源。缺来源就拒绝，不查剧场表，也不写假平台。"""
-        del platform_id
-        raise ApiError(400, "剧场平台不存在")
+        """未删除的剧场平台才交回原样 id。未知 id 拒绝。"""
+        result = await self._session.execute(
+            select(TheaterPlatform.id).where(
+                TheaterPlatform.id == platform_id,
+                TheaterPlatform.is_deleted == 0,
+            )
+        )
+        if result.scalar_one_or_none() is None:
+            raise ApiError(400, "剧场平台不存在")
+        return platform_id

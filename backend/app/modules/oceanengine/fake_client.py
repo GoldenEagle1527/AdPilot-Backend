@@ -219,5 +219,8 @@ class FakeOceanEngineClient:
         return _envelope({"product_id": product_id})
 
     async def upload_image(self, access_token: str, body: dict[str, Any]) -> dict[str, Any]:
-        """图片 id 用 img- 前缀。视频 id 才是 local-。概念上是 UPLOAD_BY_FILE。"""
+        """图片 id 用 img- 前缀。视频 id 才是 local-。概念上是 UPLOAD_BY_FILE。
+
+        正文可以不带文件。这个客户端不读文件字节。
+        """
         return _envelope({"id": f"img-{uuid.uuid4().hex}", "upload_type": "UPLOAD_BY_FILE"})

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
-from typing import Annotated
+from typing import Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
@@ -152,3 +152,27 @@ class DeletedItem(BaseModel):
 
     id: str
     deleted: bool
+
+
+class SubmitAccount(BaseModel):
+    """一个抖音号和账户上的项目、一条广告报文。"""
+
+    douyin_account_id: str
+    aweme_id: str
+    advertiser_id: int
+    project_id: int
+    product_id: int
+    image_id: str
+    project: dict[str, Any]
+    promotions: list[dict[str, Any]]
+
+
+class SubmitResult(BaseModel):
+    """确认提交的结果。状态仍是 saved，素材不算传完。"""
+
+    id: str
+    status: str
+    executed_at: str | None
+    materials_uploaded: bool
+    promotion_links: list[PromotionLinkItem]
+    accounts: list[SubmitAccount]

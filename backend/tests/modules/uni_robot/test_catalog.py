@@ -63,18 +63,29 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(caught.exception.status_code, 400)
         self.assertEqual(caught.exception.message, "全域模板不存在")
 
-    def test_platform_fails_closed_without_a_query(self) -> None:
-        """没有剧场来源时，即使会话里排了行也不查。"""
+    def test_existing_platform_is_returned(self) -> None:
+        """未删除的剧场平台交回原来的 id。"""
         session = RecordingSession([[1]])
+        got = asyncio.run(DatabaseUniRobotCatalog(session).require_platform(1))
+        self.assertEqual(got, 1)
+        sql = str(session.statements[0].compile(compile_kwargs={"literal_binds": True}))
+        self.assertIn("theater_platforms.id = 1", sql)
+        self.assertIn("theater_platforms.is_deleted = 0", sql)
+
+    def test_unknown_platform_is_rejected(self) -> None:
+        """表里没有这条就 400。生产代码不单列测试用的平台号。"""
+        session = RecordingSession([[]])
         with self.assertRaises(ApiError) as caught:
-            asyncio.run(DatabaseUniRobotCatalog(session).require_platform(1))
+            asyncio.run(DatabaseUniRobotCatalog(session).require_platform(9101))
         self.assertEqual(caught.exception.status_code, 400)
         self.assertEqual(caught.exception.message, "剧场平台不存在")
-        self.assertEqual(session.statements, [])
+        sql = str(session.statements[0].compile(compile_kwargs={"literal_binds": True}))
+        self.assertIn("theater_platforms", sql)
+        self.assertIn("is_deleted = 0", sql)
 
     def test_source_does_not_embed_fake_platforms(self) -> None:
-        """应用代码不写假平台，也不把三方剧场表当成机器人平台来源。"""
+        """应用代码不写假平台，也不写死测试目录里的平台号。"""
         text = (BACKEND / "app" / "modules" / "uni_template" / "catalog.py").read_text(encoding="utf-8")
         self.assertNotIn("fake_catalog", text)
         self.assertNotIn("9101", text)
-        self.assertNotIn("theater_platforms", text)
+        self.assertNotIn("9102", text)

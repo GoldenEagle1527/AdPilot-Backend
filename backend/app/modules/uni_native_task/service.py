@@ -6,7 +6,7 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any, TypeVar
 
-from sqlalchemy import ColumnElement
+from sqlalchemy import ColumnElement, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.envelope import ApiError
@@ -17,6 +17,7 @@ from app.modules.material.model import ManhuaSeries
 from app.modules.material_title.model import MaterialTitle
 from app.modules.material_video.model import MaterialVideo
 from app.modules.standard_delivery.model import DeliveryTemplate
+from app.modules.theater.model import TheaterPromotionLink
 from app.modules.uni_native_task.crud import (
     SeriesBrief,
     TaskHead,
@@ -39,6 +40,7 @@ from app.modules.uni_native_task.schema import TaskQuery, TaskWrite
 from app.modules.uni_template.crud import douyin_by_ids, get_uni_template_row, pitcher_owned_ids
 
 T = TypeVar("T")
+_PROMOTION_LINK_TABLE = text("SELECT to_regclass('public.theater_promotion_links')")
 
 
 def series_short_name(book_name: str) -> str:
@@ -263,14 +265,53 @@ def _fill(
     row.executed_at = None
 
 
+async def iaa_promotion_url(session: AsyncSession, series_id: int) -> str | None:
+    """剧场推广链表在库里时，取这部剧一条启用的 IAA 链接。表不在就空。"""
+    found = (await session.execute(_PROMOTION_LINK_TABLE)).one()
+    if found[0] is None:
+        return None
+    row = (
+        await session.execute(
+            select(TheaterPromotionLink.promotion_url)
+            .where(
+                TheaterPromotionLink.series_id == series_id,
+                TheaterPromotionLink.is_deleted == 0,
+                TheaterPromotionLink.is_enabled.is_(True),
+                or_(
+                    TheaterPromotionLink.recharge_template_name == "IAA",
+                    TheaterPromotionLink.media_config_type == 3,
+                ),
+            )
+            .order_by(TheaterPromotionLink.id.desc())
+            .limit(1)
+        )
+    ).one_or_none()
+    if row is None or not row[0]:
+        return None
+    return str(row[0])
+
+
+async def resolve_links(
+    session: AsyncSession, body: TaskWrite, series_id: int
+) -> list[tuple[str, str]]:
+    """客户端传了链接就按原文保存。没传时，表里有 IAA 链才补一条。"""
+    if body.promotion_links:
+        return [(item.charge_mode, item.link_text) for item in body.promotion_links]
+    filled = await iaa_promotion_url(session, series_id)
+    if filled is None:
+        return []
+    return [("IAA", filled)]
+
+
 def _saved_item(
     row: UniNativeTask,
     template: DeliveryTemplate,
     series: SeriesBrief,
     pairs: list[tuple[DouyinAccount, AdvertiserAccount]],
-    body: TaskWrite,
+    links: list[tuple[str, str]],
     videos: list[MaterialVideo],
     titles: list[MaterialTitle],
+    batch_titles: list[str],
 ) -> dict[str, Any]:
     """用刚校验过的对象拼出参，不再回表。"""
     return task_item(
@@ -278,10 +319,10 @@ def _saved_item(
         template,
         series.book_name,
         [_account_dict(douyin, advertiser) for douyin, advertiser in pairs],
-        [_link_dict(item.charge_mode, item.link_text) for item in body.promotion_links],
+        [_link_dict(charge_mode, link_text) for charge_mode, link_text in links],
         videos,
         titles,
-        list(body.batch_titles),
+        list(batch_titles),
     )
 
 
@@ -299,18 +340,19 @@ async def create_task(session: AsyncSession, body: TaskWrite, user_id: int) -> d
     )
     session.add(row)
     await session.flush()
+    links = await resolve_links(session, body, series.id)
     await replace_children(
         session,
         row.id,
         pairs,
-        [(item.charge_mode, item.link_text) for item in body.promotion_links],
+        links,
         videos,
         titles,
         list(body.batch_titles),
     )
     await session.commit()
     await session.refresh(row)
-    return _saved_item(row, template, series, pairs, body, videos, titles)
+    return _saved_item(row, template, series, pairs, links, videos, titles, list(body.batch_titles))
 
 
 async def update_task(
@@ -325,18 +367,19 @@ async def update_task(
     template, series, pairs, videos, titles, budget, roi = await _refs(session, body, user_id, present)
     _fill(current, template, series, budget, roi, user_id)
     current.updated_date = beijing_now()
+    links = await resolve_links(session, body, series.id)
     await replace_children(
         session,
         current.id,
         pairs,
-        [(item.charge_mode, item.link_text) for item in body.promotion_links],
+        links,
         videos,
         titles,
         list(body.batch_titles),
     )
     await session.commit()
     await session.refresh(current)
-    return _saved_item(current, template, series, pairs, body, videos, titles)
+    return _saved_item(current, template, series, pairs, links, videos, titles, list(body.batch_titles))
 
 
 async def delete_task(session: AsyncSession, task_id: int, user_id: int) -> dict[str, Any]:

@@ -44,11 +44,13 @@ async def lifespan(_app: FastAPI):
 
 
 async def _seed_oceanengine() -> None:
-    """幂等写入应用、组织、番茄漫剧测试户和两行报表。只在启动调用。"""
+    """幂等写入巨量种子。平台表为空时再写入番茄和鸥溪。只在启动且 mock 时调用。"""
     from app.modules.account.seed import ensure_oceanengine_seed
+    from scripts.seed_theater_platforms import ensure_theater_platforms
 
     async for session in get_session():
         await ensure_oceanengine_seed(session)
+        await ensure_theater_platforms(session)
         await session.commit()
         break
 

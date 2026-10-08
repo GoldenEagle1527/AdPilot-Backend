@@ -1,14 +1,14 @@
 # 契约：create-task
 
 业务id：uni-native-task
-文档版本：1
+文档版本：2
 方法：POST
 路径：/api/v1/uni-native-tasks
 作用：本地新增一条端原生投放任务。不上传素材，不调用巨量。状态写成 `saved`。
 
 作者：
 状态：draft
-更新日期：2026-09-30
+更新日期：2026-10-08
 
 ## 请求
 
@@ -22,7 +22,7 @@
 | accounts | body | array | 是 | 至少 1 行，最多 50。每行 `douyin_account_id` 与 `advertiser_id` 一一对应。抖音号、账户各自不能重复 |
 | accounts[].douyin_account_id | body | integer | 是 | 未删除的全域抖音号，且 `douyin_pitcher` 里已分给当前投手 |
 | accounts[].advertiser_id | body | integer | 是 | 巨量广告主 id。须为当前投手名下、`sync_status=active`、未软删 |
-| promotion_links | body | array | 否 | IAA / IAP 文本，可空，最多 50。不查剧场 |
+| promotion_links | body | array | 否 | IAA / IAP 文本，可空，最多 50。不传时，若 `theater_promotion_links` 在库里，用这部剧一条启用的 IAA `promotion_url` 填 `link_text`。表不在或没有 IAA 链则仍为空。不写入标准投放的专辑链接 |
 | promotion_links[].charge_mode | body | string | 是 | `IAA` 或 `IAP` |
 | promotion_links[].link_text | body | string | 是 | 去首尾空白，1–2048 字 |
 | video_ids | body | array of integer | 否 | 视频素材 id，须属于该短剧，且上传者或投手归属是当前用户。`material_videos` 不在库时不能传。可空，不重复，最多 200 |
@@ -78,4 +78,5 @@
 
 | 日期 | 文档版本 | 破坏？ | 变更 | 作者 |
 | --- | --- | --- | --- | --- |
+| 2026-10-08 | 2 | 否 | 省略 `promotion_links` 时，剧场表存在则用该剧 IAA 推广链填一条 `link_text` | |
 | 2026-09-30 | 1 | 否 | 初稿 | |

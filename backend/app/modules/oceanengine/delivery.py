@@ -129,21 +129,27 @@ async def upload_product(session: AsyncSession, body: ProductCreate) -> dict[str
 
 
 async def upload_image(
-    session: AsyncSession, advertiser_id: int, filename: str, content: bytes
+    session: AsyncSession,
+    advertiser_id: int,
+    filename: str,
+    content: bytes | None = None,
 ) -> dict[str, Any]:
-    """上传本地图片。概念上是 UPLOAD_BY_FILE。不接受 URL，也不打开放平台的活请求。"""
-    if not content:
+    """上传产品主图。有字节时按 UPLOAD_BY_FILE 交给客户端。
+
+    不传字节仍调用客户端：已装上的客户端自己决定发号还是拒绝。空字节是 400。
+    不接受 URL。视频式 local- 号不能当主图。
+    """
+    if content is not None and len(content) == 0:
         raise ApiError(400, "图片文件为空")
     client = get_ocean_client()
-    remote = await client.upload_image(
-        await _access_token(session),
-        {
-            "advertiser_id": advertiser_id,
-            "upload_type": "UPLOAD_BY_FILE",
-            "filename": filename,
-            "image_file": content,
-        },
-    )
+    body: dict[str, Any] = {
+        "advertiser_id": advertiser_id,
+        "upload_type": "UPLOAD_BY_FILE",
+        "filename": filename,
+    }
+    if content:
+        body["image_file"] = content
+    remote = await client.upload_image(await _access_token(session), body)
     image_id = str((remote.get("data") or {}).get("id") or "")
     if not image_id or image_id.startswith("local-"):
         raise ApiError(502, "图片 id 无效")

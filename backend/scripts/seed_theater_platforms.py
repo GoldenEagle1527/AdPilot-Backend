@@ -38,6 +38,16 @@ def _bind_database() -> None:
     init_engine(settings.model_copy(update={"postgres": postgres}))
 
 
+async def ensure_theater_platforms(session) -> None:
+    """平台表没有行时插入番茄 id 1 和鸥溪 id 22。已有行则不动。"""
+    from sqlalchemy import func, select
+
+    count = await session.scalar(select(func.count()).select_from(TheaterPlatform))
+    if count:
+        return
+    await session.execute(insert(TheaterPlatform).values(_ROWS))
+
+
 async def load_platforms() -> None:
     """把两条固定平台写入 theater_platforms。"""
     async for session in get_session():

@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Annotated
+from typing import Annotated, Any
 from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_validator
@@ -402,3 +402,22 @@ class DeletedItem(BaseModel):
 
     id: str
     deleted: bool
+
+
+class SubmitAccount(BaseModel):
+    """一个账户上建出的项目和广告报文。"""
+
+    advertiser_id: int
+    project_id: int
+    product_id: int
+    image_id: str
+    project: dict[str, Any]
+    promotions: list[dict[str, Any]]
+
+
+class SubmitResult(BaseModel):
+    """确认提交的结果。报文在 data 里，不代表巨量已经收下。"""
+
+    id: str
+    aweme_id: str
+    accounts: list[SubmitAccount]
