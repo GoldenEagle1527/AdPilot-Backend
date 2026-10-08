@@ -59,7 +59,7 @@ _FILLED = (
     "OR (schedule_type = 'SCHEDULE_START_END' AND schedule_start_date IS NOT NULL "
     "AND schedule_end_date IS NOT NULL AND schedule_start_date <= schedule_end_date)"
     ") "
-    "AND (schedule_time IS NULL OR schedule_time ~ '^[01]{336}$') "
+    "AND (schedule_time IS NULL OR (char_length(schedule_time) = 336 AND schedule_time ~ '^[01]*$')) "
     "AND char_length(ad_source) BETWEEN 1 AND 100 "
     "AND char_length(product_name) BETWEEN 1 AND 20 "
     "AND cardinality(selling_points) <= 10 "
