@@ -1,4 +1,4 @@
-"""全域漫剧机器人 HTTP。按推广链接和按剧条件都要漫剧机器人菜单。规则没有归属人，有菜单即可看全部。"""
+"""全域漫剧机器人 HTTP。按推广链接和按剧条件都要漫剧机器人菜单。执行时留在创建人这个投手上。"""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.auth import require_token
 from app.core.db import get_session
 from app.core.envelope import Envelope, success
 from app.core.pagination import PageData
@@ -53,6 +54,7 @@ router = APIRouter(
 )
 
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
+PrincipalDep = Annotated[dict[str, Any], Depends(require_token)]
 
 
 def get_catalog(session: SessionDep) -> UniRobotCatalog:
@@ -92,10 +94,10 @@ async def get_promotion_link_rule(rule_id: int, session: SessionDep) -> dict[str
     summary="新增按推广链接规则",
 )
 async def post_promotion_link_rule(
-    body: LinkRuleWrite, session: SessionDep, catalog: CatalogDep
+    body: LinkRuleWrite, session: SessionDep, catalog: CatalogDep, principal: PrincipalDep
 ) -> dict[str, Any]:
     """保存一条按推广链接规则。模板和平台经目录端口确认，条件列留空。不创建任务。"""
-    return success(link_item(await create_link_rule(session, catalog, body)))
+    return success(link_item(await create_link_rule(session, catalog, body, int(principal["id"]))))
 
 
 @router.put(
@@ -173,10 +175,10 @@ async def get_drama_rule(rule_id: int, session: SessionDep) -> dict[str, Any]:
     summary="新增按剧条件规则",
 )
 async def post_drama_rule(
-    body: DramaRuleWrite, session: SessionDep, catalog: CatalogDep
+    body: DramaRuleWrite, session: SessionDep, catalog: CatalogDep, principal: PrincipalDep
 ) -> dict[str, Any]:
     """保存一条按剧条件规则。模板和平台经目录端口确认。不创建任务。"""
-    return success(drama_item(await create_drama_rule(session, catalog, body)))
+    return success(drama_item(await create_drama_rule(session, catalog, body, int(principal["id"]))))
 
 
 @router.put(

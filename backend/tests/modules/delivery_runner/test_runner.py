@@ -88,11 +88,13 @@ class ClockTests(unittest.TestCase):
 
         with (
             patch("app.modules.delivery_runner.loop.run_due_standard", new=AsyncMock(side_effect=_standard)),
+            patch("app.modules.delivery_runner.loop.run_due_drafts", new=AsyncMock(return_value=0)),
             patch("app.modules.delivery_runner.loop.run_due_robots", new=AsyncMock(side_effect=_robot)),
+            patch("app.modules.delivery_runner.loop.run_due_native", new=AsyncMock(return_value=0)),
         ):
             result = asyncio.run(run_due_rules(object(), now=NOW))
         self.assertEqual(seen, [NOW, NOW])
-        self.assertEqual(result, {"standard": 1, "robot": 2})
+        self.assertEqual(result, {"standard": 1, "draft": 0, "robot": 2, "native": 0})
 
 
 class SelectionTests(unittest.TestCase):
@@ -147,8 +149,8 @@ class SelectionTests(unittest.TestCase):
                 rows,
                 cost_min=Decimal("100"),
                 cost_max=Decimal("200"),
-                recovery_min=Decimal("20"),
-                recovery_max=Decimal("40"),
+                recovery_min=Decimal("0.2"),
+                recovery_max=Decimal("0.4"),
             )
         )
         self.assertFalse(
@@ -156,8 +158,8 @@ class SelectionTests(unittest.TestCase):
                 rows,
                 cost_min=Decimal("500"),
                 cost_max=Decimal("600"),
-                recovery_min=Decimal("20"),
-                recovery_max=Decimal("40"),
+                recovery_min=Decimal("0.2"),
+                recovery_max=Decimal("0.4"),
             )
         )
 

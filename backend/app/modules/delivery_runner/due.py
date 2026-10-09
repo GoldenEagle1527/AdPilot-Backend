@@ -21,11 +21,14 @@ def standard_is_due(
     schedule_start: datetime | None,
     ran_at: datetime | None,
     now: datetime,
+    schedule_end: datetime | None = None,
 ) -> bool:
-    """开启、还没跑过，并且没有预约或预约时间已到。"""
+    """开启、还没跑过，并且落在预约开始和结束之间。过了结束时间不再执行。"""
     if not is_enabled or ran_at is not None:
         return False
     clock = as_beijing(now)
+    if schedule_end is not None and clock > as_beijing(schedule_end):
+        return False
     if schedule_start is None:
         return True
     return clock >= as_beijing(schedule_start)
@@ -70,7 +73,7 @@ def snapshots_satisfy(
 ) -> bool:
     """已有快照里至少一行同时落在消耗和回收区间。
 
-    回收率在规则上是百分比，80 表示 80%。快照 ROI 是比值，0.3 表示 30%。
+    回收率是比值，0.1 到 0.2 表示 10% 到 20%，不把 ROI 乘 100。
     某一侧没填就不当成限制。
     """
     if cost_min is None and recovery_min is None:
@@ -78,10 +81,8 @@ def snapshots_satisfy(
     for cost, roi in rows:
         if cost_min is not None and cost_max is not None and not cost_min <= cost <= cost_max:
             continue
-        if recovery_min is not None and recovery_max is not None:
-            percent = roi * Decimal(100)
-            if not recovery_min <= percent <= recovery_max:
-                continue
+        if recovery_min is not None and recovery_max is not None and not recovery_min <= roi <= recovery_max:
+            continue
         return True
     return False
 

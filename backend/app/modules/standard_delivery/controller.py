@@ -30,6 +30,7 @@ from app.modules.standard_delivery.schema import (
     TemplateUpdate,
     TemplateWrite,
 )
+from app.modules.standard_delivery.crud import list_assigned_standard_douyin
 from app.modules.standard_delivery.product_snapshot import (
     copy_snapshot_onto_template,
     create_snapshot,
@@ -145,7 +146,7 @@ async def post_template(
 ) -> dict[str, Any]:
     """新增模板。主体须为标准投放，付费模板至少有一条出价面板。"""
     allowed = await _allowed(session, principal, TEMPLATE_MENU)
-    return success(await create_template(session, body, allowed))
+    return success(await create_template(session, body, allowed, _user_id(principal)))
 
 
 @router.put(
@@ -158,7 +159,17 @@ async def put_template(
 ) -> dict[str, Any]:
     """整表保存模板。收费模式不可改。"""
     allowed = await _allowed(session, principal, TEMPLATE_MENU)
-    return success(await update_template(session, template_id, body, allowed))
+    return success(await update_template(session, template_id, body, allowed, _user_id(principal)))
+
+
+@router.get("/douyin-accounts", summary="当前投手已分配的标准抖音号")
+async def get_assigned_douyin(session: SessionDep, principal: PrincipalDep) -> dict[str, Any]:
+    """下拉只返回分配给当前投手的标准号。"""
+    granted = await _granted(session, principal)
+    if not granted.intersection({*TEMPLATE_MENU.values(), *DRAFT_MENU.values()}):
+        raise ApiError(403, _FORBIDDEN)
+    rows = await list_assigned_standard_douyin(session, _user_id(principal))
+    return success([{"id": str(row.id), "aweme_id": row.aweme_id, "name": row.name} for row in rows])
 
 
 @router.get(

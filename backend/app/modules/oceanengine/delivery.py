@@ -1,4 +1,4 @@
-"""建项目、上传视频和商品、广告启停与按报表自动关停。"""
+"""建项目、创建广告、上传视频和商品、广告启停。"""
 
 from __future__ import annotations
 
@@ -9,7 +9,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.envelope import ApiError
-from app.core.pagination import PageParams
 from app.modules.account.model import (
     DeliverySubject,
     OeProduct,
@@ -18,12 +17,11 @@ from app.modules.account.model import (
     OeVideo,
     ProductLibrary,
 )
-from app.modules.oceanengine.reports import _report_rows, _sync_reports
 from app.modules.oceanengine.runtime import _access_token, get_ocean_client
 from app.modules.oceanengine.schema import (
-    AutoPauseBody,
     ProductCreate,
     ProjectCreate,
+    PromotionCreate,
     PromotionStatusBody,
     VideoCreate,
 )
@@ -63,6 +61,28 @@ async def create_project(session: AsyncSession, body: ProjectCreate) -> dict[str
     await session.flush()
     await session.refresh(row)
     return {**saved, "project_id": int(row.ocean_project_id)}
+
+
+async def create_promotion(session: AsyncSession, body: PromotionCreate) -> dict[str, Any]:
+    """调用已装上的客户端创建广告，并写入 oe_promotion。"""
+    client = get_ocean_client()
+    remote = await client.create_promotion(
+        await _access_token(session),
+        {"advertiser_id": body.advertiser_id, "name": body.name, **body.payload},
+    )
+    promotion_id = int((remote.get("data") or {}).get("promotion_id") or 0)
+    if promotion_id <= 0:
+        raise ApiError(502, "创建广告失败")
+    row = OePromotion(
+        advertiser_id=body.advertiser_id,
+        promotion_id=promotion_id,
+        opt_status=body.opt_status,
+        name=body.name,
+        raw_payload=remote,
+    )
+    session.add(row)
+    await session.flush()
+    return {"promotion_id": promotion_id, "opt_status": body.opt_status, "name": body.name}
 
 
 async def upload_video(session: AsyncSession, body: VideoCreate) -> dict[str, Any]:
@@ -172,48 +192,6 @@ async def update_promotions(
     return results
 
 
-async def run_auto_pause(
-    session: AsyncSession, body: AutoPauseBody, params: PageParams
-) -> dict[str, Any]:
-    """按报表阈值关停全量快照。返回的 paused 和 kept 按同一页截取。"""
-    if get_ocean_client().requires_stored_token:
-        await _sync_reports(session)
-    rows = await _report_rows(session)
-    paused: list[int] = []
-    kept: list[int] = []
-    grouped: dict[int, list[int]] = {}
-    order: list[int] = []
-    for row in rows:
-        promotion_id = int(row["promotion_id"])
-        if _should_pause(body.metric, row, body.threshold):
-            paused.append(promotion_id)
-            advertiser_id = int(row["advertiser_id"])
-            if advertiser_id not in grouped:
-                order.append(advertiser_id)
-            grouped.setdefault(advertiser_id, []).append(promotion_id)
-        else:
-            kept.append(promotion_id)
-    for advertiser_id in order:
-        await update_promotions(
-            session,
-            PromotionStatusBody(
-                advertiser_id=advertiser_id,
-                promotion_ids=grouped[advertiser_id],
-                opt_status="DISABLE",
-            ),
-        )
-    start = params.offset
-    end = start + params.page_size
-    return {
-        "paused": paused[start:end],
-        "kept": kept[start:end],
-        "paused_total": len(paused),
-        "kept_total": len(kept),
-        "page": params.page,
-        "page_size": params.page_size,
-    }
-
-
 def _project_remote_body(body: ProjectCreate) -> dict[str, Any]:
     """subject_id 只落本地。定向和出价从 template 原样提交。"""
     template = body.template if isinstance(body.template, dict) else {}
@@ -308,11 +286,3 @@ async def _upsert_promotion(
     found.is_deleted = 0
     found.deleted_at = None
 
-
-def _should_pause(metric: str, row: dict[str, Any], threshold: float) -> bool:
-    """operator 只有 lte：指标值小于等于阈值则暂停。"""
-    if metric == "stat_cost":
-        value = float(row["stat_cost"])
-    else:
-        value = float(row["attribution_micro_game_0d_roi"])
-    return value <= threshold

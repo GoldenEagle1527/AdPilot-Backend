@@ -8,7 +8,15 @@ from decimal import Decimal
 from typing import Annotated, Any
 from zoneinfo import ZoneInfo
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
 
 from app.modules.standard_delivery.model import (
     AgeBand,
@@ -30,7 +38,47 @@ BEIJING = ZoneInfo("Asia/Shanghai")
 
 NameText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=128)]
 PanelText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64)]
-TagText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=20)]
+def weighted_length(text: str) -> Decimal:
+    """字母和数字各算半个字，其余字符算一个字。"""
+    total = Decimal(0)
+    for char in text:
+        if char.isascii() and (char.isalpha() or char.isdigit()):
+            total += Decimal("0.5")
+        else:
+            total += Decimal(1)
+    return total
+
+
+def _bounded_tag(value: str, low: Decimal, high: Decimal, label: str) -> str:
+    """按加权字数限制标签。超长的普通字符也不收。"""
+    text = value.strip()
+    length = weighted_length(text)
+    if not text or len(text) > 20 or length < low or length > high:
+        raise ValueError(f"{label}长度须为 {low}–{high} 个字，字母和数字算半个字")
+    return text
+
+
+def _selling_point(value: str) -> str:
+    """产品卖点 6–9 个字。"""
+    return _bounded_tag(value, Decimal(6), Decimal(9), "产品卖点")
+
+
+def _call_to_action(value: str) -> str:
+    """行动号召 2–6 个字。"""
+    return _bounded_tag(value, Decimal(2), Decimal(6), "行动号召")
+
+
+def _batch_title(value: str) -> str:
+    """批量粘贴的标题按 5–55 个字，不在 30 处截断。"""
+    text = value.strip()
+    if not 5 <= len(text) <= 55:
+        raise ValueError("标题长度须为 5–55 个字")
+    return text
+
+
+SellingPointText = Annotated[str, BeforeValidator(_selling_point)]
+CallToActionText = Annotated[str, BeforeValidator(_call_to_action)]
+BatchTitleText = Annotated[str, BeforeValidator(_batch_title)]
 AdSourceText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
 ProductNameText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=20)]
 AlbumUrlText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2048)]
@@ -154,8 +202,8 @@ class TemplateWrite(BaseModel):
     schedule_time: str | None = Field(None, description="投放时段。空表示不限。有值则为 48×7 的 0/1 串")
     ad_source: AdSourceText = Field(description="广告来源，1–100 字")
     product_name: ProductNameText = Field(description="产品名称，最多 20 字")
-    selling_points: list[TagText] = Field(default_factory=list, max_length=10, description="产品卖点，最多 10 条")
-    call_to_action_buttons: list[TagText] = Field(default_factory=list, max_length=10, description="行动号召，最多 10 条")
+    selling_points: list[SellingPointText] = Field(default_factory=list, max_length=10, description="产品卖点，每条 6–9 个字，字母和数字算半个字")
+    call_to_action_buttons: list[CallToActionText] = Field(default_factory=list, max_length=10, description="行动号召，每条 2–6 个字，字母和数字算半个字")
     roi_goal: RoiGoal | None = Field(None, description="ROI 目标。标准模板不用 roi_coefficient")
     videos_per_ad: int = Field(ge=1, le=30, description="每个广告使用视频数，1–30")
     titles_per_ad: int = Field(ge=1, le=10, description="每个广告使用标题数，1–10")
@@ -172,7 +220,9 @@ class TemplateWrite(BaseModel):
         max_length=5,
         description="年龄段：18_23、24_30、31_40、41_49、50_plus。空数组表示不限，不另传不限标记",
     )
-    project_budget: Money | None = Field(None, description="项目预算，单位元。标准模板可保存")
+    project_budget: Money = Field(description="项目预算，单位元。必填，投放类型为设置预算")
+    ad_budget: Money | None = Field(None, description="广告预算，单位元。不拿项目预算代替")
+    product_library_id: int | None = Field(None, description="账户管理里的一条视频库或小说库")
     library_kind: LibraryKind | None = Field(
         None, description="商品库类型：video 视频库、novel 小说库。不选具体商品库行，可以不填"
     )
@@ -223,8 +273,8 @@ class TemplateUpdate(BaseModel):
     schedule_time: str | None = Field(None, description="投放时段。空表示不限")
     ad_source: AdSourceText = Field(description="广告来源")
     product_name: ProductNameText = Field(description="产品名称，最多 20 字")
-    selling_points: list[TagText] = Field(default_factory=list, max_length=10, description="产品卖点")
-    call_to_action_buttons: list[TagText] = Field(default_factory=list, max_length=10, description="行动号召")
+    selling_points: list[SellingPointText] = Field(default_factory=list, max_length=10, description="产品卖点，每条 6–9 个字")
+    call_to_action_buttons: list[CallToActionText] = Field(default_factory=list, max_length=10, description="行动号召，每条 2–6 个字")
     roi_goal: RoiGoal | None = Field(None, description="ROI 目标。不用 roi_coefficient")
     videos_per_ad: int = Field(ge=1, le=30, description="每个广告视频数，1–30")
     titles_per_ad: int = Field(ge=1, le=10, description="每个广告标题数，1–10")
@@ -237,9 +287,11 @@ class TemplateUpdate(BaseModel):
         max_length=5,
         description="年龄段。空数组表示不限。不重复，不另传不限标记",
     )
-    project_budget: Money | None = Field(None, description="项目预算，单位元")
+    project_budget: Money = Field(description="项目预算，单位元。必填")
+    ad_budget: Money | None = Field(None, description="广告预算，单位元")
+    product_library_id: int | None = Field(None, description="账户管理里的一条视频库或小说库")
     library_kind: LibraryKind | None = Field(
-        None, description="商品库类型：video 视频库、novel 小说库。不选具体商品库行，可以不填"
+        None, description="商品库类型：video 视频库、novel 小说库"
     )
     product_select: ProductSelect | None = Field(
         None, description="this_series、other_series、manual。可以不填，不和商品库类型成对"
@@ -296,6 +348,8 @@ class TemplateItem(BaseModel):
     gender: str
     age_bands: list[str]
     project_budget: str | None
+    ad_budget: str | None
+    product_library_id: str | None
     library_kind: str | None
     product_select: str | None
     material_boost: bool
@@ -330,22 +384,37 @@ class DraftWrite(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    template_id: int = Field(description="模板 id")
+    template_id: int = Field(description="模板 id。付费任务使用免费端原生模板")
+    charge_mode: ChargeMode | None = Field(
+        None, description="任务收费模式。付费任务传 IAP，模板仍须是免费端原生模板。不传则跟模板"
+    )
     schedule_start: datetime | None = Field(None, description="预约执行开始。与结束同时空或同时有值")
-    schedule_end: datetime | None = Field(None, description="预约执行结束")
-    advertiser_ids: list[int] = Field(min_length=1, max_length=100, description="巨量广告主 id，与账户列表的 account_id 相同")
+    schedule_end: datetime | None = Field(None, description="预约执行结束。到点且未过结束才提交")
+    advertiser_ids: list[int] = Field(
+        default_factory=list, max_length=100, description="巨量广告主 id。空则自动匹配当前投手的三个账户"
+    )
     douyin_account_id: int | None = Field(
-        None, description="一个已启用的标准抖音号 id。不传则确认提交用模板上的号"
+        None, description="已分配给当前投手的标准抖音号。不传则确认提交用模板上的号"
     )
     series_id: int = Field(description="一部短剧的 manhua_series.id")
-    video_ids: list[int] = Field(min_length=1, max_length=200, description="视频素材 id，须属于这部剧")
-    title_ids: list[int] = Field(min_length=1, max_length=100, description="当前用户自己的标题 id")
+    video_ids: list[int] = Field(
+        default_factory=list, max_length=200, description="视频素材 id。空则从这部剧的素材库代入"
+    )
+    video_order: str = Field("upload", pattern="^(upload|random)$", description="upload 上传顺序、random 随机")
+    title_ids: list[int] = Field(
+        default_factory=list, max_length=100, description="标题库 id。可与批量标题一起用"
+    )
+    batch_titles: list[BatchTitleText] = Field(
+        default_factory=list, max_length=100, description="批量换行粘贴的标题，每条 5–55 个字"
+    )
     placement: Placement | None = Field(None, description="版位。不传则确认提交用模板上的广告位置")
     project_budget: Money | None = Field(None, description="项目预算，单位元。不传则确认提交用模板")
-    ad_budget: Money = Field(description="广告预算，单位元")
+    ad_budget: Money | None = Field(None, description="广告预算，单位元。不传则用模板上的广告预算，不用项目预算")
     optimize_goal: OptimizeGoal = Field(description="优化目标。免费只能是激活，付费只能是付费")
-    library_no: int | None = Field(None, description="商品库的巨量库 id。不传则确认提交用模板上的商品库")
-    album_url: AlbumUrlText = Field(description="手填的短剧专辑链接，一条。不是剧场推广链")
+    library_no: int | None = Field(None, description="商品库的巨量库 id。不传则用模板绑定的商品库")
+    promotion_link_id: int | None = Field(None, description="已有剧场推广链 id。与手填链接二选一")
+    album_url: AlbumUrlText | None = Field(None, description="手填推广链接。空则用已有链，再空则自动匹配 IAA")
+    product_book_name: str | None = Field(None, max_length=512, description="商品选择为非本剧时的剧名")
     project_operation: OperationStatus = Field(description="项目开关：ENABLE 或 DISABLE")
     promotion_operation: OperationStatus | None = Field(
         None, description="广告开关。不传则确认提交用模板上的广告状态"
@@ -353,10 +422,12 @@ class DraftWrite(BaseModel):
 
     @field_validator("album_url")
     @classmethod
-    def album_is_http(cls, value: str) -> str:
-        """专辑链接只收 http 或 https。"""
+    def album_is_http(cls, value: str | None) -> str | None:
+        """手填推广链接只收 http 或 https。"""
+        if value is None:
+            return None
         if not value.startswith(("http://", "https://")):
-            raise ValueError("专辑链接须为 http 或 https")
+            raise ValueError("推广链接须为 http 或 https")
         return value
 
     @model_validator(mode="after")
@@ -365,6 +436,8 @@ class DraftWrite(BaseModel):
         _unique_ids(self.advertiser_ids, "账户")
         _unique_ids(self.video_ids, "视频")
         _unique_ids(self.title_ids, "标题")
+        if len(self.batch_titles) != len(set(self.batch_titles)):
+            raise ValueError("标题重复")
         if self.schedule_start is not None:
             self.schedule_start = _aware(self.schedule_start)
         if self.schedule_end is not None:
@@ -414,9 +487,14 @@ class DraftItem(BaseModel):
     douyin_name: str | None
     series_id: str
     book_name: str
+    series_short_name: str | None = None
+    link_name: str | None = None
+    promotion_link_id: str | None = None
     accounts: list[AccountItem]
     videos: list[VideoRef]
     titles: list[TitleRef]
+    batch_titles: list[str] = Field(default_factory=list)
+    video_order: str = "upload"
     placement: str | None
     project_budget: str | None
     ad_budget: str
@@ -451,13 +529,14 @@ class RuleWrite(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    name: NameText = Field(description="规则名称，1–128 字")
+    name: NameText | None = Field(None, description="可空。服务端按类型写成 IAA端原生自动批量或短剧消耗自动批量加时间")
+    rule_kind: str = Field("publish", pattern="^(publish|cost)$", description="publish 按上架时间、cost 按短剧消耗")
     template_id: int = Field(description="批量模板 id")
     accounts_per_series: int = Field(3, ge=1, le=100, description="每部剧账户数，默认 3")
     max_videos_per_series: int = Field(200, ge=1, le=500, description="每部剧最大视频数，默认 200")
     schedule_start: datetime | None = Field(None, description="预约执行时间。空表示立即执行")
     schedule_end: datetime | None = Field(
-        None, description="不使用。省略，或与开始相同，都收下"
+        None, description="预约结束。过了结束时间不再执行，即使还没跑过"
     )
     cost_min: CostBound | None = Field(None, description="短剧消耗下限，单位元")
     cost_max: CostBound | None = Field(None, description="短剧消耗上限，单位元")
@@ -470,12 +549,14 @@ class RuleWrite(BaseModel):
 
     @model_validator(mode="after")
     def check_ranges(self) -> RuleWrite:
-        """消耗、回收、上架要成对。预约只收一个开始时间。短剧 id 不重复。"""
+        """消耗、回收、上架要成对。预约的结束必须晚于开始。短剧 id 不重复。"""
         _unique_ids(self.series_ids, "短剧")
         if self.schedule_start is not None:
             self.schedule_start = _aware(self.schedule_start)
         if self.schedule_end is not None:
             self.schedule_end = _aware(self.schedule_end)
+        if self.schedule_start is not None and self.schedule_end is not None:
+            _pair(self.schedule_start, self.schedule_end, "预约执行", allow_equal=True)
         _pair(self.cost_min, self.cost_max, "短剧消耗", allow_equal=True)
         _pair(self.roi_min, self.roi_max, "短剧回收率", allow_equal=True)
         _pair(self.publish_start, self.publish_end, "短剧上架时间", allow_equal=True)
@@ -490,10 +571,12 @@ class SeriesRef(BaseModel):
 
 
 class RuleItem(BaseModel):
-    """一条自动规则。"""
+    """一条自动规则。剧场固定番茄漫剧。"""
 
     id: str
     name: str
+    rule_kind: str = "publish"
+    theater: str = "番茄漫剧"
     charge_mode: str
     template_id: str
     template_name: str
@@ -559,9 +642,9 @@ class ProductSnapshotWrite(BaseModel):
     name: NameText = Field(description="快照名称，1–128 字")
     product_name: ProductNameText = Field(description="产品名称，最多 20 字")
     product_image_id: str = Field(description="产品主图 id，img- 前缀")
-    selling_points: list[TagText] = Field(default_factory=list, max_length=10, description="产品卖点，最多 10 条")
-    call_to_action_buttons: list[TagText] = Field(
-        default_factory=list, max_length=10, description="行动号召，最多 10 条"
+    selling_points: list[SellingPointText] = Field(default_factory=list, max_length=10, description="产品卖点，每条 6–9 个字")
+    call_to_action_buttons: list[CallToActionText] = Field(
+        default_factory=list, max_length=10, description="行动号召，每条 2–6 个字"
     )
 
     @field_validator("product_image_id")

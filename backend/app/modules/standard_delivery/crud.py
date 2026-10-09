@@ -8,7 +8,14 @@ from sqlalchemy import ColumnElement, delete, exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
 
-from app.modules.account.model import AdvertiserAccount, DeliverySubject, DouyinAccount, ProductLibrary, ProductLibraryPitcher
+from app.modules.account.model import (
+    AdvertiserAccount,
+    DeliverySubject,
+    DouyinAccount,
+    DouyinPitcher,
+    ProductLibrary,
+    ProductLibraryPitcher,
+)
 from app.modules.material.model import ManhuaSeries
 from app.modules.material_title.model import MaterialTitle
 from app.modules.material_video.model import MaterialVideo
@@ -42,13 +49,19 @@ DraftRow = tuple[
 RuleRow = tuple[DeliveryAutoRule, DeliveryTemplate]
 
 
-def standard_douyin_stmt(douyin_id: int) -> Select[tuple[DouyinAccount]]:
-    """已启用的标准号。不读 douyin_pitcher，标准号全员共用。"""
-    return select(DouyinAccount).where(
-        DouyinAccount.id == douyin_id,
-        DouyinAccount.is_deleted == 0,
-        DouyinAccount.delivery_mode == "standard",
-        DouyinAccount.enabled.is_(True),
+def standard_douyin_stmt(douyin_id: int, user_id: int) -> Select[tuple[DouyinAccount]]:
+    """已启用、且分配给当前投手的标准号。"""
+    return (
+        select(DouyinAccount)
+        .join(DouyinPitcher, DouyinPitcher.douyin_account_id == DouyinAccount.id)
+        .where(
+            DouyinAccount.id == douyin_id,
+            DouyinAccount.is_deleted == 0,
+            DouyinAccount.delivery_mode == "standard",
+            DouyinAccount.enabled.is_(True),
+            DouyinPitcher.user_id == user_id,
+            DouyinPitcher.is_deleted == 0,
+        )
     )
 
 
@@ -179,10 +192,29 @@ async def page_templates(
     return list(result.all()), total
 
 
-async def get_standard_douyin(session: AsyncSession, douyin_id: int) -> DouyinAccount | None:
-    """取已启用的标准号。"""
-    result = await session.execute(standard_douyin_stmt(douyin_id))
+async def get_standard_douyin(
+    session: AsyncSession, douyin_id: int, user_id: int
+) -> DouyinAccount | None:
+    """取已启用、且分配给这个投手的标准号。"""
+    result = await session.execute(standard_douyin_stmt(douyin_id, user_id))
     return result.scalar_one_or_none()
+
+
+async def list_assigned_standard_douyin(session: AsyncSession, user_id: int) -> list[DouyinAccount]:
+    """当前投手下拉里的标准号。只含已启用且已分配给本人的。"""
+    result = await session.scalars(
+        select(DouyinAccount)
+        .join(DouyinPitcher, DouyinPitcher.douyin_account_id == DouyinAccount.id)
+        .where(
+            DouyinAccount.is_deleted == 0,
+            DouyinAccount.delivery_mode == "standard",
+            DouyinAccount.enabled.is_(True),
+            DouyinPitcher.user_id == user_id,
+            DouyinPitcher.is_deleted == 0,
+        )
+        .order_by(DouyinAccount.id)
+    )
+    return list(result.all())
 
 
 def _series_brief(row: Any) -> SeriesBrief:

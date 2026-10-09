@@ -13,12 +13,12 @@ from app.core.envelope import ApiError
 from app.core.times import beijing_now
 from app.modules.account.model import AdvertiserAccount, OeReportSnapshot
 from app.modules.delivery_runner.due import (
-    album_url_for_playlet,
     as_beijing,
     series_block_reason,
     snapshots_satisfy,
     standard_is_due,
 )
+from app.modules.standard_delivery.match import iaa_link_for_series, match_advertisers, series_stats
 from app.modules.material.model import ManhuaSeries
 from app.modules.material_title.model import MaterialTitle
 from app.modules.material_video.model import MaterialVideo
@@ -29,6 +29,7 @@ from app.modules.standard_delivery.model import (
     DeliveryAutoRule,
     DeliveryAutoRuleRun,
     DeliveryAutoRuleSeries,
+    DeliveryTaskDraft,
     DeliveryTemplate,
     OperationStatus,
 )
@@ -36,10 +37,10 @@ from app.modules.standard_delivery.schema import DraftWrite
 
 logger = logging.getLogger("adpilot")
 
-_VIDEO_CAP = 200
+_VIDEO_CAP = 800
 _TITLE_CAP = 100
 _TITLE_MIN = 5
-_TITLE_MAX = 30
+_TITLE_MAX = 55
 
 
 def _publish_ok(publish_time: str, start: date | None, end: date | None) -> bool:
@@ -67,6 +68,7 @@ async def claim_standard(session: AsyncSession, rule_id: int, now: datetime) -> 
             DeliveryAutoRule.is_enabled.is_(True),
             DeliveryAutoRule.ran_at.is_(None),
             or_(DeliveryAutoRule.schedule_start.is_(None), DeliveryAutoRule.schedule_start <= clock),
+            or_(DeliveryAutoRule.schedule_end.is_(None), DeliveryAutoRule.schedule_end >= clock),
         )
         .values(ran_at=clock)
     )
@@ -83,23 +85,15 @@ async def due_standard_ids(session: AsyncSession, now: datetime) -> list[int]:
             DeliveryAutoRule.is_enabled.is_(True),
             DeliveryAutoRule.ran_at.is_(None),
             or_(DeliveryAutoRule.schedule_start.is_(None), DeliveryAutoRule.schedule_start <= clock),
+            or_(DeliveryAutoRule.schedule_end.is_(None), DeliveryAutoRule.schedule_end >= clock),
         )
     )
     return [int(item) for item in rows.all()]
 
 
 async def _accounts(session: AsyncSession, user_id: int, limit: int) -> list[AdvertiserAccount]:
-    rows = await session.scalars(
-        select(AdvertiserAccount)
-        .where(
-            AdvertiserAccount.pitcher_user_id == user_id,
-            AdvertiserAccount.is_deleted == 0,
-            AdvertiserAccount.sync_status == "active",
-        )
-        .order_by(AdvertiserAccount.id)
-        .limit(limit)
-    )
-    return list(rows.all())
+    """每部剧取还没有项目的新账户，默认由规则上的个数决定。"""
+    return await match_advertisers(session, user_id, limit, unused_only=True)
 
 
 async def _videos(session: AsyncSession, series_id: int, user_id: int, limit: int) -> list[MaterialVideo]:
@@ -192,15 +186,7 @@ async def execute_standard_rule(session: AsyncSession, rule_id: int, now: dateti
         )
     ) if series_ids else []
     by_id = {int(row.id): row for row in series_rows}
-    accounts = await _accounts(session, int(rule.pitcher_user_id), int(rule.accounts_per_series))
-    snapshot_ok = snapshots_satisfy(
-        await _snapshot_pairs(session),
-        cost_min=rule.cost_min,
-        cost_max=rule.cost_max,
-        recovery_min=rule.roi_min,
-        recovery_max=rule.roi_max,
-    )
-    budget = template.project_budget
+    ad_budget = template.ad_budget
     title_limit = int(template.titles_per_ad or 10)
     video_limit = min(int(rule.max_videos_per_series), _VIDEO_CAP)
     titles = await _titles(session, int(rule.pitcher_user_id), title_limit)
@@ -235,16 +221,30 @@ async def execute_standard_rule(session: AsyncSession, rule_id: int, now: dateti
             written += 1
             continue
         videos = await _videos(session, int(series.id), int(rule.pitcher_user_id), video_limit)
+        accounts = await _accounts(session, int(rule.pitcher_user_id), int(rule.accounts_per_series))
+        stats = await series_stats(session, int(series.id), series.book_name)
+        snapshot_ok = snapshots_satisfy(
+            stats,
+            cost_min=rule.cost_min,
+            cost_max=rule.cost_max,
+            recovery_min=rule.roi_min,
+            recovery_max=rule.roi_max,
+        )
+        link = await iaa_link_for_series(session, int(series.id))
         reason = series_block_reason(
             videos=[int(video.id) for video in videos],
             titles=[int(title.id) for title in titles],
             accounts=[int(account.advertiser_id) for account in accounts],
-            playlet_id=int(series.playlet_id or 0),
+            playlet_id=1,
             publish_ok=_publish_ok(series.publish_time, rule.publish_start, rule.publish_end),
             snapshot_ok=snapshot_ok,
         )
-        if budget is None or budget <= 0:
-            reason = reason or "模板没有项目预算"
+        if rule.no_bid_only and template.bid_type != "NO_BID":
+            reason = reason or "模板不是最大转化"
+        if ad_budget is None or ad_budget <= 0:
+            reason = reason or "模板没有广告预算"
+        if link is None or not link.promotion_url:
+            reason = reason or "没有可匹配的 IAA 推广链"
         if reason:
             await _write_run(
                 session,
@@ -266,9 +266,9 @@ async def execute_standard_rule(session: AsyncSession, rule_id: int, now: dateti
                 series_id=int(series.id),
                 video_ids=[int(video.id) for video in videos],
                 title_ids=[int(title.id) for title in titles],
-                ad_budget=budget,
+                ad_budget=ad_budget,
                 optimize_goal=GOAL_BY_CHARGE[template.charge_mode],
-                album_url=album_url_for_playlet(int(series.playlet_id)),
+                album_url=str(link.promotion_url),
                 project_operation=OperationStatus.ENABLE,
             )
             saved = await create_draft(session, body, int(rule.pitcher_user_id), allowed)
@@ -326,6 +326,7 @@ async def maybe_run_standard(session: AsyncSession, rule_id: int, now: datetime 
     if not standard_is_due(
         is_enabled=bool(rule.is_enabled),
         schedule_start=rule.schedule_start,
+        schedule_end=rule.schedule_end,
         ran_at=rule.ran_at,
         now=clock,
     ):
@@ -346,3 +347,33 @@ async def run_due_standard(session: AsyncSession, now: datetime) -> int:
         except Exception:
             logger.exception("标准自动规则 %s 执行失败", rule_id)
     return ran
+
+
+async def run_due_drafts(session: AsyncSession, now: datetime) -> int:
+    """预约窗口内、还没提交的草稿到点确认提交。没有预约的不自动提交。"""
+    clock = as_beijing(now)
+    draft_ids = list(
+        await session.scalars(
+            select(DeliveryTaskDraft.id).where(
+                DeliveryTaskDraft.is_deleted == 0,
+                DeliveryTaskDraft.submitted_at.is_(None),
+                DeliveryTaskDraft.schedule_start.is_not(None),
+                DeliveryTaskDraft.schedule_start <= clock,
+                DeliveryTaskDraft.schedule_end >= clock,
+            )
+        )
+    )
+    from app.modules.standard_delivery.submit import submit_draft
+
+    submitted = 0
+    for draft_id in draft_ids:
+        draft = await session.get(DeliveryTaskDraft, int(draft_id))
+        if draft is None or draft.is_deleted or draft.submitted_at is not None:
+            continue
+        try:
+            await submit_draft(session, int(draft.id), int(draft.pitcher_user_id), {str(draft.charge_mode)})
+            submitted += 1
+        except Exception:
+            logger.exception("预约草稿 %s 提交失败", draft_id)
+            await session.rollback()
+    return submitted

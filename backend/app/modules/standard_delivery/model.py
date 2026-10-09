@@ -162,6 +162,7 @@ _STANDARD_EXTRAS = (
     "AND (district IS DISTINCT FROM 'NONE' OR city_codes IS NULL OR cardinality(city_codes) = 0) "
     "AND (district IS DISTINCT FROM 'REGION' OR (city_codes IS NOT NULL AND cardinality(city_codes) > 0)) "
     "AND (project_budget IS NULL OR (project_budget > 0 AND project_budget <= 99999999.99)) "
+    "AND (ad_budget IS NULL OR (ad_budget > 0 AND ad_budget <= 99999999.99)) "
     "AND (library_kind IS NULL OR library_kind IN ('video', 'novel')) "
     "AND (product_select IS NULL OR product_select IN ('this_series', 'other_series', 'manual')) "
     "AND (promotion_operation IS NULL OR promotion_operation IN ('ENABLE', 'DISABLE')) "
@@ -170,6 +171,26 @@ _STANDARD_EXTRAS = (
     "AND (gender IS NULL OR gender IN ('none', 'male', 'female')) "
     "AND (age_bands IS NULL OR (cardinality(age_bands) <= 5 "
     "AND age_bands <@ ARRAY['18_23', '24_30', '31_40', '41_49', '50_plus']::varchar[]))"
+)
+# 全域创建页要留下投放模式、排期和产品信息。标准专用的出价、条数和定向仍必须为空。
+_UNI_PAGE = (
+    "(ocean_delivery_mode IS NULL OR ocean_delivery_mode IN ('MANUAL', 'PROCEDURAL')) "
+    "AND bid_type IS NULL "
+    "AND ("
+    "schedule_type IS NULL "
+    "OR (schedule_type = 'SCHEDULE_FROM_NOW' AND schedule_start_date IS NULL AND schedule_end_date IS NULL) "
+    "OR (schedule_type = 'SCHEDULE_START_END' AND schedule_start_date IS NOT NULL "
+    "AND schedule_end_date IS NOT NULL AND schedule_start_date <= schedule_end_date)"
+    ") "
+    "AND (schedule_time IS NULL OR (char_length(schedule_time) = 336 AND schedule_time ~ '^[01]*$')) "
+    "AND (ad_source IS NULL OR char_length(ad_source) BETWEEN 1 AND 100) "
+    "AND (product_name IS NULL OR char_length(product_name) BETWEEN 1 AND 20) "
+    "AND cardinality(selling_points) <= 10 "
+    "AND cardinality(call_to_action_buttons) <= 10 "
+    "AND roi_goal IS NULL "
+    "AND videos_per_ad IS NULL "
+    "AND titles_per_ad IS NULL "
+    "AND ad_budget IS NULL"
 )
 # 全域行不写标准专用列。素材起量开关在全域上也留空。
 _UNI_EXTRAS_EMPTY = (
@@ -205,7 +226,7 @@ _TEMPLATE_SHAPE = (
     "AND title_select_mode IN ('manual', 'auto') "
     "AND ads_per_account IS NULL "
     "AND cardinality(bid_panels) = 0 "
-    f"AND {_STANDARD_LEGACY} "
+    f"AND ({_UNI_PAGE}) "
     f"AND {_UNI_EXTRAS_EMPTY}"
     ")"
 )
@@ -344,7 +365,10 @@ class DeliveryTemplate(BaseModel):
         Integer, nullable=True, comment="每个广告使用标题数，1–10。仅标准模板"
     )
     project_budget: Mapped[Decimal | None] = mapped_column(
-        Numeric(12, 2), nullable=True, comment="项目预算，单位元。标准和全域都可以写"
+        Numeric(12, 2), nullable=True, comment="项目预算，单位元。标准创建必填，类型为设置预算"
+    )
+    ad_budget: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 2), nullable=True, comment="广告预算，单位元。仅标准模板，不拿项目预算代替"
     )
     roi_coefficient: Mapped[Decimal | None] = mapped_column(
         Numeric(10, 3), nullable=True, comment="ROI 系数。仅全域模板"
@@ -380,7 +404,7 @@ class DeliveryTemplate(BaseModel):
         Integer,
         ForeignKey("product_library.id", ondelete="RESTRICT"),
         nullable=True,
-        comment="遗留列，可空。模板页不选具体商品库，写入接口不收这个 id。仅标准模板",
+        comment="账户管理里绑定的一条视频库或小说库。仅标准模板",
     )
     library_kind: Mapped[str | None] = mapped_column(
         String(16),
@@ -419,7 +443,7 @@ class DeliveryTemplate(BaseModel):
 class DeliveryTaskDraft(BaseModel):
     """投放任务草稿。一次只有一个抖音号，账户列表共用这一个号。
 
-    album_url 是手填的短剧专辑链接，不是剧场推广链，也不从剧场 IAA 链接抄过来。
+    album_url 保存要提交的推广链接：已有剧场链或手填，缺省时自动匹配 IAA。
     版位、项目预算、商品库、广告开关、抖音号可以留空，确认提交时改用模板上的值。
     不存事件资产、巨量商品 id、巨量视频 id。
     """
@@ -514,7 +538,36 @@ class DeliveryTaskDraft(BaseModel):
         comment="商品库。空则确认提交用模板上的商品库",
     )
     album_url: Mapped[str | None] = mapped_column(
-        String(2048), nullable=True, comment="手填的短剧专辑链接，一条。不是剧场推广链"
+        String(2048), nullable=True, comment="要提交的推广链接。已有剧场链、手填，或自动匹配的 IAA"
+    )
+    promotion_link_id: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, comment="选中的剧场推广链。手填或自动匹配时为空"
+    )
+    link_name: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, comment="推广链接名称，原生-加短剧前两字"
+    )
+    series_short_name: Mapped[str | None] = mapped_column(
+        String(32), nullable=True, comment="短剧简称，剧名前两个字"
+    )
+    product_book_name: Mapped[str | None] = mapped_column(
+        String(512), nullable=True, comment="非本剧时要上传的商品剧名"
+    )
+    video_order: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        default="upload",
+        server_default=text("'upload'"),
+        comment="视频顺序：upload 上传顺序、random 随机",
+    )
+    batch_titles: Mapped[list[str]] = mapped_column(
+        ARRAY(String(55)),
+        nullable=False,
+        default=list,
+        server_default=text("ARRAY[]::varchar[]"),
+        comment="批量粘贴的临时标题，5–55 个字，不写入标题库",
+    )
+    submitted_at: Mapped[datetime | None] = mapped_column(
+        _TS, nullable=True, comment="确认提交或预约到点提交的时间。空表示还没提交"
     )
     project_operation: Mapped[str | None] = mapped_column(
         String(16), nullable=True, comment="项目开关 ENABLE 或 DISABLE"
@@ -603,7 +656,7 @@ class DeliveryTaskTitle(BaseModel):
 class DeliveryAutoRule(BaseModel):
     """自动投放规则。没有 schedule_start 时立即执行一次；有则到点执行一次。
 
-    剧场不落库：短剧表没有剧场外键，规则默认对着番茄漫剧库。
+    剧场固定为番茄漫剧。名称按规则类型生成。
     """
 
     __tablename__ = "delivery_auto_rule"
@@ -649,7 +702,21 @@ class DeliveryAutoRule(BaseModel):
         {"comment": "漫剧标准投放自动规则。到点经假客户端确认提交，不直连开放平台。"},
     )
 
-    name: Mapped[str] = mapped_column(String(128), nullable=False, comment="规则名称")
+    name: Mapped[str] = mapped_column(String(128), nullable=False, comment="规则名称。按类型和时间生成")
+    rule_kind: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        default="publish",
+        server_default=text("'publish'"),
+        comment="publish 按上架时间、cost 按短剧消耗",
+    )
+    theater: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default="番茄漫剧",
+        server_default=text("'番茄漫剧'"),
+        comment="剧场。固定番茄漫剧",
+    )
     charge_mode: Mapped[str] = mapped_column(
         String(8), nullable=False, comment="从模板抄来的收费模式"
     )
@@ -710,7 +777,7 @@ class DeliveryAutoRule(BaseModel):
         nullable=False,
         default=False,
         server_default=text("false"),
-        comment="真则只针对最大转化。本轮只保存，不筛报表",
+        comment="真则只针对最大转化。执行时模板须为 NO_BID",
     )
 
 

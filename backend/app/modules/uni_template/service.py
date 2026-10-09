@@ -67,6 +67,15 @@ def template_item(
         "roi_coefficient": _roi(roi),
         "aigc_dynamic_creative": bool(row.aigc_dynamic_creative),
         "title_select_mode": row.title_select_mode or "",
+        "ocean_delivery_mode": row.ocean_delivery_mode,
+        "schedule_type": row.schedule_type,
+        "schedule_start_date": None if row.schedule_start_date is None else row.schedule_start_date.isoformat(),
+        "schedule_end_date": None if row.schedule_end_date is None else row.schedule_end_date.isoformat(),
+        "schedule_time": row.schedule_time,
+        "ad_source": row.ad_source,
+        "product_name": row.product_name,
+        "selling_points": list(row.selling_points or []),
+        "call_to_action_buttons": list(row.call_to_action_buttons or []),
         "douyin_accounts": accounts,
         "created_at": beijing_iso(row.created_date),
         "updated_at": beijing_iso(row.updated_date),
@@ -98,17 +107,8 @@ def template_filters(query: TemplateQuery) -> list[ColumnElement[bool]]:
 
 
 def _clear_standard_only(row: DeliveryTemplate) -> None:
-    """全域行不写标准提交列。这些列和 delivery_mode 不是一回事。"""
-    row.ocean_delivery_mode = None
+    """清掉标准专用列。投放模式、排期和产品信息留给创建页。"""
     row.bid_type = None
-    row.schedule_type = None
-    row.schedule_start_date = None
-    row.schedule_end_date = None
-    row.schedule_time = None
-    row.ad_source = None
-    row.product_name = None
-    row.selling_points = []
-    row.call_to_action_buttons = []
     row.roi_goal = None
     row.videos_per_ad = None
     row.titles_per_ad = None
@@ -125,6 +125,19 @@ def _clear_standard_only(row: DeliveryTemplate) -> None:
     row.douyin_account_id = None
     row.product_image_id = None
     row.standard_title_select_mode = None
+
+
+def _apply_uni_page(row: DeliveryTemplate, body: TemplateWrite) -> None:
+    """创建页上的排期、投放模式和产品信息。没有服务商同步。"""
+    row.ocean_delivery_mode = None if body.ocean_delivery_mode is None else str(body.ocean_delivery_mode)
+    row.schedule_type = None if body.schedule_type is None else str(body.schedule_type)
+    row.schedule_start_date = body.schedule_start_date
+    row.schedule_end_date = body.schedule_end_date
+    row.schedule_time = body.schedule_time
+    row.ad_source = body.ad_source
+    row.product_name = body.product_name
+    row.selling_points = list(body.selling_points)
+    row.call_to_action_buttons = list(body.call_to_action_buttons)
 
 
 def require_uni_subject(subject: DeliverySubject, charge_mode: str) -> None:
@@ -184,6 +197,7 @@ async def create_template(session: AsyncSession, body: TemplateWrite) -> dict[st
         title_select_mode=body.title_select_mode,
     )
     _clear_standard_only(row)
+    _apply_uni_page(row, body)
     session.add(row)
     await session.commit()
     await session.refresh(row)
@@ -211,6 +225,7 @@ async def update_template(
     row.bid_panels = []
     row.ads_per_account = None
     _clear_standard_only(row)
+    _apply_uni_page(row, body)
     row.updated_date = beijing_now()
     await session.commit()
     await session.refresh(row)

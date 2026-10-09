@@ -24,7 +24,7 @@ from app.modules.uni_robot.model import RuleKind, UniRobotRule
 
 logger = logging.getLogger("adpilot")
 
-_VIDEO_CAP = 200
+_VIDEO_CAP = 800
 _inflight: set[int] = set()
 
 
@@ -70,8 +70,11 @@ async def _ran_today(session: AsyncSession, rule_id: int, now: datetime) -> bool
 
 async def _pitcher_pair(
     session: AsyncSession,
+    user_id: int | None,
 ) -> tuple[int, DouyinAccount, AdvertiserAccount] | None:
-    """任一已分配投手的全域抖音号和广告账户。不写死测试广告主号。"""
+    """只用规则所属投手的全域抖音号和广告账户。"""
+    if user_id is None:
+        return None
     row = (
         await session.execute(
             select(DouyinAccount, AdvertiserAccount)
@@ -81,14 +84,16 @@ async def _pitcher_pair(
                 AdvertiserAccount.pitcher_user_id == DouyinPitcher.user_id,
             )
             .where(
+                DouyinPitcher.user_id == user_id,
                 DouyinAccount.is_deleted == 0,
                 DouyinAccount.enabled.is_(True),
                 DouyinAccount.delivery_mode == "uni",
                 DouyinPitcher.is_deleted == 0,
+                AdvertiserAccount.pitcher_user_id == user_id,
                 AdvertiserAccount.is_deleted == 0,
                 AdvertiserAccount.sync_status == "active",
             )
-            .order_by(AdvertiserAccount.id, DouyinAccount.id)
+            .order_by(AdvertiserAccount.assigned_at.desc().nulls_last(), AdvertiserAccount.id.desc())
             .limit(1)
         )
     ).one_or_none()
@@ -142,20 +147,37 @@ async def _promotion_series(
 
 
 async def _drama_series(
-    session: AsyncSession, *, tab: str, stat_span: str, now: datetime
+    session: AsyncSession,
+    *,
+    tab: str,
+    stat_span: str,
+    now: datetime,
+    cost_min,
+    cost_max,
+    recovery_min,
+    recovery_max,
 ) -> list[ManhuaSeries]:
+    """按这部剧当天或昨天的消耗和回收比值筛选，不对上架日期。"""
+    from app.modules.standard_delivery.match import series_stats
+
     day = span_day(stat_span, now)
-    prefix = day.isoformat()
     rows = await session.scalars(
         select(ManhuaSeries)
-        .where(
-            ManhuaSeries.is_deleted == 0,
-            ManhuaSeries.tab_text == tab,
-            ManhuaSeries.publish_time.like(f"{prefix}%"),
-        )
+        .where(ManhuaSeries.is_deleted == 0, ManhuaSeries.tab_text == tab)
         .order_by(ManhuaSeries.id)
     )
-    return [row for row in rows.all() if publish_on_day(row.publish_time, day)]
+    kept: list[ManhuaSeries] = []
+    for series in rows.all():
+        stats = await series_stats(session, int(series.id), series.book_name, day)
+        if snapshots_satisfy(
+            stats,
+            cost_min=cost_min,
+            cost_max=cost_max,
+            recovery_min=recovery_min,
+            recovery_max=recovery_max,
+        ):
+            kept.append(series)
+    return kept
 
 
 async def _snapshots(session: AsyncSession) -> list[tuple]:
@@ -195,22 +217,15 @@ async def execute_robot_rule(session: AsyncSession, rule: UniRobotRule, now: dat
         linked = await _promotion_series(session, int(rule.platform_id))
         chosen = [(series, url) for series, url in linked]
     else:
-        ok = snapshots_satisfy(
-            await _snapshots(session),
+        dramas = await _drama_series(
+            session,
+            tab=str(template.charge_mode),
+            stat_span=str(rule.stat_span or "today"),
+            now=clock,
             cost_min=rule.cost_min,
             cost_max=rule.cost_max,
             recovery_min=rule.recovery_min,
             recovery_max=rule.recovery_max,
-        )
-        dramas = (
-            await _drama_series(
-                session,
-                tab=str(template.charge_mode),
-                stat_span=str(rule.stat_span or "today"),
-                now=clock,
-            )
-            if ok
-            else []
         )
         chosen = [(series, None) for series in dramas]
     if not chosen:
@@ -226,10 +241,14 @@ async def execute_robot_rule(session: AsyncSession, rule: UniRobotRule, now: dat
         )
         await session.commit()
         return
-    pair = await _pitcher_pair(session)
+    owner_id = getattr(rule, "pitcher_user_id", None)
+    pair = await _pitcher_pair(session, int(owner_id) if owner_id is not None else None)
     failures: list[RunFailure] = []
     succeeded: list[str] = []
-    if pair is None:
+    if owner_id is None:
+        for series, _url in chosen:
+            failures.append(RunFailure(series_name=series.book_name, reason="规则没有所属投手"))
+    elif pair is None:
         for series, _url in chosen:
             failures.append(RunFailure(series_name=series.book_name, reason="没有已分配的全域抖音号或广告账户"))
     else:

@@ -141,6 +141,7 @@ def make_template() -> DeliveryTemplate:
         roi_coefficient=Decimal("1.200"),
         aigc_dynamic_creative=True,
         title_select_mode="manual",
+        ocean_delivery_mode="MANUAL",
     )
     row.id = 11
     row.is_deleted = 0

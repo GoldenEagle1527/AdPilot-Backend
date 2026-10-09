@@ -1,6 +1,6 @@
 """漫剧标准投放：模板、任务草稿、自动规则的保存和筛选。
 
-不创建巨量项目或单元。抖音号只认已启用的标准号，不按投手过滤。
+不创建巨量项目或单元。标准抖音号只认已分配给当前投手的号。
 """
 
 from __future__ import annotations
@@ -47,6 +47,16 @@ from app.modules.standard_delivery.crud import (
     titles_by_drafts,
     videos_by_drafts,
     visible_videos,
+)
+from app.modules.standard_delivery.match import (
+    bound_library,
+    iaa_link_for_series,
+    library_titles,
+    match_advertisers,
+    promotion_link_by_id,
+    rule_display_name,
+    series_link_names,
+    series_videos,
 )
 from app.modules.standard_delivery.model import (
     GOAL_BY_CHARGE,
@@ -171,6 +181,8 @@ def template_item(row: DeliveryTemplate, subject_name: str) -> dict[str, Any]:
         "gender": row.gender or "none",
         "age_bands": [str(band) for band in (row.age_bands or [])],
         "project_budget": None if row.project_budget is None else _money(row.project_budget),
+        "ad_budget": None if row.ad_budget is None else _money(row.ad_budget),
+        "product_library_id": None if row.product_library_id is None else str(row.product_library_id),
         "library_kind": row.library_kind,
         "product_select": row.product_select,
         "material_boost": bool(row.material_boost),
@@ -199,12 +211,13 @@ def _apply_standard_template(row: DeliveryTemplate, body: TemplateWrite | Templa
     row.videos_per_ad = body.videos_per_ad
     row.titles_per_ad = body.titles_per_ad
     row.project_budget = body.project_budget
+    row.ad_budget = body.ad_budget
     row.placement = None if body.placement is None else str(body.placement)
     row.district = None if body.district is None else str(body.district)
     row.city_codes = list(body.city_codes) or None
     row.gender = body.gender.value
     row.age_bands = [band.value for band in body.age_bands] or None
-    row.product_library_id = None
+    row.product_library_id = body.product_library_id
     row.library_kind = None if body.library_kind is None else str(body.library_kind)
     row.product_select = None if body.product_select is None else str(body.product_select)
     row.material_boost = bool(body.material_boost)
@@ -257,16 +270,23 @@ async def get_template(session: AsyncSession, template_id: int, allowed: set[str
     return template_item(row, subject.name)
 
 
-async def _require_template_links(session: AsyncSession, body: TemplateWrite | TemplateUpdate) -> None:
-    """标准抖音号要真实存在。商品库类型只记 video 或 novel，不查某一行商品库。"""
-    if body.douyin_account_id is None:
-        return
-    douyin = await get_standard_douyin(session, body.douyin_account_id)
-    if douyin is None:
-        raise ApiError(400, "抖音号不是已启用的标准号")
+async def _require_template_links(
+    session: AsyncSession, body: TemplateWrite | TemplateUpdate, user_id: int
+) -> None:
+    """标准抖音号须已分配给当前投手。选了商品库就绑定那一条。"""
+    if body.douyin_account_id is not None:
+        douyin = await get_standard_douyin(session, body.douyin_account_id, user_id)
+        if douyin is None:
+            raise ApiError(400, "抖音号不是已分配给当前投手的标准号")
+    if body.product_library_id is not None:
+        library = await bound_library(session, body.product_library_id)
+        if body.library_kind is not None and library.library_kind != body.library_kind:
+            raise ApiError(400, "商品库类型与所选商品库不一致")
 
 
-async def create_template(session: AsyncSession, body: TemplateWrite, allowed: set[str]) -> dict[str, Any]:
+async def create_template(
+    session: AsyncSession, body: TemplateWrite, allowed: set[str], user_id: int = 0
+) -> dict[str, Any]:
     """校验主体和出价面板后新增模板。"""
     _require_mode(body.charge_mode, allowed)
     subject = await get_subject(session, body.subject_id)
@@ -276,7 +296,7 @@ async def create_template(session: AsyncSession, body: TemplateWrite, allowed: s
     require_panels(body.charge_mode, list(body.bid_panels), subject.bid_panel)
     if await template_name_taken(session, body.charge_mode, body.name, None):
         raise ApiError(409, "模板名称已存在")
-    await _require_template_links(session, body)
+    await _require_template_links(session, body, user_id)
     row = DeliveryTemplate(
         name=body.name,
         delivery_mode=TemplateMode.STANDARD,
@@ -293,7 +313,7 @@ async def create_template(session: AsyncSession, body: TemplateWrite, allowed: s
 
 
 async def update_template(
-    session: AsyncSession, template_id: int, body: TemplateUpdate, allowed: set[str]
+    session: AsyncSession, template_id: int, body: TemplateUpdate, allowed: set[str], user_id: int = 0
 ) -> dict[str, Any]:
     """改名称、主体、出价面板和每账户广告条数。收费模式不动。"""
     found = await get_template_row(session, template_id)
@@ -308,7 +328,7 @@ async def update_template(
     require_panels(row.charge_mode, list(body.bid_panels), subject.bid_panel)
     if await template_name_taken(session, row.charge_mode, body.name, row.id):
         raise ApiError(409, "模板名称已存在")
-    await _require_template_links(session, body)
+    await _require_template_links(session, body, user_id)
     row.name = body.name
     row.subject_id = subject.id
     row.bid_panels = list(body.bid_panels)
@@ -369,6 +389,9 @@ def draft_item(
         "douyin_name": None if douyin is None else douyin.name,
         "series_id": str(series.id),
         "book_name": series.book_name,
+        "series_short_name": row.series_short_name,
+        "link_name": row.link_name,
+        "promotion_link_id": None if row.promotion_link_id is None else str(row.promotion_link_id),
         "accounts": [
             {
                 "advertiser_account_id": str(account.id),
@@ -379,6 +402,8 @@ def draft_item(
         ],
         "videos": [{"id": str(video.id), "name": video.name} for video in videos],
         "titles": [{"id": str(title.id), "title": title.title} for title in titles],
+        "batch_titles": list(row.batch_titles or []),
+        "video_order": row.video_order or "upload",
         "placement": row.placement,
         "project_budget": None if row.project_budget is None else _money(row.project_budget),
         "ad_budget": _money(row.ad_budget),
@@ -493,7 +518,12 @@ async def _library_for_user(session: AsyncSession, library_no: int, user_id: int
 
 
 async def _draft_refs(
-    session: AsyncSession, body: DraftWrite, user_id: int, allowed: set[str]
+    session: AsyncSession,
+    body: DraftWrite,
+    user_id: int,
+    allowed: set[str],
+    *,
+    free_template: bool = True,
 ) -> tuple[
     DeliveryTemplate,
     DeliverySubject,
@@ -504,45 +534,67 @@ async def _draft_refs(
     list[MaterialTitle],
     ProductLibrary | None,
 ]:
-    """把草稿要挂的现成数据一次核完。抖音号不看投手分配。留空的字段确认提交时用模板。"""
+    """核模板、抖音号、账户、视频、标题和推广链。付费任务使用免费模板。"""
     found = await get_template_row(session, body.template_id)
     if found is None:
         raise ApiError(404, "模板不存在")
     template, subject = found
-    _require_mode(template.charge_mode, allowed)
-    _require_goal(template.charge_mode, body.optimize_goal)
+    task_charge = str(body.charge_mode or ChargeMode.IAA)
+    _require_mode(task_charge, allowed)
+    if free_template and template.charge_mode != ChargeMode.IAA:
+        raise ApiError(400, "投放任务须使用免费端原生模板")
+    _require_goal(task_charge, body.optimize_goal)
     douyin: DouyinAccount | None = None
     if body.douyin_account_id is not None:
-        douyin = await get_standard_douyin(session, body.douyin_account_id)
+        douyin = await get_standard_douyin(session, body.douyin_account_id, user_id)
         if douyin is None:
-            raise ApiError(400, "抖音号不是已启用的标准号")
+            raise ApiError(400, "抖音号不是已分配给当前投手的标准号")
     series = await get_series(session, body.series_id)
     if series is None:
         raise ApiError(404, "短剧不存在")
-    accounts = _order(
-        await owned_advertisers(session, list(body.advertiser_ids), user_id),
-        list(body.advertiser_ids),
-        lambda row: int(row.advertiser_id),
-    )
-    if not accounts:
-        raise ApiError(400, "账户不存在、未分配给当前投手或已失效")
-    videos = _order(
-        await visible_videos(session, list(body.video_ids), series.id, user_id),
-        list(body.video_ids),
-        lambda row: row.id,
-    )
-    if not videos:
-        raise ApiError(400, "视频不存在、不属于该短剧或当前账号不可见")
-    titles = _order(
-        await own_titles(session, list(body.title_ids), user_id),
-        list(body.title_ids),
-        lambda row: row.id,
-    )
-    if not titles:
+    if body.advertiser_ids:
+        accounts = _order(
+            await owned_advertisers(session, list(body.advertiser_ids), user_id),
+            list(body.advertiser_ids),
+            lambda row: int(row.advertiser_id),
+        )
+        if not accounts:
+            raise ApiError(400, "账户不存在、未分配给当前投手或已失效")
+    else:
+        accounts = await match_advertisers(session, user_id, 3, unused_only=False)
+        if not accounts:
+            raise ApiError(400, "没有可匹配的广告账户")
+    if body.video_ids:
+        videos = _order(
+            await visible_videos(session, list(body.video_ids), series.id, user_id),
+            list(body.video_ids),
+            lambda row: row.id,
+        )
+        if not videos:
+            raise ApiError(400, "视频不存在、不属于该短剧或当前账号不可见")
+    else:
+        videos = await series_videos(session, series.id, user_id, limit=200, order=body.video_order)
+        if not videos:
+            raise ApiError(400, "这部剧没有可代入的视频素材")
+    titles: list[MaterialTitle] = []
+    if body.title_ids:
+        titles = _order(
+            await own_titles(session, list(body.title_ids), user_id),
+            list(body.title_ids),
+            lambda row: row.id,
+        )
+        if not titles:
+            raise ApiError(400, "标题不存在或不属于当前账号")
+    elif not body.batch_titles and template.standard_title_select_mode == "auto":
+        category = "paid" if task_charge == ChargeMode.IAP else "common"
+        titles = await library_titles(session, user_id, limit=int(template.titles_per_ad or 10), category=category)
+    if not titles and not body.batch_titles:
         raise ApiError(400, "标题不存在或不属于当前账号")
     library: ProductLibrary | None = None
     if body.library_no is not None:
         library = await _library_for_user(session, body.library_no, user_id)
+    elif template.product_library_id is not None:
+        library = await bound_library(session, int(template.product_library_id))
     return template, subject, douyin, series, accounts, videos, titles, library
 
 
@@ -555,9 +607,13 @@ def _fill_draft(
     library: ProductLibrary | None,
     user_id: int,
 ) -> None:
-    """把校验过的字段写到草稿行上。一个抖音号，不写成列表。留空表示用模板。"""
+    """把校验过的字段写到草稿行上。推广链接写入 album_url，供确认提交使用。"""
+    task_charge = str(body.charge_mode or ChargeMode.IAA)
+    ad_budget = body.ad_budget if body.ad_budget is not None else template.ad_budget
+    if ad_budget is None:
+        raise ApiError(400, "广告预算不能为空")
     row.template_id = template.id
-    row.charge_mode = template.charge_mode
+    row.charge_mode = task_charge
     row.pitcher_user_id = user_id
     row.schedule_start = body.schedule_start
     row.schedule_end = body.schedule_end
@@ -565,38 +621,73 @@ def _fill_draft(
     row.series_id = series.id
     row.placement = None if body.placement is None else str(body.placement)
     row.project_budget = body.project_budget
-    row.ad_budget = body.ad_budget
+    row.ad_budget = ad_budget
     row.optimize_goal = body.optimize_goal
     row.product_library_id = None if library is None else library.id
-    row.album_url = body.album_url
     row.project_operation = body.project_operation
     row.promotion_operation = body.promotion_operation
+    row.video_order = body.video_order
+    row.batch_titles = list(body.batch_titles)
+    row.product_book_name = (body.product_book_name or "").strip() or None
+
+
+async def _store_promotion_link(
+    session: AsyncSession, row: DeliveryTaskDraft, body: DraftWrite, series: SeriesBrief
+) -> None:
+    """已有剧场链、手填，或自动匹配 IAA。提交时用这条链接。"""
+    short, link_name = series_link_names(series.book_name)
+    row.series_short_name = short
+    row.link_name = link_name
+    if body.promotion_link_id is not None:
+        link = await promotion_link_by_id(session, body.promotion_link_id, series.id)
+        row.album_url = link.promotion_url
+        row.promotion_link_id = int(link.id)
+        return
+    if body.album_url:
+        row.album_url = body.album_url
+        row.promotion_link_id = None
+        return
+    link = await iaa_link_for_series(session, series.id)
+    if link is None or not link.promotion_url:
+        raise ApiError(400, "没有可匹配的 IAA 推广链")
+    row.album_url = link.promotion_url
+    row.promotion_link_id = int(link.id)
 
 
 async def create_draft(
-    session: AsyncSession, body: DraftWrite, user_id: int, allowed: set[str]
+    session: AsyncSession,
+    body: DraftWrite,
+    user_id: int,
+    allowed: set[str],
+    *,
+    free_template: bool = True,
 ) -> dict[str, Any]:
-    """新增一条草稿。多个账户共用同一个抖音号。"""
+    """新增一条草稿。多个账户共用同一个抖音号。投放任务默认只用免费模板。"""
     template, subject, douyin, series, accounts, videos, titles, library = await _draft_refs(
-        session, body, user_id, allowed
+        session, body, user_id, allowed, free_template=free_template
     )
     row = DeliveryTaskDraft(
         template_id=template.id,
-        charge_mode=template.charge_mode,
+        charge_mode=str(body.charge_mode or ChargeMode.IAA),
         pitcher_user_id=user_id,
         douyin_account_id=None if douyin is None else douyin.id,
         series_id=series.id,
         placement=None if body.placement is None else str(body.placement),
         project_budget=body.project_budget,
-        ad_budget=body.ad_budget,
+        ad_budget=body.ad_budget if body.ad_budget is not None else template.ad_budget,
         optimize_goal=body.optimize_goal,
         product_library_id=None if library is None else library.id,
         schedule_start=body.schedule_start,
         schedule_end=body.schedule_end,
-        album_url=body.album_url,
         project_operation=body.project_operation,
         promotion_operation=body.promotion_operation,
+        video_order=body.video_order,
+        batch_titles=list(body.batch_titles),
+        product_book_name=(body.product_book_name or "").strip() or None,
     )
+    if row.ad_budget is None:
+        raise ApiError(400, "广告预算不能为空")
+    await _store_promotion_link(session, row, body, series)
     session.add(row)
     await session.flush()
     await replace_task_links(session, row.id, accounts, videos, titles)
@@ -617,9 +708,11 @@ async def update_draft(
     template, subject, douyin, series, accounts, videos, titles, library = await _draft_refs(
         session, body, user_id, allowed
     )
-    if template.charge_mode != current.charge_mode:
-        raise ApiError(400, "模板收费模式与草稿不一致")
+    task_charge = str(body.charge_mode or ChargeMode.IAA)
+    if task_charge != current.charge_mode:
+        raise ApiError(400, "任务收费模式与草稿不一致")
     _fill_draft(current, template, body, douyin, series, library, user_id)
+    await _store_promotion_link(session, current, body, series)
     current.updated_date = beijing_now()
     await replace_task_links(session, current.id, accounts, videos, titles)
     await session.commit()
@@ -650,6 +743,8 @@ def rule_item(
     return {
         "id": str(row.id),
         "name": row.name,
+        "rule_kind": row.rule_kind,
+        "theater": row.theater,
         "charge_mode": row.charge_mode,
         "template_id": str(template.id),
         "template_name": template.name,
@@ -753,8 +848,11 @@ async def _rule_refs(
 
 
 def _fill_rule(row: DeliveryAutoRule, template: DeliveryTemplate, body: RuleWrite, user_id: int) -> None:
-    """把校验过的字段写到规则行上。"""
-    row.name = body.name
+    """把校验过的字段写到规则行上。名称在创建时生成，这里只在类型变化时重写。"""
+    if row.rule_kind != body.rule_kind or not row.name:
+        row.name = rule_display_name(body.rule_kind, beijing_now())
+    row.rule_kind = body.rule_kind
+    row.theater = "番茄漫剧"
     row.charge_mode = template.charge_mode
     row.template_id = template.id
     row.pitcher_user_id = user_id
@@ -774,10 +872,13 @@ def _fill_rule(row: DeliveryAutoRule, template: DeliveryTemplate, body: RuleWrit
 async def create_rule(session: AsyncSession, body: RuleWrite, user_id: int, allowed: set[str]) -> dict[str, Any]:
     """新增一条自动规则。没有预约时间且开关开着时立刻执行一次。"""
     template, series_rows = await _rule_refs(session, body, allowed)
-    if await rule_name_taken(session, user_id, template.charge_mode, body.name, None):
+    generated = rule_display_name(body.rule_kind, beijing_now())
+    if await rule_name_taken(session, user_id, template.charge_mode, generated, None):
         raise ApiError(409, "规则名称已存在")
     row = DeliveryAutoRule(
-        name=body.name,
+        name=generated,
+        rule_kind=body.rule_kind,
+        theater="番茄漫剧",
         charge_mode=template.charge_mode,
         template_id=template.id,
         pitcher_user_id=user_id,
@@ -819,7 +920,10 @@ async def update_rule(
     template, series_rows = await _rule_refs(session, body, allowed)
     if template.charge_mode != current.charge_mode:
         raise ApiError(400, "模板收费模式与规则不一致")
-    if await rule_name_taken(session, user_id, template.charge_mode, body.name, current.id):
+    next_name = current.name
+    if current.rule_kind != body.rule_kind:
+        next_name = rule_display_name(body.rule_kind, beijing_now())
+    if await rule_name_taken(session, user_id, template.charge_mode, next_name, current.id):
         raise ApiError(409, "规则名称已存在")
     schedule_changed = current.schedule_start != body.schedule_start
     _fill_rule(current, template, body, user_id)

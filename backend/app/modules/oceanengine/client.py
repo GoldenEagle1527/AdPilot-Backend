@@ -76,6 +76,10 @@ class OceanEnginePort(Protocol):
 
     async def create_project(self, access_token: str, body: dict[str, Any]) -> dict[str, Any]: ...
 
+    async def create_promotion(self, access_token: str, body: dict[str, Any]) -> dict[str, Any]: ...
+
+    async def list_projects(self, access_token: str, body: dict[str, Any] | None = None) -> dict[str, Any]: ...
+
     async def upload_video(self, access_token: str, body: dict[str, Any]) -> dict[str, Any]: ...
 
     async def custom_report(
@@ -277,6 +281,24 @@ class OceanEngineClient:
             f"{self._settings.api_base}/open_api/v3.0/project/create/",
             headers={"Access-Token": access_token},
             json_body=body,
+        )
+
+    async def create_promotion(self, access_token: str, body: dict[str, Any]) -> dict[str, Any]:
+        """创建广告。mock 安装时不会走到这里。"""
+        return await self._request(
+            "POST",
+            f"{self._settings.api_base}/open_api/v3.0/promotion/create/",
+            headers={"Access-Token": access_token},
+            json_body=body,
+        )
+
+    async def list_projects(self, access_token: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
+        """项目列表。用来识别 NB 或最大转化。"""
+        return await self._request(
+            "GET",
+            f"{self._settings.api_base}/open_api/v3.0/project/list/",
+            headers={"Access-Token": access_token},
+            params=body,
         )
 
     async def upload_video(self, access_token: str, body: dict[str, Any]) -> dict[str, Any]:

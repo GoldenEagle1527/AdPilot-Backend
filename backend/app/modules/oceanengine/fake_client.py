@@ -182,6 +182,15 @@ class FakeOceanEngineClient:
         project_id = await _next_sequence(OE_PROJECT_ID_SEQ)
         return _envelope({"project_id": project_id})
 
+    async def create_promotion(self, access_token: str, body: dict[str, Any]) -> dict[str, Any]:
+        """广告 id 用本地计数，不打开放平台。"""
+        promotion_id = await _next_sequence(OE_PROJECT_ID_SEQ)
+        return _envelope({"promotion_id": promotion_id + 100000})
+
+    async def list_projects(self, access_token: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
+        """假项目列表。识别 NB 时再并上本地 oe_project。"""
+        return _envelope({"list": []})
+
     async def upload_video(self, access_token: str, body: dict[str, Any]) -> dict[str, Any]:
         """视频 id 为 local- 加十六进制 uuid。"""
         return _envelope({"video_id": f"local-{uuid.uuid4().hex}"})

@@ -62,6 +62,12 @@ class Port:
         self._image += 1
         return {"data": {"id": f"img-from-client-{self._image}"}}
 
+    async def create_promotion(self, _token: str, body: dict[str, Any]) -> dict[str, Any]:
+        """记下广告报文并回一个广告号。"""
+        self.promotions = getattr(self, "promotions", [])
+        self.promotions.append(body)
+        return {"data": {"promotion_id": 9100000000000000 + len(self.promotions)}}
+
     async def upload_video(self, _token: str, body: dict[str, Any]) -> dict[str, Any]:
         """提交不该走到这里。"""
         self.videos += 1
@@ -335,7 +341,7 @@ class SubmitTests(unittest.TestCase):
         self.assertEqual(port.projects, [])
 
     def test_bad_title_length_rejects_before_any_client_call(self) -> None:
-        """切进广告的标题不在 5–30 字，整单失败，不截断、不跳过。"""
+        """切进广告的标题不在 5–55 字，整单失败，不截断、不跳过。"""
         port = Port()
         install_ocean_client(port)
         with self.assertRaises(ApiError) as caught:
@@ -353,7 +359,7 @@ class SubmitTests(unittest.TestCase):
                     [_title(21, "标题正好五字"), _title(22, "短")],
                 )
             )
-        self.assertEqual(caught.exception.message, "标题长度须为 5–30 个字")
+        self.assertEqual(caught.exception.message, "标题长度须为 5–55 个字")
         self.assertEqual(port.projects, [])
         self.assertEqual(port.products, [])
         self.assertEqual(port.images, [])

@@ -21,6 +21,7 @@ def load_models() -> None:
     import app.modules.theater.model  # noqa: F401
     import app.modules.account.model  # noqa: F401
     import app.modules.standard_delivery.model  # noqa: F401
+    import app.modules.standard_robot.model  # noqa: F401
     import app.modules.uni_robot.model  # noqa: F401
     import app.modules.uni_template.model  # noqa: F401
     import app.modules.uni_native_task.model  # noqa: F401

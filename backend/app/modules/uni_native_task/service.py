@@ -36,7 +36,12 @@ from app.modules.uni_native_task.crud import (
     titles_by_tasks,
     videos_by_tasks,
 )
-from app.modules.uni_native_task.model import NativeTaskStatus, UniNativeTask, UniNativeTaskLink
+from app.modules.uni_native_task.model import (
+    NativeTaskStatus,
+    UniNativeTask,
+    UniNativeTaskAccount,
+    UniNativeTaskLink,
+)
 from app.modules.uni_native_task.schema import TaskQuery, TaskWrite
 from app.modules.uni_template.crud import douyin_by_ids, get_uni_template_row, pitcher_owned_ids
 
@@ -122,6 +127,8 @@ def task_item(
         "titles": [{"id": str(title.id), "title": title.title} for title in titles],
         "batch_titles": list(batch_titles),
         "status": row.status,
+        "failure_reason": row.failure_reason,
+        "materials_uploaded": bool(row.materials_uploaded),
         "executed_at": None if row.executed_at is None else beijing_iso(row.executed_at),
         "created_at": beijing_iso(row.created_date),
         "updated_at": beijing_iso(row.updated_date),
@@ -246,6 +253,15 @@ async def _refs(
     pairs = await _douyin_pairs(session, body, user_id)
     videos = await _videos(session, body, series.id, user_id, present)
     titles = await _titles(session, body, user_id, present)
+    if not body.video_ids and not videos and "material_videos" in present:
+        from app.modules.standard_delivery.match import series_videos
+
+        videos = await series_videos(session, series.id, user_id, limit=200, order="upload")
+    if not body.title_ids and not titles and template.title_select_mode == "auto" and "material_titles" in present:
+        from app.modules.standard_delivery.match import library_titles
+
+        category = "paid" if template.charge_mode == "IAP" else "common"
+        titles = await library_titles(session, user_id, limit=10, category=category)
     budget, roi = _amounts(template, body)
     return template, series, pairs, videos, titles, budget, roi
 
@@ -294,16 +310,70 @@ async def iaa_promotion_url(session: AsyncSession, series_id: int) -> str | None
     return str(row[0])
 
 
+async def iap_promotion_url(session: AsyncSession, series_id: int) -> str | None:
+    """这部剧一条启用的 IAP 链接。"""
+    found = (await session.execute(_PROMOTION_LINK_TABLE)).one_or_none()
+    if found is None or found[0] is None:
+        return None
+    row = (
+        await session.execute(
+            select(TheaterPromotionLink.promotion_url)
+            .where(
+                TheaterPromotionLink.series_id == series_id,
+                TheaterPromotionLink.is_deleted == 0,
+                TheaterPromotionLink.is_enabled.is_(True),
+                or_(
+                    TheaterPromotionLink.recharge_template_name == "IAP",
+                    TheaterPromotionLink.media_config_type == 2,
+                ),
+            )
+            .order_by(TheaterPromotionLink.id.desc())
+            .limit(1)
+        )
+    ).one_or_none()
+    if row is None or not row[0]:
+        return None
+    return str(row[0])
+
+
 async def resolve_links(
     session: AsyncSession, body: TaskWrite, series_id: int
 ) -> list[tuple[str, str]]:
-    """客户端传了链接就按原文保存。没传时，表里有 IAA 链才补一条。"""
+    """客户端传了链接就按原文保存。没传时带出这部剧的 IAA 和 IAP。"""
     if body.promotion_links:
         return [(item.charge_mode, item.link_text) for item in body.promotion_links]
-    filled = await iaa_promotion_url(session, series_id)
-    if filled is None:
-        return []
-    return [("IAA", filled)]
+    found: list[tuple[str, str]] = []
+    iaa = await iaa_promotion_url(session, series_id)
+    if iaa:
+        found.append(("IAA", iaa))
+    iap = await iap_promotion_url(session, series_id)
+    if iap:
+        found.append(("IAP", iap))
+    return found
+
+
+async def ensure_one_plan(
+    session: AsyncSession, series_id: int, douyin_ids: list[int], exclude_task_id: int
+) -> None:
+    """一部剧在一个抖音号里只能有一个未失败的投放计划。"""
+    if not douyin_ids:
+        return
+    stmt = (
+        select(UniNativeTask.id)
+        .join(UniNativeTaskAccount, UniNativeTaskAccount.task_id == UniNativeTask.id)
+        .where(
+            UniNativeTask.series_id == series_id,
+            UniNativeTask.is_deleted == 0,
+            UniNativeTask.status.in_(("saved", "running", "done")),
+            UniNativeTaskAccount.douyin_account_id.in_(douyin_ids),
+            UniNativeTaskAccount.is_deleted == 0,
+            UniNativeTask.id != exclude_task_id,
+        )
+        .limit(1)
+    )
+    row = (await session.execute(stmt)).one_or_none()
+    if row is not None and isinstance(row[0], int):
+        raise ApiError(400, "这部剧在该抖音号已有投放计划")
 
 
 def _saved_item(
@@ -353,6 +423,7 @@ async def create_task(session: AsyncSession, body: TaskWrite, user_id: int) -> d
         titles,
         list(body.batch_titles),
     )
+    await ensure_one_plan(session, int(series.id), [int(douyin.id) for douyin, _account in pairs], int(row.id))
     await session.commit()
     await session.refresh(row)
     return _saved_item(row, template, series, pairs, links, videos, titles, list(body.batch_titles))
@@ -379,6 +450,9 @@ async def update_task(
         videos,
         titles,
         list(body.batch_titles),
+    )
+    await ensure_one_plan(
+        session, int(series.id), [int(douyin.id) for douyin, _account in pairs], int(current.id)
     )
     await session.commit()
     await session.refresh(current)

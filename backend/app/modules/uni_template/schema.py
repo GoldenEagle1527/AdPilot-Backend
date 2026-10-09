@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from datetime import date
 from decimal import Decimal
 from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
-from app.modules.standard_delivery.model import ChargeMode, TitleSelectMode
+from app.modules.standard_delivery.model import ChargeMode, OceanDeliveryMode, ScheduleType, TitleSelectMode
+from app.modules.standard_delivery.schema import CallToActionText, SellingPointText
 
 NameText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=128)]
 Money = Annotated[Decimal, Field(gt=0, le=Decimal("99999999.99"), max_digits=10, decimal_places=2)]
@@ -38,6 +40,15 @@ class TemplateWrite(BaseModel):
     roi_coefficient: RoiCoefficient = Field(description="ROI 系数")
     aigc_dynamic_creative: bool = Field(description="AIGC 动态创意")
     title_select_mode: TitleSelectMode = Field(description="标题选择：manual 手动、auto 自动")
+    ocean_delivery_mode: OceanDeliveryMode | None = Field(None, description="MANUAL 手动、PROCEDURAL 自动")
+    schedule_type: ScheduleType | None = Field(None, description="排期类型")
+    schedule_start_date: date | None = Field(None, description="排期开始日期")
+    schedule_end_date: date | None = Field(None, description="排期结束日期")
+    schedule_time: str | None = Field(None, description="336 位投放时段")
+    ad_source: str | None = Field(None, max_length=100, description="广告来源")
+    product_name: str | None = Field(None, max_length=20, description="产品名称")
+    selling_points: list[SellingPointText] = Field(default_factory=list, description="产品卖点，6–9 个字")
+    call_to_action_buttons: list[CallToActionText] = Field(default_factory=list, description="行动号召，2–6 个字")
 
 
 class DouyinRef(BaseModel):
@@ -60,6 +71,15 @@ class TemplateItem(BaseModel):
     roi_coefficient: str
     aigc_dynamic_creative: bool
     title_select_mode: str
+    ocean_delivery_mode: str | None = None
+    schedule_type: str | None = None
+    schedule_start_date: str | None = None
+    schedule_end_date: str | None = None
+    schedule_time: str | None = None
+    ad_source: str | None = None
+    product_name: str | None = None
+    selling_points: list[str] = Field(default_factory=list)
+    call_to_action_buttons: list[str] = Field(default_factory=list)
     douyin_accounts: list[DouyinRef]
     created_at: str
     updated_at: str

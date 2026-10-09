@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 
-from sqlalchemy import func, select, text
+from sqlalchemy import delete, func, select, text
 
 from app.core.db import dispose_engine, get_session
 from app.modules.system_admin.domain.models import (
@@ -54,6 +54,16 @@ async def _sync_identity(session, table: str) -> None:
     )
 
 
+_RETIRED_MENU_IDS = (70, 71, 72, 73, 74, 75, 79)
+
+
+async def _drop_retired_menus(session) -> int:
+    """删掉文档已删除的菜单。编号不回收，目录 69 和 78 留下。"""
+    await session.execute(delete(RoleMenu).where(RoleMenu.menu_id.in_(_RETIRED_MENU_IDS)))
+    result = await session.execute(delete(MenuNode).where(MenuNode.id.in_(_RETIRED_MENU_IDS)))
+    return int(result.rowcount or 0)
+
+
 async def _sync_missing_menus(session) -> tuple[int, int]:
     """补上种子里还没有的菜单和角色勾选。不改已有行，也不删多出来的。"""
     existing_ids = set((await session.scalars(select(MenuNode.id))).all())
@@ -88,9 +98,13 @@ async def load_seed() -> None:
     async for session in get_session():
         existing = await session.scalar(select(func.count()).select_from(User))
         if existing:
+            dropped = await _drop_retired_menus(session)
             menus, links = await _sync_missing_menus(session)
             await session.commit()
-            print(f"已有 {existing} 个用户，跳过整批灌种；补菜单 {menus}，补角色勾选 {links}")
+            print(
+                f"已有 {existing} 个用户，跳过整批灌种；"
+                f"删菜单 {dropped}，补菜单 {menus}，补角色勾选 {links}"
+            )
             return
         for row in DEPARTMENT_TAG_SEED:
             session.add(DepartmentTag(**row))

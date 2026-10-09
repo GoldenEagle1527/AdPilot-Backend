@@ -3,7 +3,7 @@
 from app.modules.oceanengine.catalog import list_advertisers, list_organizations
 from app.modules.oceanengine.delivery import (
     create_project,
-    run_auto_pause,
+    create_promotion,
     update_promotions,
     upload_image,
     upload_product,
@@ -16,11 +16,11 @@ from app.modules.oceanengine.sync import sync_from_oceanengine
 __all__ = [
     "authorize_url",
     "create_project",
+    "create_promotion",
     "list_advertisers",
     "list_organizations",
     "list_reports",
     "oauth_callback",
-    "run_auto_pause",
     "sync_from_oceanengine",
     "update_promotions",
     "upload_image",

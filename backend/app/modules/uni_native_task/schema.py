@@ -125,7 +125,7 @@ class TitleRef(BaseModel):
 
 
 class TaskItem(BaseModel):
-    """一条任务。时间为北京时间，精确到秒。状态为 saved、running 或 done。"""
+    """一条任务。时间为北京时间，精确到秒。状态含 saved、running、done、failed。"""
 
     id: str
     template_id: str
@@ -142,6 +142,8 @@ class TaskItem(BaseModel):
     titles: list[TitleRef]
     batch_titles: list[str]
     status: str
+    failure_reason: str | None = None
+    materials_uploaded: bool = False
     executed_at: str | None
     created_at: str
     updated_at: str
@@ -168,10 +170,11 @@ class SubmitAccount(BaseModel):
 
 
 class SubmitResult(BaseModel):
-    """确认提交的结果。done 只表示假客户端结束，素材不算巨量已上传。"""
+    """确认提交的结果。done 表示素材已上传完成，failed 带原因。"""
 
     id: str
     status: str
+    failure_reason: str | None = None
     executed_at: str | None
     materials_uploaded: bool
     promotion_links: list[PromotionLinkItem]

@@ -175,22 +175,12 @@ class PromotionStatusList(BaseModel):
     items: list[PromotionStatusItem]
 
 
-class AutoPauseBody(BaseModel):
-    """按报表阈值关停。operator 目前只接受小于等于。"""
+class PromotionCreate(BaseModel):
+    """创建一条广告。opt_status 跟草稿开关一致。"""
 
     model_config = ConfigDict(extra="forbid")
 
-    metric: Literal["stat_cost", "roi"]
-    operator: Literal["lte"]
-    threshold: float
-
-
-class AutoPauseResult(BaseModel):
-    """命中关停与保留的广告 id。关停按全量执行，两个列表按同一页返回。"""
-
-    paused: list[int]
-    kept: list[int]
-    paused_total: int
-    kept_total: int
-    page: int
-    page_size: int
+    advertiser_id: int
+    name: str = Field(min_length=1, max_length=255)
+    opt_status: Literal["ENABLE", "DISABLE"]
+    payload: dict[str, Any]

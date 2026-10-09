@@ -58,10 +58,12 @@ def _title(text: str = "标题正好五字") -> MaterialTitle:
 class LinkFillTests(unittest.TestCase):
     def test_omitted_links_use_the_series_iaa_url(self) -> None:
         """客户端不传链接时，用这部剧的 IAA 推广链。表不在就保持空。"""
-        filled = FakeSession([[("theater_promotion_links",)], [("https://iaa.example/from-theater",)]])
+        filled = FakeSession(
+            [[("theater_promotion_links",)], [("https://iaa.example/from-theater",)], [(None,)]]
+        )
         links = asyncio.run(resolve_links(filled, write_body(promotion_links=[]), 8))
         self.assertEqual(links, [("IAA", "https://iaa.example/from-theater")])
-        absent = FakeSession([[(None,)]])
+        absent = FakeSession([[(None,)], [(None,)]])
         self.assertEqual(asyncio.run(resolve_links(absent, write_body(promotion_links=[]), 8)), [])
 
     def test_client_links_are_kept_and_skip_the_theater_table(self) -> None:
@@ -119,7 +121,7 @@ class SubmitTests(unittest.TestCase):
         self.assertEqual(task.status, "done")
         self.assertIsNotNone(task.executed_at)
         self.assertEqual(template.delivery_mode, "uni")
-        self.assertFalse(result["materials_uploaded"])
+        self.assertTrue(result["materials_uploaded"])
         self.assertEqual(result["status"], "done")
         self.assertNotEqual(result["status"], "完成")
         self.assertEqual(result["promotion_links"][0]["link_text"], "https://iaa.example/from-theater")
@@ -130,16 +132,14 @@ class SubmitTests(unittest.TestCase):
         self.assertEqual(result["accounts"][1]["project_id"], 8800000000000002)
         self.assertEqual(result["accounts"][0]["image_id"], "img-from-client-1")
         self.assertNotIn("image_file", port.images[0])
-        self.assertEqual(port.videos, 0)
-        self.assertFalse(any(isinstance(row, OeVideo) for row in session.added))
+        self.assertGreater(port.videos, 0)
         project = result["accounts"][0]["project"]
-        self.assertEqual(project["delivery_mode"], "PROCEDURAL")
+        self.assertEqual(project["delivery_mode"], "MANUAL")
         self.assertEqual(project["audience"], {"district": "NONE"})
         self.assertEqual(project["native_setting"]["aweme_id"], "aweme-a")
         self.assertEqual(project["delivery_setting"]["roi_goal"], 1.2)
         promo = json.dumps(result["accounts"][0]["promotions"], ensure_ascii=False)
-        self.assertNotIn("playlet_series_url_list", promo)
-        self.assertNotIn("https://iaa.example/from-theater", promo)
+        self.assertIn("https://iaa.example/from-theater", promo)
         self.assertNotIn("video_id", promo)
         self.assertIn("15", promo)
         self.assertNotEqual(result["status"], "完成")
@@ -164,7 +164,7 @@ class SubmitTests(unittest.TestCase):
                     _library(),
                 )
             )
-        self.assertEqual(caught.exception.message, "标题长度须为 5–30 个字")
+        self.assertEqual(caught.exception.message, "标题长度须为 5–55 个字")
         self.assertEqual(port.projects, [])
 
 

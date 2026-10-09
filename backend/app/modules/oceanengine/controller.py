@@ -17,8 +17,6 @@ from app.modules.oceanengine.schema import (
     AdvertiserQuery,
     AuthorizeData,
     AuthorizeQuery,
-    AutoPauseBody,
-    AutoPauseResult,
     ImageItem,
     OAuthCallbackQuery,
     OAuthTokenData,
@@ -40,7 +38,6 @@ from app.modules.oceanengine.service import (
     list_organizations,
     list_reports,
     oauth_callback,
-    run_auto_pause,
     update_promotions,
     upload_image,
     upload_product,
@@ -272,23 +269,6 @@ async def post_promotion_status(
 ) -> dict[str, Any]:
     """批量暂停或启用广告。"""
     data = {"items": await update_promotions(session, body)}
-    await session.commit()
-    return success(data)
-
-
-@router.post(
-    "/auto-pause/run",
-    response_model=Envelope[AutoPauseResult],
-    summary="按阈值自动关停",
-)
-async def post_auto_pause(
-    session: SessionDep,
-    _principal: Menu32,
-    body: AutoPauseBody,
-    params: Annotated[PageParams, Depends(page_params)],
-) -> dict[str, Any]:
-    """用报表判断并暂停命中的广告。关停跑全量，返回列表按页截取。"""
-    data = await run_auto_pause(session, body, params)
     await session.commit()
     return success(data)
 

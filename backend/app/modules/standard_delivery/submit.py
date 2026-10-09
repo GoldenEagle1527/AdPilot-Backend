@@ -1,6 +1,6 @@
 """确认提交一条标准投放草稿。
 
-项目号、商品号、主图号都从已装上的客户端拿。报文留在返回值里，本模块不发 HTTP。
+项目号、商品号、主图号和广告号都从已装上的客户端拿。mock 为真时不打开放平台。
 """
 
 from __future__ import annotations
@@ -16,8 +16,8 @@ from app.modules.account.commands import choose_library
 from app.modules.account.model import AdvertiserAccount, DeliverySubject, DouyinAccount, ProductLibrary
 from app.modules.material_title.model import MaterialTitle
 from app.modules.material_video.model import MaterialVideo
-from app.modules.oceanengine.delivery import create_project, upload_image, upload_product
-from app.modules.oceanengine.schema import ProductCreate, ProjectCreate
+from app.modules.oceanengine.delivery import create_project, create_promotion, upload_image, upload_product
+from app.modules.oceanengine.schema import ProductCreate, ProjectCreate, PromotionCreate
 from app.modules.standard_delivery.crud import (
     SeriesBrief,
     accounts_by_drafts,
@@ -37,7 +37,7 @@ from app.modules.standard_delivery.model import (
 )
 
 _TITLE_MIN = 5
-_TITLE_MAX = 30
+_TITLE_MAX = 55
 _MANUAL_VIDEO_CAP = 10
 _IMAGE_MODE = {
     "vertical_video": "CREATIVE_IMAGE_MODE_VIDEO_VERTICAL",
@@ -215,7 +215,7 @@ def _reject_unready(template: DeliveryTemplate, draft: DeliveryTaskDraft) -> Non
 def _reject_titles(titles: list[MaterialTitle]) -> None:
     """切进广告的标题有一条长度不对，整单拒绝。"""
     if any(not _TITLE_MIN <= len(title.title) <= _TITLE_MAX for title in titles):
-        raise ApiError(400, "标题长度须为 5–30 个字")
+        raise ApiError(400, "标题长度须为 5–55 个字")
 
 
 def _video_material(video: MaterialVideo) -> dict[str, Any]:
@@ -238,8 +238,9 @@ def _promotion_body(
     operation: str,
     videos: list[MaterialVideo],
     titles: list[MaterialTitle],
+    book_name: str,
 ) -> dict[str, Any]:
-    """一条广告的报文。专辑链接只用草稿上的 album_url，不抄剧场推广链。"""
+    """一条广告的报文。专辑链接是草稿上已解析的推广链。"""
     body: dict[str, Any] = {
         "advertiser_id": advertiser_id,
         "project_id": project_id,
@@ -254,7 +255,7 @@ def _promotion_body(
             "video_material_list": [_video_material(video) for video in videos],
             "title_material_list": [{"title": title.title} for title in titles],
             "product_info": {
-                "titles": [template.product_name],
+                "titles": [book_name],
                 "image_ids": [image_id],
                 "selling_points": list(template.selling_points or []),
             },
@@ -302,6 +303,42 @@ def _project_body(
     }
 
 
+class _PastedTitle:
+    """批量粘贴的标题。切片只读 title。"""
+
+    def __init__(self, title: str) -> None:
+        self.title = title
+
+
+def _product_book_name(draft: DeliveryTaskDraft, template: DeliveryTemplate, series: SeriesBrief) -> str:
+    """本剧用剧名，非本剧用草稿上的书名，手动用模板产品名。"""
+    select = template.product_select or "this_series"
+    if select == "other_series":
+        name = (draft.product_book_name or "").strip()
+        if not name:
+            raise ApiError(400, "非本剧商品名称不能为空")
+        return name
+    if select == "manual":
+        name = (template.product_name or "").strip()
+        if not name:
+            raise ApiError(400, "手动商品名称不能为空")
+        return name
+    return series.book_name
+
+
+def _within_appointment(draft: DeliveryTaskDraft) -> None:
+    """没预约就直接提交。有预约则必须落在开始和结束之间。"""
+    if draft.schedule_start is None and draft.schedule_end is None:
+        return
+    clock = beijing_now()
+    start = draft.schedule_start
+    end = draft.schedule_end
+    if start is not None and clock < start:
+        raise ApiError(400, "未到预约开始")
+    if end is not None and clock > end:
+        raise ApiError(400, "预约已结束")
+
+
 async def submit_loaded(
     session: AsyncSession,
     draft: DeliveryTaskDraft,
@@ -317,20 +354,23 @@ async def submit_loaded(
 ) -> dict[str, Any]:
     """按账户建项目，再按模板的条数切广告。不改模板的 delivery_mode。
 
-    草稿没写的版位、项目预算、广告开关用模板。定向、商品选择方式、主图和标题模式只在模板上。
-    草稿上的标题列表视为对标题模式的覆盖。专辑链接仍只用草稿的 album_url，不抄剧场推广链。
+    草稿没写的版位、项目预算、广告开关用模板。商品名称按模板的选择方式。
+    标题库和批量粘贴的标题一起切。专辑链接用草稿上已解析的推广链。
     libraries 按巨量广告主 id 给每个账户自己的商品库；不传则全部用 library。
     """
     _reject_unready(template, draft)
+    _within_appointment(draft)
     placement = _picked_placement(draft, template)
     budget = _picked_budget(draft, template)
     operation = _picked_operation(draft, template)
     audience = _picked_audience(template)
     stored_image = _stored_image_id(template)
+    book_name = _product_book_name(draft, template, series)
     name = _project_name(series.book_name)
+    chosen_titles = list(titles) + [_PastedTitle(text) for text in (draft.batch_titles or [])]
     slices = slice_materials(
         videos,
-        titles,
+        chosen_titles,
         videos_per_ad=int(template.videos_per_ad),
         titles_per_ad=int(template.titles_per_ad),
         ads_per_account=int(template.ads_per_account),
@@ -346,7 +386,7 @@ async def submit_loaded(
             ProductCreate(
                 advertiser_id=advertiser_id,
                 library_no=int(chosen.library_no),
-                book_name=series.book_name,
+                book_name=book_name,
             ),
         )
         if stored_image is None:
@@ -389,6 +429,24 @@ async def submit_loaded(
             ),
         )
         project_id = int(created["project_id"])
+        promotion_rows: list[dict[str, Any]] = []
+        for chunk_videos, chunk_titles in promotions:
+            promotion_rows.append(
+                await _create_one_promotion(
+                    session,
+                    advertiser_id=advertiser_id,
+                    project_id=project_id,
+                    name=name,
+                    draft=draft,
+                    template=template,
+                    douyin=douyin,
+                    image_id=image_id,
+                    operation=operation,
+                    videos=chunk_videos,
+                    titles=chunk_titles,
+                    book_name=book_name,
+                )
+            )
         built.append(
             {
                 "advertiser_id": advertiser_id,
@@ -396,25 +454,54 @@ async def submit_loaded(
                 "product_id": int(product["product_id"]),
                 "image_id": image_id,
                 "project": project,
-                "promotions": [
-                    _promotion_body(
-                        advertiser_id=advertiser_id,
-                        project_id=project_id,
-                        name=name,
-                        draft=draft,
-                        template=template,
-                        douyin=douyin,
-                        image_id=image_id,
-                        operation=operation,
-                        videos=chunk_videos,
-                        titles=chunk_titles,
-                    )
-                    for chunk_videos, chunk_titles in promotions
-                ],
+                "promotions": promotion_rows,
             }
         )
+    draft.submitted_at = beijing_now()
     await session.commit()
     return {"id": str(draft.id), "aweme_id": douyin.aweme_id, "accounts": built}
+
+
+async def _create_one_promotion(
+    session: AsyncSession,
+    *,
+    advertiser_id: int,
+    project_id: int,
+    name: str,
+    draft: DeliveryTaskDraft,
+    template: DeliveryTemplate,
+    douyin: DouyinAccount,
+    image_id: str,
+    operation: str,
+    videos: list[MaterialVideo],
+    titles: list[MaterialTitle],
+    book_name: str,
+) -> dict[str, Any]:
+    """组广告报文并调用创建广告客户端。"""
+    body = _promotion_body(
+        advertiser_id=advertiser_id,
+        project_id=project_id,
+        name=name,
+        draft=draft,
+        template=template,
+        douyin=douyin,
+        image_id=image_id,
+        operation=operation,
+        videos=videos,
+        titles=titles,
+        book_name=book_name,
+    )
+    created = await create_promotion(
+        session,
+        PromotionCreate(
+            advertiser_id=advertiser_id,
+            name=name,
+            opt_status=operation if operation in ("ENABLE", "DISABLE") else "ENABLE",
+            payload=body,
+        ),
+    )
+    body["promotion_id"] = int(created["promotion_id"])
+    return body
 
 
 async def libraries_for_kind(
@@ -456,9 +543,9 @@ async def submit_draft(
     if douyin is None:
         if template.douyin_account_id is None:
             raise ApiError(400, "抖音号不能为空")
-        douyin = await get_standard_douyin(session, int(template.douyin_account_id))
+        douyin = await get_standard_douyin(session, int(template.douyin_account_id), user_id)
         if douyin is None:
-            raise ApiError(400, "抖音号不是已启用的标准号")
+            raise ApiError(400, "抖音号不是已分配给当前投手的标准号")
     accounts = (await accounts_by_drafts(session, [draft.id])).get(draft.id, [])
     videos = (await videos_by_drafts(session, [draft.id])).get(draft.id, [])
     titles = (await titles_by_drafts(session, [draft.id])).get(draft.id, [])

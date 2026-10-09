@@ -9,7 +9,7 @@ from __future__ import annotations
 from decimal import Decimal
 from enum import StrEnum
 
-from sqlalchemy import Boolean, CheckConstraint, Index, Integer, Numeric, String, text
+from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Index, Integer, Numeric, String, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import BaseModel
@@ -79,6 +79,12 @@ class UniRobotRule(BaseModel):
         comment="规则类型：promotion_link 按推广链接、drama_condition 按剧条件",
     )
     name: Mapped[str] = mapped_column(String(128), nullable=False, comment="规则名称")
+    pitcher_user_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=True,
+        comment="规则所属投手。执行时只用这个投手的号和账户",
+    )
     template_id: Mapped[int] = mapped_column(
         Integer,
         nullable=False,

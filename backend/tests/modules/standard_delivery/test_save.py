@@ -61,8 +61,9 @@ _TEMPLATE_FIELDS = {
     "schedule_type": "SCHEDULE_FROM_NOW",
     "ad_source": "来源甲",
     "product_name": "产品甲",
-    "selling_points": ["卖点一"],
+    "selling_points": ["这是产品卖点"],
     "call_to_action_buttons": ["立即观看"],
+    "project_budget": "100.00",
     "videos_per_ad": 3,
     "titles_per_ad": 2,
 }
@@ -214,7 +215,7 @@ class BodyTests(unittest.TestCase):
         body = template_body(product_select="this_series")
         self.assertEqual(body.product_select, "this_series")
         self.assertIsNone(body.library_kind)
-        self.assertFalse(hasattr(body, "product_library_id"))
+        self.assertIsNone(body.product_library_id)
 
     def test_library_kind_alone_is_accepted(self) -> None:
         """只填视频库或小说库，商品选择可以空着。"""
@@ -245,7 +246,7 @@ class BodyTests(unittest.TestCase):
         )
         self.assertEqual(body.product_select, "this_series")
         self.assertIsNone(body.library_kind)
-        self.assertFalse(hasattr(body, "product_library_id"))
+        self.assertIsNone(body.product_library_id)
 
     def test_one_douyin_rejects_a_list(self) -> None:
         """一次任务只有一个抖音号，传数组直接拒。"""
@@ -336,7 +337,7 @@ class BodyTests(unittest.TestCase):
                 roi_coefficient="1.2",
                 aigc_dynamic_creative=False,
                 title_select_mode="manual",
-                ocean_delivery_mode="MANUAL",
+                bid_type="CUSTOM",
             )
         with self.assertRaises(ValidationError):
             UniTemplateWrite(
@@ -466,14 +467,14 @@ class FilterTests(unittest.TestCase):
         self.assertIn("delivery_task_draft.series_id = 8", sql)
         self.assertIn("delivery_task_draft.schedule_start IS NOT NULL", sql)
 
-    def test_standard_douyin_is_shared(self) -> None:
-        """标准号只看启用，不读投手分配表。"""
-        sql = str(standard_douyin_stmt(4).compile(compile_kwargs={"literal_binds": True}))
+    def test_standard_douyin_is_assigned_to_the_pitcher(self) -> None:
+        """标准号下拉只看分配给当前投手、且已启用的号。"""
+        sql = str(standard_douyin_stmt(4, 3).compile(compile_kwargs={"literal_binds": True}))
         where = sql.split("WHERE", 1)[1]
         self.assertIn("douyin_account.delivery_mode = 'standard'", where)
         self.assertIn("douyin_account.enabled IS true", where)
-        self.assertNotIn("douyin_pitcher", sql)
-        self.assertNotIn("owner_user_id", where)
+        self.assertIn("douyin_pitcher", sql)
+        self.assertIn("douyin_pitcher.user_id = 3", where)
 
     def test_migration_revises_the_local_chain_head(self) -> None:
         """只新增这一条。down_revision 接本地链头，不建短剧行业表。"""
@@ -565,7 +566,7 @@ class CreateTemplateTests(unittest.TestCase):
         self.assertIsNone(item["schedule_time"])
         self.assertEqual(item["ad_source"], "来源甲")
         self.assertEqual(item["product_name"], "产品甲")
-        self.assertEqual(item["selling_points"], ["卖点一"])
+        self.assertEqual(item["selling_points"], ["这是产品卖点"])
         self.assertEqual(item["call_to_action_buttons"], ["立即观看"])
         self.assertIsNone(item["roi_goal"])
         self.assertEqual(item["videos_per_ad"], 3)
@@ -573,7 +574,7 @@ class CreateTemplateTests(unittest.TestCase):
         self.assertEqual(session.commits, 1)
         row = session.added[0]
         self.assertEqual(row.delivery_mode, "standard")
-        self.assertIsNone(row.project_budget)
+        self.assertEqual(row.project_budget, Decimal("100.00"))
         self.assertIsNone(row.roi_coefficient)
         self.assertIsNone(row.aigc_dynamic_creative)
         self.assertIsNone(row.title_select_mode)
@@ -608,7 +609,7 @@ class CreateTemplateTests(unittest.TestCase):
         self.assertEqual(item["city_codes"], [110000])
         self.assertEqual(item["project_budget"], "300.50")
         self.assertEqual(item["library_kind"], "video")
-        self.assertNotIn("product_library_id", item)
+        self.assertIsNone(item["product_library_id"])
         self.assertEqual(item["product_select"], "manual")
         self.assertTrue(item["material_boost"])
         self.assertEqual(item["promotion_operation"], "ENABLE")
@@ -728,7 +729,7 @@ class CreateDraftTests(unittest.TestCase):
         with self.assertRaises(ApiError) as caught:
             asyncio.run(create_draft(session, draft_body(), 3, ALLOWED))
         self.assertEqual(caught.exception.status_code, 400)
-        self.assertEqual(caught.exception.message, "抖音号不是已启用的标准号")
+        self.assertEqual(caught.exception.message, "抖音号不是已分配给当前投手的标准号")
         self.assertFalse(any(isinstance(row, DeliveryTaskDraft) for row in session.added))
 
 

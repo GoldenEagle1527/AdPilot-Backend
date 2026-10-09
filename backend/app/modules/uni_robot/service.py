@@ -45,7 +45,7 @@ async def _catalog_ids(catalog: UniRobotCatalog, template_id: int, platform_id: 
 
 
 async def create_link_rule(
-    session: AsyncSession, catalog: UniRobotCatalog, body: LinkRuleWrite
+    session: AsyncSession, catalog: UniRobotCatalog, body: LinkRuleWrite, user_id: int | None = None
 ) -> UniRobotRule:
     """按推广链接新增一条规则。条件列留空。"""
     template_id, platform_id = await _catalog_ids(catalog, body.template_id, body.platform_id)
@@ -54,6 +54,7 @@ async def create_link_rule(
     row = UniRobotRule(
         rule_kind=RuleKind.PROMOTION_LINK,
         name=body.name,
+        pitcher_user_id=user_id,
         template_id=template_id,
         platform_id=platform_id,
         max_videos_per_series=body.max_videos_per_series,
@@ -73,7 +74,7 @@ async def create_link_rule(
 
 
 async def create_drama_rule(
-    session: AsyncSession, catalog: UniRobotCatalog, body: DramaRuleWrite
+    session: AsyncSession, catalog: UniRobotCatalog, body: DramaRuleWrite, user_id: int | None = None
 ) -> UniRobotRule:
     """按剧条件新增一条规则。统计时间、消耗区间、回收率区间一并写入。"""
     template_id, platform_id = await _catalog_ids(catalog, body.template_id, body.platform_id)
@@ -82,6 +83,7 @@ async def create_drama_rule(
     row = UniRobotRule(
         rule_kind=RuleKind.DRAMA_CONDITION,
         name=body.name,
+        pitcher_user_id=user_id,
         template_id=template_id,
         platform_id=platform_id,
         max_videos_per_series=body.max_videos_per_series,

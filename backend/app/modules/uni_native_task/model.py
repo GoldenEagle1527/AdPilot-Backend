@@ -6,7 +6,7 @@ from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, Numeric, String, text
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import BaseModel
@@ -15,11 +15,12 @@ _TS = DateTime(timezone=True)
 
 
 class NativeTaskStatus(StrEnum):
-    """saved 已保存。running 是假客户端还在组报文（执行中）。done 是假客户端结束（完成），不是巨量真上传。"""
+    """saved 已保存。running 执行中。done 表示素材已上传完成。failed 带原因。"""
 
     SAVED = "saved"
     RUNNING = "running"
     DONE = "done"
+    FAILED = "failed"
 
 
 class UniNativeTask(BaseModel):
@@ -28,7 +29,7 @@ class UniNativeTask(BaseModel):
     __tablename__ = "uni_native_task"
     __table_args__ = (
         CheckConstraint(
-            "status IN ('saved', 'running', 'done')",
+            "status IN ('saved', 'running', 'done', 'failed')",
             name="ck_uni_native_task_status",
         ),
         CheckConstraint(
@@ -82,7 +83,15 @@ class UniNativeTask(BaseModel):
         nullable=False,
         default=NativeTaskStatus.SAVED,
         server_default=text("'saved'"),
-        comment="saved 已保存、running 执行中、done 完成。done 只表示假客户端结束",
+        comment="saved 已保存、running 执行中、done 素材上传完成、failed 失败",
+    )
+    failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True, comment="失败原因。成功为空")
+    materials_uploaded: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=text("false"),
+        comment="素材是否已通过客户端上传完成",
     )
     executed_at: Mapped[datetime | None] = mapped_column(
         _TS, nullable=True, comment="假客户端结束的时间。未提交为空"

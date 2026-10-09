@@ -1,8 +1,7 @@
 """确认提交一条全域端原生任务。
 
-每个账户行已经是一个抖音号对一个广告账户。项目、商品、主图走已装上的客户端。
-假客户端执行期间把状态写成 running（执行中），结束后写成 done（完成）。
-materials_uploaded 保持 false，不表示巨量已经收下素材。
+每个账户行已经是一个抖音号对一个广告账户。项目、广告和素材走已装上的客户端。
+完成表示素材已经上传。失败写下原因。投放模式用模板上的值。
 """
 
 from __future__ import annotations
@@ -24,8 +23,8 @@ from app.modules.account.model import (
 )
 from app.modules.material_title.model import MaterialTitle
 from app.modules.material_video.model import MaterialVideo
-from app.modules.oceanengine.delivery import create_project, upload_image, upload_product
-from app.modules.oceanengine.schema import ProductCreate, ProjectCreate
+from app.modules.oceanengine.delivery import create_project, create_promotion, upload_image, upload_product, upload_video
+from app.modules.oceanengine.schema import ProductCreate, ProjectCreate, PromotionCreate, VideoCreate
 from app.modules.standard_delivery.model import DeliveryTemplate
 from app.modules.uni_native_task.crud import (
     accounts_by_tasks,
@@ -40,7 +39,7 @@ from app.modules.uni_native_task.model import NativeTaskStatus, UniNativeTask, U
 from app.modules.uni_template.crud import get_uni_template_row
 
 _TITLE_MIN = 5
-_TITLE_MAX = 30
+_TITLE_MAX = 55
 _IMAGE_MODE = {
     "vertical_video": "CREATIVE_IMAGE_MODE_VIDEO_VERTICAL",
     "horizontal_video": "CREATIVE_IMAGE_MODE_VIDEO",
@@ -94,7 +93,7 @@ async def pitcher_library(session: AsyncSession, user_id: int) -> ProductLibrary
 def _reject_titles(titles: list[str]) -> None:
     """有一条标题长度不对就整单拒绝。"""
     if any(not _TITLE_MIN <= len(title) <= _TITLE_MAX for title in titles):
-        raise ApiError(400, "标题长度须为 5–30 个字")
+        raise ApiError(400, "标题长度须为 5–55 个字")
 
 
 async def submit_loaded(
@@ -116,98 +115,128 @@ async def submit_loaded(
     """
     chosen = [title.title for title in titles] + list(batch_titles)
     _reject_titles(chosen)
+    mode = template.ocean_delivery_mode
+    if mode not in ("MANUAL", "PROCEDURAL"):
+        raise ApiError(400, "模板没有投放模式")
     task.status = NativeTaskStatus.RUNNING
+    task.failure_reason = None
     await session.flush()
     name = _project_name(book_name)
     built: list[dict[str, Any]] = []
-    for douyin, account in pairs:
-        advertiser_id = int(account.advertiser_id)
-        product = await upload_product(
-            session,
-            ProductCreate(
-                advertiser_id=advertiser_id,
-                library_no=int(library.library_no),
-                book_name=book_name,
-            ),
-        )
-        image = await upload_image(session, advertiser_id, "product.png")
-        project = {
-            "advertiser_id": advertiser_id,
-            "name": name,
-            "landing_type": "MICRO_GAME",
-            "marketing_goal": "VIDEO_AND_IMAGE",
-            "ad_type": "ALL",
-            "delivery_mode": "PROCEDURAL",
-            "delivery_range": {"inventory_catalog": "UNIVERSAL_SMART"},
-            "delivery_setting": {
-                "budget_mode": "BUDGET_MODE_DAY",
-                "budget": _num(task.project_budget),
-                "roi_goal": _num(task.roi_coefficient),
-            },
-            "related_product": {
-                "product_platform_id": int(library.library_no),
-                "product_id": int(product["product_id"]),
-                "product_setting": "SINGLE",
-            },
-            "audience": {"district": "NONE"},
-            "micro_promotion_type": "AWEME",
-            "native_setting": {"aweme_id": douyin.aweme_id},
-        }
-        created = await create_project(
-            session,
-            ProjectCreate(
-                advertiser_id=advertiser_id,
-                name=name,
-                landing_type="MICRO_GAME",
-                marketing_goal="VIDEO_AND_IMAGE",
-                ad_type="ALL",
-                delivery_mode="PROCEDURAL",
-                subject_id=int(subject.id),
-                template={
-                    "delivery_range": project["delivery_range"],
-                    "delivery_setting": project["delivery_setting"],
-                    "related_product": project["related_product"],
-                    "audience": project["audience"],
-                    "micro_promotion_type": project["micro_promotion_type"],
-                    "native_setting": project["native_setting"],
+    link_rows = [{"charge_mode": link.charge_mode, "link_text": link.link_text} for link in links]
+    try:
+        for douyin, account in pairs:
+            advertiser_id = int(account.advertiser_id)
+            product = await upload_product(
+                session,
+                ProductCreate(
+                    advertiser_id=advertiser_id,
+                    library_no=int(library.library_no),
+                    book_name=book_name,
+                ),
+            )
+            image = await upload_image(session, advertiser_id, "product.png")
+            project = {
+                "advertiser_id": advertiser_id,
+                "name": name,
+                "landing_type": "MICRO_GAME",
+                "marketing_goal": "VIDEO_AND_IMAGE",
+                "ad_type": "ALL",
+                "delivery_mode": mode,
+                "promotion_links": link_rows,
+                "delivery_range": {"inventory_catalog": "UNIVERSAL_SMART"},
+                "delivery_setting": {
+                    "budget_mode": "BUDGET_MODE_DAY",
+                    "budget": _num(task.project_budget),
+                    "roi_goal": _num(task.roi_coefficient),
                 },
-            ),
-        )
-        project_id = int(created["project_id"])
-        promotion = {
-            "advertiser_id": advertiser_id,
-            "project_id": project_id,
-            "name": name,
-            "native_setting": {"aweme_id": douyin.aweme_id},
-            "promotion_materials": {
-                "video_material_list": [_video_material(video) for video in videos],
-                "title_material_list": [{"title": title} for title in chosen],
-                "product_info": {"image_ids": [str(image["image_id"])]},
-            },
-        }
-        built.append(
-            {
-                "douyin_account_id": str(douyin.id),
-                "aweme_id": douyin.aweme_id,
+                "related_product": {
+                    "product_platform_id": int(library.library_no),
+                    "product_id": int(product["product_id"]),
+                    "product_setting": "SINGLE",
+                },
+                "audience": {"district": "NONE"},
+                "micro_promotion_type": "AWEME",
+                "native_setting": {"aweme_id": douyin.aweme_id},
+            }
+            created = await create_project(
+                session,
+                ProjectCreate(
+                    advertiser_id=advertiser_id,
+                    name=name,
+                    landing_type="MICRO_GAME",
+                    marketing_goal="VIDEO_AND_IMAGE",
+                    ad_type="ALL",
+                    delivery_mode=mode,
+                    subject_id=int(subject.id),
+                    template={
+                        "delivery_range": project["delivery_range"],
+                        "delivery_setting": project["delivery_setting"],
+                        "related_product": project["related_product"],
+                        "audience": project["audience"],
+                        "micro_promotion_type": project["micro_promotion_type"],
+                        "native_setting": project["native_setting"],
+                        "promotion_links": link_rows,
+                    },
+                ),
+            )
+            project_id = int(created["project_id"])
+            for video in videos:
+                urls = list(getattr(video, "file_urls", None) or [])
+                video_url = urls[0] if urls else f"https://mock.example/videos/{int(video.id)}"
+                await upload_video(session, VideoCreate(advertiser_id=advertiser_id, video_url=video_url))
+            promotion = {
                 "advertiser_id": advertiser_id,
                 "project_id": project_id,
-                "product_id": int(product["product_id"]),
-                "image_id": str(image["image_id"]),
-                "project": project,
-                "promotions": [promotion],
+                "name": name,
+                "native_setting": {"aweme_id": douyin.aweme_id},
+                "promotion_materials": {
+                    "video_material_list": [_video_material(video) for video in videos],
+                    "title_material_list": [{"title": title} for title in chosen],
+                    "product_info": {"image_ids": [str(image["image_id"])]},
+                    "playlet_series_url_list": [item["link_text"] for item in link_rows],
+                },
             }
-        )
-    task.status = NativeTaskStatus.DONE
-    task.executed_at = beijing_now()
+            created_promotion = await create_promotion(
+                session,
+                PromotionCreate(
+                    advertiser_id=advertiser_id,
+                    name=name,
+                    opt_status="ENABLE",
+                    payload=promotion,
+                ),
+            )
+            promotion["promotion_id"] = int(created_promotion["promotion_id"])
+            built.append(
+                {
+                    "douyin_account_id": str(douyin.id),
+                    "aweme_id": douyin.aweme_id,
+                    "advertiser_id": advertiser_id,
+                    "project_id": project_id,
+                    "product_id": int(product["product_id"]),
+                    "image_id": str(image["image_id"]),
+                    "project": project,
+                    "promotions": [promotion],
+                }
+            )
+        task.materials_uploaded = True
+        task.status = NativeTaskStatus.DONE
+        task.failure_reason = None
+        task.executed_at = beijing_now()
+    except ApiError as exc:
+        task.status = NativeTaskStatus.FAILED
+        task.failure_reason = exc.message
+        task.materials_uploaded = False
+        await session.commit()
+        raise
     await session.commit()
     return {
         "id": str(task.id),
         "status": task.status,
+        "failure_reason": task.failure_reason,
         "executed_at": None if task.executed_at is None else beijing_iso(task.executed_at),
-        "materials_uploaded": False,
-        "promotion_links": [
-            {"charge_mode": link.charge_mode, "link_text": link.link_text} for link in links
-        ],
+        "materials_uploaded": bool(task.materials_uploaded),
+        "promotion_links": link_rows,
         "accounts": built,
     }
 

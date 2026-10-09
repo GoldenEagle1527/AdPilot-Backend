@@ -21,6 +21,7 @@ from app.modules.material_title import router as material_title_router
 from app.modules.material_video import router as material_video_router
 from app.modules.oceanengine import router as oceanengine_router
 from app.modules.standard_delivery import router as standard_delivery_router
+from app.modules.standard_robot import router as standard_robot_router
 from app.modules.system_admin import router as system_admin_router
 from app.modules.theater import router as theater_router
 from app.modules.uni_native_auto_run import router as uni_native_auto_run_router
@@ -111,6 +112,7 @@ def create_app() -> FastAPI:
     app.include_router(uni_native_task_router)
     app.include_router(uni_native_auto_run_router)
     app.include_router(standard_delivery_router)
+    app.include_router(standard_robot_router)
     return app
 
 
