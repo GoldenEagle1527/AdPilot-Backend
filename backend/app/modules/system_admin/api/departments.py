@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from typing import Annotated
+
 from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 from app.core.envelope import ApiError, Envelope, success
+from app.core.pagination import PageData, PageParams, page_params, page_slice
 from app.modules.system_admin.deps import MENU_DEPARTMENTS, SessionDep, require_menu
 from app.modules.system_admin.domain import Department, User
 from app.modules.system_admin.domain.access import (
@@ -16,7 +19,7 @@ from app.modules.system_admin.domain.access import (
 )
 from app.modules.system_admin.domain.ids import parse_int_id, require_int_id
 from app.modules.system_admin.domain.org import department_not_deleted, user_not_deleted
-from app.modules.system_admin.schemas.common import DeletedId, DepartmentNode, DepartmentTree, IdEnabled
+from app.modules.system_admin.schemas.common import DeletedId, DepartmentNode, IdEnabled
 from app.modules.system_admin.schemas.departments import (
     CreateDepartmentBody,
     SetDepartmentStatusBody,
@@ -83,22 +86,23 @@ async def _would_cycle(session: SessionDep, dept_id: str, parent_id: str | None)
     return False
 
 
-@router.get("/departments", response_model=Envelope[DepartmentTree], summary="查询部门树")
+@router.get("/departments", response_model=Envelope[PageData[DepartmentNode]], summary="查询部门树")
 async def list_departments(
     session: SessionDep,
+    params: Annotated[PageParams, Depends(page_params)],
     _user: dict[str, str] = Depends(_principal),
     name: str | None = None,
     enabled: bool | None = None,
     id: str | None = None,
 ):
-    """列出未删除部门树，可按名称、启用状态、id 过滤；节点含标签与角色。"""
+    """列出未删除部门树。只对顶级部门分页，每个节点仍带完整 children。"""
     result = await session.scalars(
         select(Department).where(department_not_deleted()).options(*_DEPT_LOAD)
     )
-    items = build_department_tree(
+    roots = build_department_tree(
         filter_departments(list(result.all()), name, enabled, id)
     )
-    return success({"items": items})
+    return success(page_slice(roots, params))
 
 
 @router.post("/departments", response_model=Envelope[DepartmentNode], summary="新增部门")

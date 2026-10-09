@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.envelope import ApiError
+from app.core.pagination import PageParams
 from app.modules.account.model import (
     DeliverySubject,
     OeProduct,
@@ -171,8 +172,10 @@ async def update_promotions(
     return results
 
 
-async def run_auto_pause(session: AsyncSession, body: AutoPauseBody) -> dict[str, list[int]]:
-    """按报表阈值关停。真客户端先拉当天自定义报表。"""
+async def run_auto_pause(
+    session: AsyncSession, body: AutoPauseBody, params: PageParams
+) -> dict[str, Any]:
+    """按报表阈值关停全量快照。返回的 paused 和 kept 按同一页截取。"""
     if get_ocean_client().requires_stored_token:
         await _sync_reports(session)
     rows = await _report_rows(session)
@@ -199,7 +202,16 @@ async def run_auto_pause(session: AsyncSession, body: AutoPauseBody) -> dict[str
                 opt_status="DISABLE",
             ),
         )
-    return {"paused": paused, "kept": kept}
+    start = params.offset
+    end = start + params.page_size
+    return {
+        "paused": paused[start:end],
+        "kept": kept[start:end],
+        "paused_total": len(paused),
+        "kept_total": len(kept),
+        "page": params.page,
+        "page_size": params.page_size,
+    }
 
 
 def _project_remote_body(body: ProjectCreate) -> dict[str, Any]:

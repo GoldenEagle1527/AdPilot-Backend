@@ -44,3 +44,9 @@ def page_data(
         "page": params.page,
         "page_size": params.page_size,
     }
+
+
+def page_slice(items: Sequence[T], params: PageParams) -> dict[str, object]:
+    """按页截取已经在内存里的序列。total 是截取前的条数。"""
+    start = params.offset
+    return page_data(list(items[start : start + params.page_size]), len(items), params)

@@ -42,10 +42,10 @@ def organization_token_valid(
     return True
 
 
-async def list_organizations(session: AsyncSession) -> list[dict[str, Any]]:
-    """授权组织。只读表。自研和三方两行都返回，不按配置的应用过滤。"""
+async def list_organizations(session: AsyncSession, params: PageParams) -> dict[str, Any]:
+    """授权组织分页。只读表。自研和三方都返回，不按配置的应用过滤。"""
     now = beijing_now()
-    stmt = (
+    joined = (
         select(
             OeOrganizationGrant.id,
             OeOrganization.ocean_account_id,
@@ -69,10 +69,12 @@ async def list_organizations(session: AsyncSession) -> list[dict[str, Any]]:
             OeOrganization.is_deleted == 0,
             OeApp.is_deleted == 0,
         )
-        .order_by(OeOrganizationGrant.id)
     )
-    rows = await session.execute(stmt)
-    return [
+    total = int(await session.scalar(select(func.count()).select_from(joined.subquery())) or 0)
+    rows = await session.execute(
+        joined.order_by(OeOrganizationGrant.id).offset(params.offset).limit(params.page_size)
+    )
+    items = [
         {
             "id": int(row_id),
             "advertiser_id": int(ocean_account_id),
@@ -101,6 +103,7 @@ async def list_organizations(session: AsyncSession) -> list[dict[str, Any]]:
             access_expire_at,
         ) in rows.all()
     ]
+    return page_data(items, total, params)
 
 
 async def list_advertisers(session: AsyncSession, query: AdvertiserQuery) -> dict[str, Any]:

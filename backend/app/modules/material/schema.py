@@ -21,13 +21,11 @@ def ensure_beijing_time(value: str) -> datetime:
 BeijingTime = Annotated[datetime, BeforeValidator(ensure_beijing_time)]
 
 
-class ManhuaSeriesQuery(BaseModel):
-    """漫剧库列表查询。时间只收 YYYY-MM-DD HH:MM:SS。"""
+class ManhuaSeriesFilters(BaseModel):
+    """漫剧库列表和导出共用的筛选。时间只收 YYYY-MM-DD HH:MM:SS。"""
 
     model_config = ConfigDict(extra="forbid")
 
-    page: int = Field(1, ge=1, description="页码，从 1 起")
-    page_size: int = Field(20, ge=1, le=100, description="每页条数，最大 100")
     tab_text: Literal["IAA", "IAP"] | None = Field(None, description="tab，IAA 或 IAP，不传为全部")
     book_name: str | None = Field(None, description="短剧名称，模糊")
     estimate_publish_time_from: BeijingTime | None = Field(
@@ -44,7 +42,7 @@ class ManhuaSeriesQuery(BaseModel):
     episode_amount_max: int | None = Field(None, ge=0, description="集数上限，含")
 
     @model_validator(mode="after")
-    def check_ranges(self) -> ManhuaSeriesQuery:
+    def check_ranges(self) -> ManhuaSeriesFilters:
         """结束时间不能早于开始，集数上限不能小于下限。"""
         if (
             self.estimate_publish_time_from is not None
@@ -65,6 +63,29 @@ class ManhuaSeriesQuery(BaseModel):
         ):
             raise ValueError("集数上限不能小于下限")
         return self
+
+
+class ManhuaSeriesQuery(ManhuaSeriesFilters):
+    """漫剧库列表。page 从 1 起，不传就是第一页。"""
+
+    page: int = Field(1, ge=1, description="页码，从 1 起")
+    page_size: int = Field(20, ge=1, le=100, description="每页条数，最大 100")
+
+
+class ManhuaSeriesExportQuery(ManhuaSeriesFilters):
+    """导出筛选与列表相同。page 和 page_size 都不传时导出全部匹配行，不是第一页。"""
+
+    page: int | None = Field(
+        None,
+        ge=1,
+        description="与 page_size 都不传时导出全部筛选结果；传入任一则只导出该页，缺省页码为 1",
+    )
+    page_size: int | None = Field(
+        None,
+        ge=1,
+        le=100,
+        description="与 page 配合。只传一个时另一个用列表默认：page 为 1，page_size 为 20",
+    )
 
 
 class ManhuaSeriesItem(BaseModel):

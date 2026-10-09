@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
 from app.core.envelope import ApiError, Envelope, register_exception_handlers, success
-from app.core.pagination import PageData, PageParams, page_data
+from app.core.pagination import PageData, PageParams, page_data, page_slice
 
 
 class Item(BaseModel):
@@ -66,6 +66,11 @@ class EnvelopeShapeTests(unittest.TestCase):
             body["data"],
             {"list": [{"id": "1"}], "total": 9, "page": 2, "page_size": 20},
         )
+
+    def test_page_slice_defaults_to_first_page(self) -> None:
+        """不传 page 时按第一页截取，total 仍是全量。"""
+        body = page_slice(["a", "b", "c"], PageParams(page=1, page_size=2))
+        self.assertEqual(body, {"list": ["a", "b"], "total": 3, "page": 1, "page_size": 2})
 
     def test_api_error(self) -> None:
         """ApiError 的 code 跟 HTTP 状态一致，data 为 null。"""

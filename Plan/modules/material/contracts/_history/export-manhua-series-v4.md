@@ -1,18 +1,18 @@
 # 契约：export-manhua-series
 
 业务id：material
-文档版本：5
+文档版本：4
 方法：POST
 路径：/api/v1/material/manhua-series/export
-作用：按漫剧库列表的同一套筛选导出 xlsx。不传 page 与 page_size 时下载的是全部匹配行，不是某一页。传入其中任一参数时，文件只含该页。不做数据范围过滤。
+作用：按漫剧库列表的同一套筛选，把全部匹配行导出为 xlsx。不分页。不做数据范围过滤。
 
 作者：
 状态：accepted
-更新日期：2026-10-09
+更新日期：2026-09-28
 
 ## 请求
 
-筛选参数与 [list-manhua-series.md](list-manhua-series.md) 相同。`page`、`page_size` 可选：两个都不传时导出当前筛选的全部行，文件不是第一页；传入其中任一则只导出该页（缺省 `page=1`、`page_size=20`，`page_size` 最大 100）。
+查询参数与 [list-manhua-series.md](list-manhua-series.md) 相同。`page`、`page_size` 可传，不参与导出。
 
 无请求体。需 `Authorization: Bearer` 且有效菜单含节点 `95`。
 
@@ -26,10 +26,6 @@
 | --- | --- |
 | Content-Type | `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` |
 | Content-Disposition | `attachment; filename="manhua_series.xlsx"` |
-| X-Total-Count | 当前筛选的总行数，不是本文件行数 |
-| X-Export-Scope | `full`：未传 page 与 page_size，文件是全部筛选结果。`page`：文件只含该页 |
-| X-Page | 仅 `X-Export-Scope=page` 时出现 |
-| X-Page-Size | 仅 `X-Export-Scope=page` 时出现 |
 
 工作表名 `漫剧库`。第一行是表头，其后每行一条。单元格都是文本。
 
@@ -64,7 +60,6 @@
 
 | 日期 | 文档版本 | 破坏？ | 变更 | 作者 |
 | --- | --- | --- | --- | --- |
-| 2026-10-09 | 5 | 是 | 不传 `page` 与 `page_size` 时仍导出全部筛选结果，并在响应头标明 `X-Export-Scope=full` 与 `X-Total-Count`。传入其中任一则文件只含该页，不再忽略分页参数。快照 [_history/export-manhua-series-v4.md](_history/export-manhua-series-v4.md) | |
 | 2026-09-28 | 4 | 是 | 查询不再收 `department_id`。快照 [_history/export-manhua-series-v3.md](_history/export-manhua-series-v3.md) | |
 | 2026-09-28 | 3 | 是 | 去掉部门列。快照 [_history/export-manhua-series-v2.md](_history/export-manhua-series-v2.md) | |
 | 2026-09-28 | 2 | 是 | 导出列改为短剧名称、集数、部门、发布状态、预估投放时间、是否当天上架、发布时间、创建时间、采集时间、抖音id、抖音名。快照 [_history/export-manhua-series-v1.md](_history/export-manhua-series-v1.md) | |

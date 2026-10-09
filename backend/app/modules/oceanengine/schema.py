@@ -20,12 +20,6 @@ class OrganizationItem(BaseModel):
     token_valid: bool
 
 
-class OrganizationList(BaseModel):
-    """不分页的组织列表。"""
-
-    items: list[OrganizationItem]
-
-
 class AdvertiserItem(BaseModel):
     """一条广告主，含余额（元）和公司名。"""
 
@@ -158,12 +152,6 @@ class ReportItem(BaseModel):
     advertiser_id: int
 
 
-class ReportList(BaseModel):
-    """不分页的报表。"""
-
-    items: list[ReportItem]
-
-
 class PromotionStatusBody(BaseModel):
     """批量改广告启停。"""
 
@@ -198,7 +186,11 @@ class AutoPauseBody(BaseModel):
 
 
 class AutoPauseResult(BaseModel):
-    """命中关停与保留的广告 id。"""
+    """命中关停与保留的广告 id。关停按全量执行，两个列表按同一页返回。"""
 
     paused: list[int]
     kept: list[int]
+    paused_total: int
+    kept_total: int
+    page: int
+    page_size: int

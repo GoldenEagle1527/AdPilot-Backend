@@ -1,28 +1,26 @@
 # 契约：list-organizations
 
 业务id：oceanengine
-文档版本：3
+文档版本：2
 方法：GET
 路径：/api/v1/oceanengine/organizations
-作用：分页列出授权组织。
+作用：列出授权组织，不分页。
 
 作者：
 状态：draft
-更新日期：2026-10-09
+更新日期：2026-09-23
 
 ## 请求
 
 | 字段 | 位置（path/query/body/header） | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- | --- |
 | Authorization | header | string | 是 | `Bearer <token>`。菜单节点 `64` |
-| page | query | int | 否 | 从 1，默认 1。不传返回第一页，不是全表 |
-| page_size | query | int | 否 | 默认 20，上限 100 |
 
-无请求体。
+无 query、无请求体。
 
 ## 响应
 
-分页体：`list` / `total` / `page` / `page_size`。列表字段是 `list`，不是 `items`。元素已有键名保持。下列后四列为兼容字段，旧调用方可忽略。
+成功：`success({"items": [...]})`。已有键名保持。下列后四列为兼容新增，旧调用方可忽略。
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
@@ -35,7 +33,7 @@
 | status | string | `active` 有效，`invalid` 失效。授权收回或令牌失效时标失效，不物理删除 |
 | token_valid | bool | 当前令牌是否有效。刷新失败时为 false，名称与角色仍为上次成功值 |
 
-`mock=true` 时 `list` 来自库内种子，不读进程内存。列表不返回令牌、secret、`raw_payload`。`total` 是授权组织总数。
+`mock=true` 时 `items` 来自库内种子，不读进程内存。列表不返回令牌、secret、`raw_payload`。
 
 ## 错误
 
@@ -61,7 +59,6 @@
 
 | 日期 | 文档版本 | 破坏？ | 变更 | 作者 |
 | --- | --- | --- | --- | --- |
-| 2026-10-09 | 3 | 是 | 改为分页。不传 `page` 只返回第一页。`data.items` 改为 `data.list`，并增加 `total`、`page`、`page_size`。元素字段不变。快照 [_history/list-organizations-v2.md](_history/list-organizations-v2.md) | |
 | 2026-09-23 | 2 | 是 | 鉴权由仅菜单 32 改为菜单 64。只有菜单 32 的投手再调组织列表会 403。响应已有字段名保持，并增加可选列 `id`、`channel`、`status`、`token_valid`。列表改为读库，未配 secret 不再 503。路径仍为 `/api/v1/oceanengine/organizations`。快照 [_history/list-organizations-v1.md](_history/list-organizations-v1.md) | |
 | 2026-09-23 | 1 | 否 | 初稿 | |
 

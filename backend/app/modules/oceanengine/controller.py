@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 from sqlalchemy import select
 
 from app.core.envelope import ApiError, Envelope, success
-from app.core.pagination import PageData
+from app.core.pagination import PageData, PageParams, page_params
 from app.modules.account.api import router as account_router
 from app.modules.account.commands import assert_oauth_state, choose_library
 from app.modules.account.model import ProductLibrary
@@ -22,14 +22,14 @@ from app.modules.oceanengine.schema import (
     ImageItem,
     OAuthCallbackQuery,
     OAuthTokenData,
-    OrganizationList,
+    OrganizationItem,
     ProductCreate,
     ProductItem,
     ProjectCreate,
     ProjectItem,
     PromotionStatusBody,
     PromotionStatusList,
-    ReportList,
+    ReportItem,
     VideoCreate,
     VideoItem,
 )
@@ -99,12 +99,16 @@ async def _assert_upload_library(
 
 @router.get(
     "/organizations",
-    response_model=Envelope[OrganizationList],
+    response_model=Envelope[PageData[OrganizationItem]],
     summary="授权组织列表",
 )
-async def get_organizations(session: SessionDep, _principal: Menu64) -> dict[str, Any]:
-    """列出授权组织，不分页。"""
-    data = {"items": await list_organizations(session)}
+async def get_organizations(
+    session: SessionDep,
+    _principal: Menu64,
+    params: Annotated[PageParams, Depends(page_params)],
+) -> dict[str, Any]:
+    """列出授权组织。不传 page 时返回第一页。"""
+    data = await list_organizations(session, params)
     await session.commit()
     return success(data)
 
@@ -237,12 +241,16 @@ async def post_image(
 
 @router.get(
     "/reports",
-    response_model=Envelope[ReportList],
+    response_model=Envelope[PageData[ReportItem]],
     summary="自定义报表",
 )
-async def get_reports(session: SessionDep, _principal: Menu32) -> dict[str, Any]:
-    """广告消耗与回收率，不分页。"""
-    data = {"items": await list_reports(session)}
+async def get_reports(
+    session: SessionDep,
+    _principal: Menu32,
+    params: Annotated[PageParams, Depends(page_params)],
+) -> dict[str, Any]:
+    """广告消耗与回收率。不传 page 时返回第一页。"""
+    data = await list_reports(session, params)
     await session.commit()
     return success(data)
 
@@ -272,9 +280,10 @@ async def post_auto_pause(
     session: SessionDep,
     _principal: Menu32,
     body: AutoPauseBody,
+    params: Annotated[PageParams, Depends(page_params)],
 ) -> dict[str, Any]:
-    """用报表判断并暂停命中的广告。"""
-    data = await run_auto_pause(session, body)
+    """用报表判断并暂停命中的广告。关停跑全量，返回列表按页截取。"""
+    data = await run_auto_pause(session, body, params)
     await session.commit()
     return success(data)
 

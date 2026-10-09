@@ -1,14 +1,14 @@
 # 契约：list-menu-nodes
 
 业务id：system-admin
-文档版本：2
+文档版本：1
 方法：GET
 路径：/api/v1/system-admin/menu-nodes
-作用：返回菜单节点树。只对顶级节点分页，子节点仍挂在 children 上。可选带每个节点已分配的角色名。
+作用：返回菜单节点树（不分页）；可选带每个节点已分配的角色名。
 
 作者：调度者
 状态：accepted
-更新日期：2026-10-09
+更新日期：2026-09-20
 
 ## 请求
 
@@ -16,22 +16,17 @@
 | --- | --- | --- | --- | --- |
 | business_domain | query | string | 否 | 按领域筛 |
 | name | query | string | 否 | 模糊匹配节点名 |
-| include_assigned_roles | query | boolean | 否 | 默认 false。true 时每个节点带 `assigned_roles`。行为与分页前相同 |
-| page | query | int | 否 | 从 1，默认 1。不传返回第一页顶级节点 |
-| page_size | query | int | 否 | 默认 20，上限 100。只切顶级节点 |
+| include_assigned_roles | query | boolean | 否 | 默认 false。true 时每个节点带 `assigned_roles` |
 
-无请求体。`total` 是筛选后的顶级节点数。子节点留在 `children`，不另分页。
+无请求体。树不分页，不要传 `page` / `page_size`。
 
 ## 响应
 
-分页体：`list` / `total` / `page` / `page_size`。列表字段是 `list`，不是 `items`。
+`data` 为树对象，不是分页。
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| list | MenuNode[] | 本页顶级节点（筛选后仍按树形，children 完整）。节点形状见 [说明.md](说明.md) 嵌套对象 |
-| total | int | 顶级节点总数 |
-| page | int | 当前页 |
-| page_size | int | 每页条数 |
+| items | MenuNode[] | 全树（或筛选后仍按树形）。节点形状见 [说明.md](说明.md) 嵌套对象 |
 
 清单数据可含投放/报表等节点名，这不是要预建那些业务 CRUD。
 
@@ -55,5 +50,4 @@
 
 | 日期 | 文档版本 | 破坏？ | 变更 | 作者 |
 | --- | --- | --- | --- | --- |
-| 2026-10-09 | 2 | 是 | 顶级节点改为分页。不传 `page` 只返回第一页。`data.items` 改为 `data.list`，并增加 `total`、`page`、`page_size`。`include_assigned_roles` 与节点 `children` 不变。快照 [_history/list-menu-nodes-v1.md](_history/list-menu-nodes-v1.md) | |
 | 2026-09-20 | 1 | 否 | 初稿 | 调度者 |
