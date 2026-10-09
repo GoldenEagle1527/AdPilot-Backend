@@ -68,5 +68,5 @@ async def remove_task(task_id: int, session: SessionDep, principal: PrincipalDep
 
 @router.post("/{task_id}/submit", response_model=Envelope[SubmitResult], summary="确认提交端原生投放任务")
 async def post_task_submit(task_id: int, session: SessionDep, principal: PrincipalDep) -> dict[str, Any]:
-    """按任务组项目和广告报文。状态保持已保存，不把素材标成传完。"""
+    """按任务组项目和广告报文。执行中为 running，假客户端结束后为 done。素材不算巨量已上传。"""
     return success(await submit_task(session, task_id, _user_id(principal)))

@@ -16,14 +16,24 @@ from app.modules.standard_delivery.schema import (
     DraftItem,
     DraftQuery,
     DraftWrite,
+    ProductSnapshotCopy,
+    ProductSnapshotItem,
+    ProductSnapshotQuery,
+    ProductSnapshotWrite,
     RuleItem,
     RuleQuery,
+    RuleSwitchWrite,
     RuleWrite,
     SubmitResult,
     TemplateItem,
     TemplateQuery,
     TemplateUpdate,
     TemplateWrite,
+)
+from app.modules.standard_delivery.product_snapshot import (
+    copy_snapshot_onto_template,
+    create_snapshot,
+    list_snapshots,
 )
 from app.modules.standard_delivery.submit import submit_draft
 from app.modules.standard_delivery.service import (
@@ -39,6 +49,7 @@ from app.modules.standard_delivery.service import (
     list_drafts,
     list_rules,
     list_templates,
+    set_rule_enabled,
     update_draft,
     update_rule,
     update_template,
@@ -138,6 +149,47 @@ async def put_template(
     """整表保存模板。收费模式不可改。"""
     allowed = await _allowed(session, principal, TEMPLATE_MENU)
     return success(await update_template(session, template_id, body, allowed))
+
+
+@router.get(
+    "/product-snapshots",
+    response_model=Envelope[PageData[ProductSnapshotItem]],
+    summary="分页查询产品快照",
+)
+async def get_product_snapshots(
+    session: SessionDep,
+    principal: PrincipalDep,
+    query: Annotated[ProductSnapshotQuery, Query()],
+) -> dict[str, Any]:
+    """列出可抄到标准模板的产品快照。"""
+    await _allowed(session, principal, TEMPLATE_MENU)
+    return success(await list_snapshots(session, query))
+
+
+@router.post(
+    "/product-snapshots",
+    response_model=Envelope[ProductSnapshotItem],
+    summary="新增产品快照",
+)
+async def post_product_snapshot(
+    body: ProductSnapshotWrite, session: SessionDep, principal: PrincipalDep
+) -> dict[str, Any]:
+    """保存名称、主图、卖点和行动号召。不连厂商。"""
+    await _allowed(session, principal, TEMPLATE_MENU)
+    return success(await create_snapshot(session, body))
+
+
+@router.post(
+    "/templates/{template_id}/copy-product-snapshot",
+    response_model=Envelope[TemplateItem],
+    summary="把产品快照抄到标准模板",
+)
+async def post_copy_product_snapshot(
+    template_id: int, body: ProductSnapshotCopy, session: SessionDep, principal: PrincipalDep
+) -> dict[str, Any]:
+    """只覆盖产品名称、主图、卖点和行动号召。"""
+    allowed = await _allowed(session, principal, TEMPLATE_MENU)
+    return success(await copy_snapshot_onto_template(session, template_id, body.snapshot_id, allowed))
 
 
 @router.delete(
@@ -249,7 +301,7 @@ async def get_one_auto_rule(rule_id: int, session: SessionDep, principal: Princi
 
 @router.post("/auto-rules", response_model=Envelope[RuleItem], summary="新增自动投放规则")
 async def post_auto_rule(body: RuleWrite, session: SessionDep, principal: PrincipalDep) -> dict[str, Any]:
-    """保存规则。只落库，不到点执行，也不调巨量。"""
+    """保存规则。没有预约时间时立刻执行一次。"""
     allowed = await _allowed(session, principal, RULE_MENU)
     return success(await create_rule(session, body, _user_id(principal), allowed))
 
@@ -265,6 +317,19 @@ async def put_auto_rule(
     """整表保存自己的规则，短剧按本次提交替换。"""
     allowed = await _allowed(session, principal, RULE_MENU)
     return success(await update_rule(session, rule_id, body, _user_id(principal), allowed))
+
+
+@router.patch(
+    "/auto-rules/{rule_id}/switch",
+    response_model=Envelope[RuleItem],
+    summary="开关自动投放规则",
+)
+async def patch_auto_rule_switch(
+    rule_id: int, body: RuleSwitchWrite, session: SessionDep, principal: PrincipalDep
+) -> dict[str, Any]:
+    """打开且没有预约时间时执行一次。"""
+    allowed = await _allowed(session, principal, RULE_MENU)
+    return success(await set_rule_enabled(session, rule_id, body.is_enabled, _user_id(principal), allowed))
 
 
 @router.delete(

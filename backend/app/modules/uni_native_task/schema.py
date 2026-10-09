@@ -125,7 +125,7 @@ class TitleRef(BaseModel):
 
 
 class TaskItem(BaseModel):
-    """一条任务。时间为北京时间，精确到秒。状态固定 saved。"""
+    """一条任务。时间为北京时间，精确到秒。状态为 saved、running 或 done。"""
 
     id: str
     template_id: str
@@ -168,7 +168,7 @@ class SubmitAccount(BaseModel):
 
 
 class SubmitResult(BaseModel):
-    """确认提交的结果。状态仍是 saved，素材不算传完。"""
+    """确认提交的结果。done 只表示假客户端结束，素材不算巨量已上传。"""
 
     id: str
     status: str

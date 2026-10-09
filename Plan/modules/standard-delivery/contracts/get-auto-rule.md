@@ -1,14 +1,14 @@
 # 契约：get-auto-rule
 
 业务id：standard-delivery
-文档版本：1
+文档版本：2
 方法：GET
 路径：/api/v1/standard-delivery/auto-rules/{rule_id}
 作用：取当前投手自己的一条自动规则。别人的按不存在。
 
 作者：
 状态：draft
-更新日期：2026-09-29
+更新日期：2026-10-09
 
 ## 请求
 
@@ -30,8 +30,10 @@
 | pitcher_user_id | string | 创建人 |
 | accounts_per_series | integer | 每部剧账户数 |
 | max_videos_per_series | integer | 每部剧最大视频数。本轮只保存，不截取素材 |
-| schedule_start | string \| null | 预约开始。空表示未预约 |
-| schedule_end | string \| null | 预约结束 |
+| schedule_start | string \| null | 预约执行时间。空表示立即执行，不要求结束时间 |
+| schedule_end | string \| null | 不使用。可空 |
+| is_enabled | boolean | 开关。关掉后不执行 |
+| ran_at | string \| null | 当前这次已经执行的时间。空表示还没跑 |
 | cost_min | string \| null | 消耗下限，元。空表示不限 |
 | cost_max | string \| null | 消耗上限，元 |
 | roi_min | string \| null | 回收率下限。空表示不限 |
@@ -63,4 +65,5 @@
 
 | 日期 | 文档版本 | 破坏？ | 变更 | 作者 |
 | --- | --- | --- | --- | --- |
+| 2026-10-09 | 2 | 否 | 增加 `is_enabled`、`ran_at`。预约只看 `schedule_start` | |
 | 2026-09-29 | 1 | 否 | 初稿 | |

@@ -601,7 +601,7 @@ class DeliveryTaskTitle(BaseModel):
 
 
 class DeliveryAutoRule(BaseModel):
-    """自动投放规则。保存和筛选在本系统，到点执行不在这一轮。
+    """自动投放规则。没有 schedule_start 时立即执行一次；有则到点执行一次。
 
     剧场不落库：短剧表没有剧场外键，规则默认对着番茄漫剧库。
     """
@@ -646,7 +646,7 @@ class DeliveryAutoRule(BaseModel):
             "charge_mode",
             postgresql_where=text("is_deleted = 0"),
         ),
-        {"comment": "漫剧标准投放自动规则。只保存筛选和模板，不调巨量。"},
+        {"comment": "漫剧标准投放自动规则。到点经假客户端确认提交，不直连开放平台。"},
     )
 
     name: Mapped[str] = mapped_column(String(128), nullable=False, comment="规则名称")
@@ -680,6 +680,16 @@ class DeliveryAutoRule(BaseModel):
     )
     schedule_end: Mapped[datetime | None] = mapped_column(
         _TS, nullable=True, comment="不使用。可空，也可与开始相同"
+    )
+    is_enabled: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default=text("true"),
+        comment="开关。关掉后不执行",
+    )
+    ran_at: Mapped[datetime | None] = mapped_column(
+        _TS, nullable=True, comment="当前这次立即或预约已经执行的时间。空表示还没跑"
     )
     cost_min: Mapped[Decimal | None] = mapped_column(
         Numeric(12, 2), nullable=True, comment="短剧消耗下限，单位元。空表示不限"
@@ -727,3 +737,84 @@ class DeliveryAutoRuleSeries(BaseModel):
         comment="短剧",
     )
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, comment="请求里的顺序，从 0 起")
+
+
+class DeliveryAutoRuleRun(BaseModel):
+    """一条自动规则对一部短剧的执行结果。由执行器写入，没有手建接口。"""
+
+    __tablename__ = "delivery_auto_rule_run"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('success', 'failed')",
+            name="ck_delivery_auto_rule_run_status",
+        ),
+        CheckConstraint("char_length(series_name) >= 1", name="ck_delivery_auto_rule_run_series"),
+        Index("ix_delivery_auto_rule_run_rule", "rule_id", "id"),
+        {"comment": "标准自动规则的执行结果。一部短剧一行。"},
+    )
+
+    rule_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("delivery_auto_rule.id", ondelete="CASCADE"),
+        nullable=False,
+        comment="规则",
+    )
+    series_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("manhua_series.id", ondelete="RESTRICT"),
+        nullable=True,
+        comment="短剧。规则级失败可空",
+    )
+    series_name: Mapped[str] = mapped_column(String(512), nullable=False, comment="执行当时的短剧名称")
+    status: Mapped[str] = mapped_column(String(16), nullable=False, comment="success 成功、failed 失败")
+    reason: Mapped[str] = mapped_column(
+        String(2000), nullable=False, default="", server_default="", comment="失败原因。成功为空"
+    )
+    draft_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("delivery_task_draft.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="生成的草稿。失败且没建草稿时为空",
+    )
+    executed_at: Mapped[datetime] = mapped_column(_TS, nullable=False, comment="执行时间")
+
+
+class DeliveryProductSnapshot(BaseModel):
+    """可被标准模板抄走的产品信息。没有厂商同步。"""
+
+    __tablename__ = "delivery_product_snapshot"
+    __table_args__ = (
+        CheckConstraint("char_length(name) >= 1", name="ck_delivery_product_snapshot_name"),
+        CheckConstraint("char_length(product_name) >= 1", name="ck_delivery_product_snapshot_product"),
+        CheckConstraint(
+            "product_image_id LIKE 'img-%'",
+            name="ck_delivery_product_snapshot_image",
+        ),
+        Index(
+            "uq_delivery_product_snapshot_name_alive",
+            "name",
+            unique=True,
+            postgresql_where=text("is_deleted = 0"),
+        ),
+        {"comment": "标准模板可复制的产品快照。名称、主图、卖点、行动号召。"},
+    )
+
+    name: Mapped[str] = mapped_column(String(128), nullable=False, comment="快照名称")
+    product_name: Mapped[str] = mapped_column(String(20), nullable=False, comment="产品名称，最多 20 字")
+    product_image_id: Mapped[str] = mapped_column(
+        String(64), nullable=False, comment="产品主图 id，img- 前缀"
+    )
+    selling_points: Mapped[list[str]] = mapped_column(
+        ARRAY(String(20)),
+        nullable=False,
+        default=list,
+        server_default=text("ARRAY[]::varchar[]"),
+        comment="产品卖点",
+    )
+    call_to_action_buttons: Mapped[list[str]] = mapped_column(
+        ARRAY(String(20)),
+        nullable=False,
+        default=list,
+        server_default=text("ARRAY[]::varchar[]"),
+        comment="行动号召",
+    )

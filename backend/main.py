@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import logging
 from contextlib import asynccontextmanager
 
 import uvicorn
@@ -26,10 +28,13 @@ from app.modules.uni_native_task import router as uni_native_task_router
 from app.modules.uni_robot import router as uni_robot_router
 from app.modules.uni_template import router as uni_template_router
 
+logger = logging.getLogger("adpilot")
+_RULE_INTERVAL_SECONDS = 60
+
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    """启动时接库和 Redis。mock 时选定假客户端并写一次巨量种子。"""
+    """启动时接库和 Redis。mock 时选定假客户端并写一次巨量种子。约每分钟跑到点规则。"""
     settings = get_settings()
     init_engine(settings)
     init_redis(settings)
@@ -38,9 +43,33 @@ async def lifespan(_app: FastAPI):
     install_ocean_client_for_settings(settings)
     if settings.oceanengine.mock:
         await _seed_oceanengine()
-    yield
-    await close_redis()
-    await dispose_engine()
+    ticker = asyncio.create_task(_due_rules_loop())
+    try:
+        yield
+    finally:
+        ticker.cancel()
+        try:
+            await ticker
+        except asyncio.CancelledError:
+            pass
+        await close_redis()
+        await dispose_engine()
+
+
+async def _due_rules_loop() -> None:
+    """约每分钟看一次到点的标准自动规则和漫剧机器人规则。"""
+    from app.modules.delivery_runner.loop import run_due_rules
+
+    while True:
+        try:
+            async for session in get_session():
+                await run_due_rules(session)
+                break
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("到点规则本轮失败")
+        await asyncio.sleep(_RULE_INTERVAL_SECONDS)
 
 
 async def _seed_oceanengine() -> None:

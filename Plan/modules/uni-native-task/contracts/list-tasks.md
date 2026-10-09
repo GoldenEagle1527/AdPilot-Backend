@@ -43,7 +43,7 @@
 | videos | array | `{ "id", "name" }`。视频表不在时为 `[]` |
 | titles | array | `{ "id", "title" }`，来自标题库。标题库不在时为 `[]` |
 | batch_titles | array of string | 临时标题。不在标题库里 |
-| status | string | 固定 `saved`。已保存未提交 |
+| status | string | `saved` 已保存、`running` 执行中、`done` 完成。`done` 只表示假客户端结束 |
 | executed_at | string or null | 执行时间。本接口不上传，为 null |
 | created_at | string | 北京时间，精确到秒 |
 | updated_at | string | 北京时间，精确到秒 |

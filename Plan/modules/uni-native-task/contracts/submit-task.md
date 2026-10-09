@@ -1,14 +1,14 @@
 # 契约：submit-task
 
 业务id：uni-native-task
-文档版本：1
+文档版本：2
 方法：POST
 路径：/api/v1/uni-native-tasks/{task_id}/submit
-作用：确认提交当前投手自己的一条端原生任务。每个账户行一个抖音号、一个项目、一条广告。状态保持 `saved`，不把素材标成已经传完。
+作用：确认提交当前投手自己的一条端原生任务。每个账户行一个抖音号、一个项目、一条广告。假客户端执行期间状态为 `running`（执行中），结束后为 `done`（完成）。`materials_uploaded` 仍是 false，不表示巨量已经收下素材。
 
 作者：
 状态：draft
-更新日期：2026-10-08
+更新日期：2026-10-09
 
 ## 请求
 
@@ -24,8 +24,8 @@
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | id | string | 任务 id |
-| status | string | 仍是 `saved`，不会变成完成 |
-| executed_at | string \| null | 仍为空 |
+| status | string | 提交过程中为 `running`（执行中），假客户端结束后为 `done`（完成）。不是巨量真上传 |
+| executed_at | string \| null | 假客户端结束的北京时间。未跑完为空 |
 | materials_uploaded | boolean | 固定 `false`。这次不上传视频 |
 | promotion_links | array | 任务上已保存的推广链。`link_text` 不写入 `playlet_series_url_list` |
 | accounts | array | 与任务账户行一一对应 |
@@ -58,4 +58,5 @@
 
 | 日期 | 文档版本 | 破坏？ | 变更 | 作者 |
 | --- | --- | --- | --- | --- |
+| 2026-10-09 | 2 | 是 | 假客户端执行中为 `running`，结束后为 `done` 并写 `executed_at`。`materials_uploaded` 仍为 false | |
 | 2026-10-08 | 1 | 否 | 初稿 | |

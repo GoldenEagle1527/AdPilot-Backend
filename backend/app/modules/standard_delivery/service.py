@@ -650,6 +650,8 @@ def rule_item(
         "max_videos_per_series": row.max_videos_per_series,
         "schedule_start": None if row.schedule_start is None else beijing_iso(row.schedule_start),
         "schedule_end": None if row.schedule_end is None else beijing_iso(row.schedule_end),
+        "is_enabled": row.is_enabled,
+        "ran_at": None if row.ran_at is None else beijing_iso(row.ran_at),
         "cost_min": None if row.cost_min is None else _money(row.cost_min),
         "cost_max": None if row.cost_max is None else _money(row.cost_max),
         "roi_min": None if row.roi_min is None else _roi(row.roi_min),
@@ -751,7 +753,7 @@ def _fill_rule(row: DeliveryAutoRule, template: DeliveryTemplate, body: RuleWrit
 
 
 async def create_rule(session: AsyncSession, body: RuleWrite, user_id: int, allowed: set[str]) -> dict[str, Any]:
-    """新增一条自动规则。只保存，不执行。"""
+    """新增一条自动规则。没有预约时间且开关开着时立刻执行一次。"""
     template, series_rows = await _rule_refs(session, body, allowed)
     if await rule_name_taken(session, user_id, template.charge_mode, body.name, None):
         raise ApiError(409, "规则名称已存在")
@@ -771,11 +773,17 @@ async def create_rule(session: AsyncSession, body: RuleWrite, user_id: int, allo
         publish_start=body.publish_start,
         publish_end=body.publish_end,
         no_bid_only=body.no_bid_only,
+        is_enabled=True,
+        ran_at=None,
     )
     session.add(row)
     await session.flush()
     await replace_rule_series(session, row.id, series_rows)
     await session.commit()
+    await session.refresh(row)
+    from app.modules.delivery_runner.standard import maybe_run_standard
+
+    await maybe_run_standard(session, int(row.id))
     await session.refresh(row)
     return rule_item(row, template, series_rows)
 
@@ -794,12 +802,43 @@ async def update_rule(
         raise ApiError(400, "模板收费模式与规则不一致")
     if await rule_name_taken(session, user_id, template.charge_mode, body.name, current.id):
         raise ApiError(409, "规则名称已存在")
+    schedule_changed = current.schedule_start != body.schedule_start
     _fill_rule(current, template, body, user_id)
+    if schedule_changed:
+        current.ran_at = None
     current.updated_date = beijing_now()
     await replace_rule_series(session, current.id, series_rows)
     await session.commit()
     await session.refresh(current)
+    from app.modules.delivery_runner.standard import maybe_run_standard
+
+    await maybe_run_standard(session, int(current.id))
+    await session.refresh(current)
     return rule_item(current, template, series_rows)
+
+
+async def set_rule_enabled(
+    session: AsyncSession, rule_id: int, is_enabled: bool, user_id: int, allowed: set[str]
+) -> dict[str, Any]:
+    """只改开关。从关到开且没有预约时间时执行一次。"""
+    found = await get_rule_row(session, rule_id, user_id)
+    if found is None:
+        raise ApiError(404, "自动规则不存在")
+    row, template = found
+    _require_mode(row.charge_mode, allowed)
+    turning_on = is_enabled and not row.is_enabled
+    row.is_enabled = is_enabled
+    if turning_on and row.schedule_start is None:
+        row.ran_at = None
+    row.updated_date = beijing_now()
+    await session.commit()
+    await session.refresh(row)
+    from app.modules.delivery_runner.standard import maybe_run_standard
+
+    await maybe_run_standard(session, int(row.id))
+    await session.refresh(row)
+    series = await series_by_rules(session, [row.id])
+    return rule_item(row, template, series.get(row.id, []))
 
 
 async def delete_rule(

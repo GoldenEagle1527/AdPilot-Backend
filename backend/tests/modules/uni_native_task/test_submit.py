@@ -1,4 +1,4 @@
-"""全域端原生确认提交：一对一账户、假客户端发号，状态不写成完成。"""
+"""全域端原生确认提交：一对一账户、假客户端发号。完成只表示假客户端结束。"""
 
 from __future__ import annotations
 
@@ -77,9 +77,17 @@ class SubmitTests(unittest.TestCase):
     def tearDown(self) -> None:
         install_ocean_client(None)
 
-    def test_one_douyin_per_account_and_status_stays_saved(self) -> None:
-        """每个账户一行一个项目、一条广告。状态仍是 saved，素材不算传完。"""
+    def test_one_douyin_per_account_and_fake_client_finishes(self) -> None:
+        """每个账户一行一个项目、一条广告。执行中是 running，结束后是 done。素材不算巨量已上传。"""
         port = Port()
+        seen: list[str] = []
+        create_project = port.create_project
+
+        async def _watch(token: str, body: dict) -> dict:
+            seen.append(task.status)
+            return await create_project(token, body)
+
+        port.create_project = _watch
         install_ocean_client(port)
         task = make_task()
         template = make_template()
@@ -107,11 +115,13 @@ class SubmitTests(unittest.TestCase):
                 library,
             )
         )
-        self.assertEqual(task.status, "saved")
-        self.assertIsNone(task.executed_at)
+        self.assertEqual(seen, ["running", "running"])
+        self.assertEqual(task.status, "done")
+        self.assertIsNotNone(task.executed_at)
         self.assertEqual(template.delivery_mode, "uni")
         self.assertFalse(result["materials_uploaded"])
-        self.assertEqual(result["status"], "saved")
+        self.assertEqual(result["status"], "done")
+        self.assertNotEqual(result["status"], "完成")
         self.assertEqual(result["promotion_links"][0]["link_text"], "https://iaa.example/from-theater")
         self.assertEqual(len(result["accounts"]), 2)
         self.assertEqual([item["aweme_id"] for item in result["accounts"]], ["aweme-a", "aweme-b"])

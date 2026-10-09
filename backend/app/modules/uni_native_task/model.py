@@ -15,9 +15,11 @@ _TS = DateTime(timezone=True)
 
 
 class NativeTaskStatus(StrEnum):
-    """本地保存。没有上传器，不会变成执行中或完成。"""
+    """saved 已保存。running 是假客户端还在组报文（执行中）。done 是假客户端结束（完成），不是巨量真上传。"""
 
     SAVED = "saved"
+    RUNNING = "running"
+    DONE = "done"
 
 
 class UniNativeTask(BaseModel):
@@ -25,7 +27,10 @@ class UniNativeTask(BaseModel):
 
     __tablename__ = "uni_native_task"
     __table_args__ = (
-        CheckConstraint("status = 'saved'", name="ck_uni_native_task_status"),
+        CheckConstraint(
+            "status IN ('saved', 'running', 'done')",
+            name="ck_uni_native_task_status",
+        ),
         CheckConstraint(
             "project_budget > 0 AND project_budget <= 99999999.99",
             name="ck_uni_native_task_budget",
@@ -45,7 +50,7 @@ class UniNativeTask(BaseModel):
             "series_id",
             postgresql_where=text("is_deleted = 0"),
         ),
-        {"comment": "漫剧全域端原生投放任务。只本地保存。状态只有 saved。"},
+        {"comment": "漫剧全域端原生投放任务。确认提交在假客户端执行中改为 running，结束后改为 done。"},
     )
 
     template_id: Mapped[int] = mapped_column(
@@ -77,10 +82,10 @@ class UniNativeTask(BaseModel):
         nullable=False,
         default=NativeTaskStatus.SAVED,
         server_default=text("'saved'"),
-        comment="saved 已保存未提交。没有素材上传器",
+        comment="saved 已保存、running 执行中、done 完成。done 只表示假客户端结束",
     )
     executed_at: Mapped[datetime | None] = mapped_column(
-        _TS, nullable=True, comment="执行时间。本接口不上传，保持为空"
+        _TS, nullable=True, comment="假客户端结束的时间。未提交为空"
     )
 
 

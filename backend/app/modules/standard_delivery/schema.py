@@ -503,6 +503,8 @@ class RuleItem(BaseModel):
     max_videos_per_series: int
     schedule_start: str | None
     schedule_end: str | None
+    is_enabled: bool
+    ran_at: str | None
     cost_min: str | None
     cost_max: str | None
     roi_min: str | None
@@ -513,6 +515,14 @@ class RuleItem(BaseModel):
     series: list[SeriesRef]
     created_at: str
     updated_at: str
+
+
+class RuleSwitchWrite(BaseModel):
+    """只改自动规则的开关。打开且没有预约时间时执行一次。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    is_enabled: bool = Field(description="true 开启、false 关闭")
 
 
 class DeletedItem(BaseModel):
@@ -539,3 +549,57 @@ class SubmitResult(BaseModel):
     id: str
     aweme_id: str
     accounts: list[SubmitAccount]
+
+
+class ProductSnapshotWrite(BaseModel):
+    """保存一份产品快照。标准模板可以把它抄到产品名称、主图、卖点和行动号召。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: NameText = Field(description="快照名称，1–128 字")
+    product_name: ProductNameText = Field(description="产品名称，最多 20 字")
+    product_image_id: str = Field(description="产品主图 id，img- 前缀")
+    selling_points: list[TagText] = Field(default_factory=list, max_length=10, description="产品卖点，最多 10 条")
+    call_to_action_buttons: list[TagText] = Field(
+        default_factory=list, max_length=10, description="行动号召，最多 10 条"
+    )
+
+    @field_validator("product_image_id")
+    @classmethod
+    def image_id_shape(cls, value: str) -> str:
+        """主图只收 img- 号。"""
+        image_id = value.strip()
+        if _IMAGE_ID.fullmatch(image_id) is None or len(image_id) > 64:
+            raise ValueError("产品主图须为 img- 开头的图片 id")
+        return image_id
+
+
+class ProductSnapshotQuery(BaseModel):
+    """产品快照列表。名称不传就是全部。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    page: int = Field(1, ge=1, description="页码，从 1 起")
+    page_size: int = Field(20, ge=1, le=100, description="每页条数，最大 100")
+    name: str | None = Field(None, description="快照名称，模糊")
+
+
+class ProductSnapshotItem(BaseModel):
+    """一条产品快照。"""
+
+    id: str
+    name: str
+    product_name: str
+    product_image_id: str
+    selling_points: list[str]
+    call_to_action_buttons: list[str]
+    created_at: str
+    updated_at: str
+
+
+class ProductSnapshotCopy(BaseModel):
+    """把一条快照抄到标准模板的产品字段上。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    snapshot_id: int = Field(ge=1, description="产品快照 id")

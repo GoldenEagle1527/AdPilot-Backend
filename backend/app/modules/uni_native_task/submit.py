@@ -1,7 +1,8 @@
 """确认提交一条全域端原生任务。
 
 每个账户行已经是一个抖音号对一个广告账户。项目、商品、主图走已装上的客户端。
-状态保持已保存，不把素材标成传完。
+假客户端执行期间把状态写成 running（执行中），结束后写成 done（完成）。
+materials_uploaded 保持 false，不表示巨量已经收下素材。
 """
 
 from __future__ import annotations
@@ -35,7 +36,7 @@ from app.modules.uni_native_task.crud import (
     titles_by_tasks,
     videos_by_tasks,
 )
-from app.modules.uni_native_task.model import UniNativeTask, UniNativeTaskLink
+from app.modules.uni_native_task.model import NativeTaskStatus, UniNativeTask, UniNativeTaskLink
 from app.modules.uni_template.crud import get_uni_template_row
 
 _TITLE_MIN = 5
@@ -109,9 +110,14 @@ async def submit_loaded(
     batch_titles: list[str],
     library: ProductLibrary,
 ) -> dict[str, Any]:
-    """每个账户一行一个项目、一条广告。不改任务状态，也不改模板的 delivery_mode。"""
+    """每个账户一行一个项目、一条广告。不改模板的 delivery_mode。
+
+    标题不合格时保持 saved。通过后先标 running，假客户端返回后再标 done。
+    """
     chosen = [title.title for title in titles] + list(batch_titles)
     _reject_titles(chosen)
+    task.status = NativeTaskStatus.RUNNING
+    await session.flush()
     name = _project_name(book_name)
     built: list[dict[str, Any]] = []
     for douyin, account in pairs:
@@ -191,6 +197,8 @@ async def submit_loaded(
                 "promotions": [promotion],
             }
         )
+    task.status = NativeTaskStatus.DONE
+    task.executed_at = beijing_now()
     await session.commit()
     return {
         "id": str(task.id),
