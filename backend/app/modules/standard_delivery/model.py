@@ -618,11 +618,6 @@ class DeliveryAutoRule(BaseModel):
             name="ck_delivery_auto_rule_videos",
         ),
         CheckConstraint(
-            "(schedule_start IS NULL AND schedule_end IS NULL) OR "
-            "(schedule_start IS NOT NULL AND schedule_end IS NOT NULL AND schedule_start < schedule_end)",
-            name="ck_delivery_auto_rule_schedule",
-        ),
-        CheckConstraint(
             "(cost_min IS NULL AND cost_max IS NULL) OR "
             "(cost_min IS NOT NULL AND cost_max IS NOT NULL AND cost_min >= 0 AND cost_min <= cost_max)",
             name="ck_delivery_auto_rule_cost",
@@ -681,9 +676,11 @@ class DeliveryAutoRule(BaseModel):
         comment="每部剧最多取多少条视频，默认 200",
     )
     schedule_start: Mapped[datetime | None] = mapped_column(
-        _TS, nullable=True, comment="预约执行开始。空表示立即执行，本轮仍不跑"
+        _TS, nullable=True, comment="预约执行时间。空表示立即执行"
     )
-    schedule_end: Mapped[datetime | None] = mapped_column(_TS, nullable=True, comment="预约执行结束")
+    schedule_end: Mapped[datetime | None] = mapped_column(
+        _TS, nullable=True, comment="不使用。可空，也可与开始相同"
+    )
     cost_min: Mapped[Decimal | None] = mapped_column(
         Numeric(12, 2), nullable=True, comment="短剧消耗下限，单位元。空表示不限"
     )

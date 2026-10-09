@@ -267,6 +267,26 @@ class BodyTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             RuleWrite(name="规则甲", template_id=11, series_ids=[8, 9], cost_min="1")
 
+    def test_rule_appointment_is_one_time(self) -> None:
+        """立即执行开始为空。预约只填开始，或开始与结束相同，都通过。"""
+        when = "2026-10-09T15:00:00+08:00"
+        immediate = RuleWrite(name="规则甲", template_id=11, series_ids=[8])
+        self.assertIsNone(immediate.schedule_start)
+        self.assertIsNone(immediate.schedule_end)
+        start_only = RuleWrite(
+            name="规则甲", template_id=11, series_ids=[8], schedule_start=when
+        )
+        self.assertEqual(start_only.schedule_start, datetime(2026, 10, 9, 15, 0, tzinfo=BEIJING))
+        self.assertIsNone(start_only.schedule_end)
+        same = RuleWrite(
+            name="规则甲",
+            template_id=11,
+            series_ids=[8],
+            schedule_start=when,
+            schedule_end=when,
+        )
+        self.assertEqual(same.schedule_start, same.schedule_end)
+
     def test_schedule_time_is_empty_or_a_week_grid(self) -> None:
         """时段空着表示不限。有值必须是 48×7 的 0/1。"""
         self.assertIsNone(template_body().schedule_time)

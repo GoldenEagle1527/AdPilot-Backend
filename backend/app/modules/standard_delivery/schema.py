@@ -455,8 +455,10 @@ class RuleWrite(BaseModel):
     template_id: int = Field(description="批量模板 id")
     accounts_per_series: int = Field(3, ge=1, le=100, description="每部剧账户数，默认 3")
     max_videos_per_series: int = Field(200, ge=1, le=500, description="每部剧最大视频数，默认 200")
-    schedule_start: datetime | None = Field(None, description="预约执行开始。空表示立即执行，本轮不跑")
-    schedule_end: datetime | None = Field(None, description="预约执行结束")
+    schedule_start: datetime | None = Field(None, description="预约执行时间。空表示立即执行")
+    schedule_end: datetime | None = Field(
+        None, description="不使用。省略，或与开始相同，都收下"
+    )
     cost_min: CostBound | None = Field(None, description="短剧消耗下限，单位元")
     cost_max: CostBound | None = Field(None, description="短剧消耗上限，单位元")
     roi_min: RoiBound | None = Field(None, description="短剧回收率下限")
@@ -468,13 +470,12 @@ class RuleWrite(BaseModel):
 
     @model_validator(mode="after")
     def check_ranges(self) -> RuleWrite:
-        """预约、消耗、回收、上架都要成对。短剧 id 不重复。"""
+        """消耗、回收、上架要成对。预约只收一个开始时间。短剧 id 不重复。"""
         _unique_ids(self.series_ids, "短剧")
         if self.schedule_start is not None:
             self.schedule_start = _aware(self.schedule_start)
         if self.schedule_end is not None:
             self.schedule_end = _aware(self.schedule_end)
-        _pair(self.schedule_start, self.schedule_end, "预约执行", allow_equal=False)
         _pair(self.cost_min, self.cost_max, "短剧消耗", allow_equal=True)
         _pair(self.roi_min, self.roi_max, "短剧回收率", allow_equal=True)
         _pair(self.publish_start, self.publish_end, "短剧上架时间", allow_equal=True)
