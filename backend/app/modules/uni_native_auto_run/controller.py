@@ -1,4 +1,7 @@
-"""端原生自动化投放执行记录 HTTP。只认登录态。没有新增接口。"""
+"""端原生自动化投放执行记录 HTTP。要有端原生自动化投放菜单。
+
+执行记录和机器人规则都没有投手或部门，有菜单的人看到全部记录和失败日志。
+"""
 
 from __future__ import annotations
 
@@ -7,21 +10,21 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import require_token
 from app.core.db import get_session
 from app.core.envelope import Envelope, success
 from app.core.pagination import PageData
+from app.modules.system_admin import require_menu
 from app.modules.uni_native_auto_run.schema import FailureItem, FailureQuery, RunItem, RunQuery
 from app.modules.uni_native_auto_run.service import get_one_run, list_failure_logs, list_runs
 
 router = APIRouter(
     prefix="/api/v1/uni-native-auto-runs",
     tags=["uni-native-auto-runs"],
-    dependencies=[Depends(require_token)],
+    dependencies=[Depends(require_menu("57"))],
 )
 
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
-PrincipalDep = Annotated[dict[str, Any], Depends(require_token)]
+PrincipalDep = Annotated[dict[str, Any], Depends(require_menu("57"))]
 
 
 @router.get("", response_model=Envelope[PageData[RunItem]], summary="分页查询端原生自动化投放记录")

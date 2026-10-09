@@ -1,4 +1,4 @@
-"""漫剧全域端原生投放任务 HTTP。只认登录态，每人只看自己的任务。"""
+"""漫剧全域端原生投放任务 HTTP。要有端原生投放任务菜单。列表按部门数据范围，改删提交仍只动自己的。"""
 
 from __future__ import annotations
 
@@ -7,10 +7,11 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import require_token
 from app.core.db import get_session
 from app.core.envelope import Envelope, success
 from app.core.pagination import PageData
+from app.modules.system_admin import require_menu
+from app.modules.system_admin.domain.scope import resolve_data_scope
 from app.modules.uni_native_task.schema import DeletedItem, SubmitResult, TaskItem, TaskQuery, TaskWrite
 from app.modules.uni_native_task.service import create_task, delete_task, get_task, list_tasks, update_task
 from app.modules.uni_native_task.submit import submit_task
@@ -18,11 +19,11 @@ from app.modules.uni_native_task.submit import submit_task
 router = APIRouter(
     prefix="/api/v1/uni-native-tasks",
     tags=["uni-native-tasks"],
-    dependencies=[Depends(require_token)],
+    dependencies=[Depends(require_menu("56"))],
 )
 
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
-PrincipalDep = Annotated[dict[str, Any], Depends(require_token)]
+PrincipalDep = Annotated[dict[str, Any], Depends(require_menu("56"))]
 
 
 def _user_id(principal: dict[str, Any]) -> int:
@@ -36,14 +37,16 @@ async def get_tasks(
     principal: PrincipalDep,
     query: Annotated[TaskQuery, Query()],
 ) -> dict[str, Any]:
-    """按创建日期和剧名列出当前投手未删除的任务。"""
-    return success(await list_tasks(session, query, _user_id(principal)))
+    """仅本人看自己的任务；勾了部门则看这些部门里投手的。"""
+    scope = await resolve_data_scope(session, principal)
+    return success(await list_tasks(session, query, _user_id(principal), scope))
 
 
 @router.get("/{task_id}", response_model=Envelope[TaskItem], summary="查询一条端原生投放任务")
 async def get_one_task(task_id: int, session: SessionDep, principal: PrincipalDep) -> dict[str, Any]:
-    """取自己的一条未删除任务。"""
-    return success(await get_task(session, task_id, _user_id(principal)))
+    """取数据范围内的一条未删除任务。改删提交仍只动自己的。"""
+    scope = await resolve_data_scope(session, principal)
+    return success(await get_task(session, task_id, _user_id(principal), scope))
 
 
 @router.post("", response_model=Envelope[TaskItem], summary="新增端原生投放任务")

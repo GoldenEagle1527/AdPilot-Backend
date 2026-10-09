@@ -54,12 +54,43 @@ async def _sync_identity(session, table: str) -> None:
     )
 
 
+async def _sync_missing_menus(session) -> tuple[int, int]:
+    """补上种子里还没有的菜单和角色勾选。不改已有行，也不删多出来的。"""
+    existing_ids = set((await session.scalars(select(MenuNode.id))).all())
+    added_menus = 0
+    for row in menu_seed_rows():
+        menu_id = int(row["id"])
+        if menu_id in existing_ids:
+            continue
+        session.add(MenuNode(**row))
+        await session.flush()
+        existing_ids.add(menu_id)
+        added_menus += 1
+    existing_links = {
+        (int(role_id), int(menu_id))
+        for role_id, menu_id in (await session.execute(select(RoleMenu.role_id, RoleMenu.menu_id))).all()
+    }
+    added_links = 0
+    for row in role_menu_seed_rows():
+        key = (int(row["role_id"]), int(row["menu_id"]))
+        if key in existing_links:
+            continue
+        session.add(RoleMenu(**row))
+        existing_links.add(key)
+        added_links += 1
+    if added_menus:
+        await _sync_identity(session, "menu_nodes")
+    return added_menus, added_links
+
+
 async def load_seed() -> None:
-    """写入部门、标签、角色、菜单、字典和本地账号。已有用户则整批跳过。"""
+    """写入部门、标签、角色、菜单、字典和本地账号。已有用户则只补缺失菜单。"""
     async for session in get_session():
         existing = await session.scalar(select(func.count()).select_from(User))
         if existing:
-            print(f"已有 {existing} 个用户，跳过灌种")
+            menus, links = await _sync_missing_menus(session)
+            await session.commit()
+            print(f"已有 {existing} 个用户，跳过整批灌种；补菜单 {menus}，补角色勾选 {links}")
             return
         for row in DEPARTMENT_TAG_SEED:
             session.add(DepartmentTag(**row))

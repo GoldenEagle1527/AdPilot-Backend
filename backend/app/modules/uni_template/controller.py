@@ -1,4 +1,4 @@
-"""全域模板 HTTP。模板全员可见，抖音号分配只认当前登录投手。"""
+"""全域模板 HTTP。模板全员可见，不按部门藏。抖音号分配只认当前登录投手。"""
 
 from __future__ import annotations
 
@@ -7,10 +7,10 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import require_token
 from app.core.db import get_session
 from app.core.envelope import Envelope, success
 from app.core.pagination import PageData
+from app.modules.system_admin import require_menu
 from app.modules.uni_template.schema import (
     DeletedItem,
     DouyinAssignResult,
@@ -28,14 +28,13 @@ from app.modules.uni_template.service import (
     update_template,
 )
 
-router = APIRouter(
-    prefix="/api/v1/uni-templates",
-    tags=["uni-templates"],
-    dependencies=[Depends(require_token)],
-)
+router = APIRouter(prefix="/api/v1/uni-templates", tags=["uni-templates"])
 
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
-PrincipalDep = Annotated[dict[str, Any], Depends(require_token)]
+# 全域模板管理
+PrincipalDep = Annotated[dict[str, Any], Depends(require_menu("60"))]
+# 模板抖音号分配
+DouyinDep = Annotated[dict[str, Any], Depends(require_menu("61"))]
 
 
 def _user_id(principal: dict[str, Any]) -> int:
@@ -66,7 +65,7 @@ async def get_one_template(
 
 
 @router.post("", response_model=Envelope[TemplateItem], summary="新增全域模板")
-async def post_template(body: TemplateWrite, session: SessionDep) -> dict[str, Any]:
+async def post_template(body: TemplateWrite, session: SessionDep, _principal: PrincipalDep) -> dict[str, Any]:
     """新增模板。主体须为全域投放。不分配抖音号。"""
     return success(await create_template(session, body))
 
@@ -88,7 +87,7 @@ async def put_template(
     response_model=Envelope[DeletedItem],
     summary="删除全域模板",
 )
-async def remove_template(template_id: int, session: SessionDep) -> dict[str, Any]:
+async def remove_template(template_id: int, session: SessionDep, _principal: PrincipalDep) -> dict[str, Any]:
     """软删一条全域模板。"""
     return success(await delete_template(session, template_id))
 
@@ -102,7 +101,7 @@ async def put_template_douyin(
     template_id: int,
     body: DouyinAssignWrite,
     session: SessionDep,
-    principal: PrincipalDep,
+    principal: DouyinDep,
 ) -> dict[str, Any]:
     """用请求里的号换掉当前投手在这条模板上的分配。空数组表示清空。"""
     return success(await assign_douyin(session, template_id, body, _user_id(principal)))

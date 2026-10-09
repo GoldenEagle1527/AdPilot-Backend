@@ -497,6 +497,7 @@ class HttpTests(unittest.TestCase):
                 "tenant": "agent",
                 "enabled": True,
                 "menu_ids": ["39", "46"] if menus is None else menus,
+                "data_scope": {"self_only": True, "department_ids": []},
             }
         return TestClient(app)
 

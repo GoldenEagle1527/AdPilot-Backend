@@ -17,6 +17,7 @@ from app.modules.material.model import ManhuaSeries
 from app.modules.material_title.model import MaterialTitle
 from app.modules.material_video.model import MaterialVideo
 from app.modules.standard_delivery.model import DeliveryTemplate
+from app.modules.system_admin.domain.scope import DataScope, owner_match
 from app.modules.theater.model import TheaterPromotionLink
 from app.modules.uni_native_task.crud import (
     SeriesBrief,
@@ -127,11 +128,13 @@ def task_item(
     }
 
 
-def task_filters(query: TaskQuery, user_id: int) -> list[ColumnElement[bool]]:
-    """列表只看当前投手未删除的任务。日期段含起止当天，剧名模糊。"""
+def task_filters(
+    query: TaskQuery, user_id: int, scope: DataScope | None = None
+) -> list[ColumnElement[bool]]:
+    """列表：仅本人看自己的任务，勾了部门则看这些部门里投手的。日期段含起止当天，剧名模糊。"""
     filters: list[ColumnElement[bool]] = [
         UniNativeTask.is_deleted == 0,
-        UniNativeTask.pitcher_user_id == user_id,
+        owner_match(UniNativeTask.pitcher_user_id, user_id, scope),
     ]
     if query.date_start is not None:
         filters.append(UniNativeTask.created_date >= _day_start(query.date_start))
@@ -442,8 +445,10 @@ def _page_item(
     )
 
 
-async def list_tasks(session: AsyncSession, query: TaskQuery, user_id: int) -> dict[str, Any]:
-    """分页列出当前投手自己的任务。剧名筛选依赖短剧表，表不在就给空页。"""
+async def list_tasks(
+    session: AsyncSession, query: TaskQuery, user_id: int, scope: DataScope | None = None
+) -> dict[str, Any]:
+    """分页列任务。仅本人时只看自己，勾了部门则看这些部门里投手的。剧名筛选依赖短剧表。"""
     params = PageParams(page=query.page, page_size=query.page_size)
     present = await present_tables(session)
     name = (query.series_name or "").strip()
@@ -451,7 +456,7 @@ async def list_tasks(session: AsyncSession, query: TaskQuery, user_id: int) -> d
         return page_data([], 0, params)
     rows, total = await page_tasks(
         session,
-        task_filters(query, user_id),
+        task_filters(query, user_id, scope),
         series_present="manhua_series" in present,
         offset=params.offset,
         limit=params.page_size,
@@ -464,10 +469,14 @@ async def list_tasks(session: AsyncSession, query: TaskQuery, user_id: int) -> d
     return page_data(items, total, params)
 
 
-async def get_task(session: AsyncSession, task_id: int, user_id: int) -> dict[str, Any]:
-    """取当前投手自己的一条任务。别人的按不存在。"""
+async def get_task(
+    session: AsyncSession, task_id: int, user_id: int, scope: DataScope | None = None
+) -> dict[str, Any]:
+    """取数据范围内的一条任务。范围外的按不存在。"""
     present = await present_tables(session)
-    found = await get_task_row(session, task_id, user_id, series_present="manhua_series" in present)
+    found = await get_task_row(
+        session, task_id, user_id, series_present="manhua_series" in present, scope=scope
+    )
     if found is None:
         raise ApiError(404, "投放任务不存在")
     accounts, links, videos, titles, batches = await _children(session, [found[0].id], present)

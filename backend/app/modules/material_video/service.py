@@ -13,6 +13,7 @@ from app.core.envelope import ApiError
 from app.core.pagination import PageParams, page_data
 from app.core.times import beijing_iso, beijing_now
 from app.modules.material import book_names_by_ids
+from app.modules.system_admin.domain.scope import DataScope, owner_match
 from app.modules.material_video.crud import (
     active_share,
     active_shared_video_ids,
@@ -404,18 +405,23 @@ def pitched_to(user_id: int) -> ColumnElement[bool]:
     )
 
 
-def video_filters(query: VideoQuery, user_id: int) -> list[ColumnElement[bool]]:
-    """拼列表条件：未删除，且公有、自己创建、或私有并且自己是共享人或投手。"""
+def video_filters(
+    query: VideoQuery, user_id: int, scope: DataScope | None = None
+) -> list[ColumnElement[bool]]:
+    """未删除，且公有、自己创建、私有并且自己是共享人或投手。勾了部门再加这些部门里上传者的素材。"""
+    visible = or_(
+        MaterialVideo.ownership == Ownership.PUBLIC,
+        MaterialVideo.uploader_id == user_id,
+        and_(
+            MaterialVideo.ownership == Ownership.PRIVATE,
+            or_(shared_with(user_id), pitched_to(user_id)),
+        ),
+    )
+    if scope is not None and not scope.self_only:
+        visible = or_(visible, owner_match(MaterialVideo.uploader_id, user_id, scope))
     filters: list[ColumnElement[bool]] = [
         MaterialVideo.is_deleted == 0,
-        or_(
-            MaterialVideo.ownership == Ownership.PUBLIC,
-            MaterialVideo.uploader_id == user_id,
-            and_(
-                MaterialVideo.ownership == Ownership.PRIVATE,
-                or_(shared_with(user_id), pitched_to(user_id)),
-            ),
-        ),
+        visible,
     ]
     if query.id is not None:
         filters.append(MaterialVideo.id == query.id)
@@ -438,11 +444,13 @@ def video_filters(query: VideoQuery, user_id: int) -> list[ColumnElement[bool]]:
     return filters
 
 
-async def list_videos(session: AsyncSession, query: VideoQuery, user_id: int) -> dict[str, Any]:
-    """分页列出当前用户能看见的视频素材，按上传时间倒序。"""
+async def list_videos(
+    session: AsyncSession, query: VideoQuery, user_id: int, scope: DataScope | None = None
+) -> dict[str, Any]:
+    """分页列出当前用户能看见的视频素材，按上传时间倒序。勾了部门则加上这些部门上传的。"""
     params = PageParams(page=query.page, page_size=query.page_size)
     rows, total = await page_videos(
-        session, video_filters(query, user_id), offset=params.offset, limit=params.page_size
+        session, video_filters(query, user_id, scope), offset=params.offset, limit=params.page_size
     )
     video_ids = [row.id for row in rows]
     shares = await share_user_ids_by_videos(session, video_ids)
@@ -469,9 +477,11 @@ async def list_videos(session: AsyncSession, query: VideoQuery, user_id: int) ->
     return page_data(items, total, params)
 
 
-def tag_filters(query: TagQuery, user_id: int) -> list[ColumnElement[bool]]:
+def tag_filters(
+    query: TagQuery, user_id: int, scope: DataScope | None = None
+) -> list[ColumnElement[bool]]:
     """只列出当前用户能看见的素材用过的未删标签。名称有值时模糊。"""
-    visible_tag_ids = select(MaterialVideo.tag_id).where(*video_filters(VideoQuery(), user_id))
+    visible_tag_ids = select(MaterialVideo.tag_id).where(*video_filters(VideoQuery(), user_id, scope))
     filters: list[ColumnElement[bool]] = [
         MaterialVideoTag.is_deleted == 0,
         MaterialVideoTag.id.in_(visible_tag_ids),
@@ -482,11 +492,13 @@ def tag_filters(query: TagQuery, user_id: int) -> list[ColumnElement[bool]]:
     return filters
 
 
-async def list_tags(session: AsyncSession, query: TagQuery, user_id: int) -> dict[str, Any]:
-    """分页列出视频标签，供下拉模糊选择。"""
+async def list_tags(
+    session: AsyncSession, query: TagQuery, user_id: int, scope: DataScope | None = None
+) -> dict[str, Any]:
+    """分页列出视频标签，供下拉模糊选择。可见范围与视频列表相同。"""
     params = PageParams(page=query.page, page_size=query.page_size)
     rows, total = await page_tags(
-        session, tag_filters(query, user_id), offset=params.offset, limit=params.page_size
+        session, tag_filters(query, user_id, scope), offset=params.offset, limit=params.page_size
     )
     items = [{"id": str(row.id), "name": row.name} for row in rows]
     return page_data(items, total, params)

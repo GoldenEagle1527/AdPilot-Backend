@@ -175,6 +175,8 @@ def http_client(session: FakeSession, *, login: bool = True, user_id: str = "3")
             "nickname": "投手",
             "login_account": "pitcher",
             "tenant": "agent",
+            "enabled": True,
+            "menu_ids": ["60", "61"],
         }
     return TestClient(app)
 

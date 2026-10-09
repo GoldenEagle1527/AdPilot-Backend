@@ -1,4 +1,4 @@
-"""素材标题 HTTP。不在接口层做菜单鉴权，只认登录态；用户只碰得到自己的标题。"""
+"""素材标题 HTTP。要有标题菜单。列表仍只含上传者本人，不按部门放开。"""
 
 from __future__ import annotations
 
@@ -7,10 +7,10 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import require_token
 from app.core.db import get_session
 from app.core.envelope import Envelope, success
 from app.core.pagination import PageData
+from app.modules.system_admin import require_menu
 from app.modules.material_title.schema import (
     TitleBatchCreate,
     TitleBatchCreated,
@@ -30,7 +30,8 @@ from app.modules.material_title.service import (
 router = APIRouter(prefix="/api/v1/material", tags=["material"])
 
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
-PrincipalDep = Annotated[dict[str, Any], Depends(require_token)]
+# 素材管理 / 标题。批量删除组件 93 与单删共用这一条路由，页面菜单即可。
+PrincipalDep = Annotated[dict[str, Any], Depends(require_menu("92"))]
 
 
 @router.get(

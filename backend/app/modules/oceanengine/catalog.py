@@ -14,6 +14,7 @@ from app.core.times import beijing_now
 from app.modules.account.model import AdvertiserAccount, OeApp, OeOrganization, OeOrganizationGrant, OeToken
 from app.modules.oceanengine.schema import AdvertiserQuery
 from app.modules.system_admin.domain.models import User
+from app.modules.system_admin.domain.scope import DataScope, owner_match
 
 
 def _configured_ocean_app_id() -> int | None:
@@ -106,8 +107,24 @@ async def list_organizations(session: AsyncSession, params: PageParams) -> dict[
     return page_data(items, total, params)
 
 
-async def list_advertisers(session: AsyncSession, query: AdvertiserQuery) -> dict[str, Any]:
-    """广告主分页。只读表。"""
+def org_wide_owner(scope: DataScope):
+    """菜单 63 的广告主：仅本人看自己的户；勾了部门则看这些部门投手的户，以及未分配的户。"""
+    if scope.self_only:
+        return AdvertiserAccount.pitcher_user_id == scope.user_id
+    return or_(
+        owner_match(AdvertiserAccount.pitcher_user_id, scope.user_id, scope),
+        AdvertiserAccount.pitcher_user_id.is_(None),
+    )
+
+
+async def list_advertisers(
+    session: AsyncSession,
+    query: AdvertiserQuery,
+    scope: DataScope | None = None,
+    *,
+    org_wide: bool = False,
+) -> dict[str, Any]:
+    """广告主分页。只读表。org_wide 时按数据范围收窄，不再返回全部户。"""
     params = PageParams(page=query.page, page_size=query.page_size)
     filters = [AdvertiserAccount.is_deleted == 0, OeOrganization.is_deleted == 0]
     app_id = _configured_ocean_app_id()
@@ -118,7 +135,9 @@ async def list_advertisers(session: AsyncSession, query: AdvertiserQuery) -> dic
         filters.append(AdvertiserAccount.advertiser_id == query.account_id)
     if query.organization_id is not None:
         filters.append(OeOrganization.ocean_account_id == query.organization_id)
-    if query.only_user_id is not None:
+    if org_wide and scope is not None:
+        filters.append(org_wide_owner(scope))
+    elif query.only_user_id is not None:
         filters.append(AdvertiserAccount.pitcher_user_id == query.only_user_id)
         filters.append(AdvertiserAccount.sync_status == "active")
     elif query.pitcher_user_id is not None:

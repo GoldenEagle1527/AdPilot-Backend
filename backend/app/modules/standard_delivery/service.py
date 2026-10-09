@@ -19,6 +19,7 @@ from app.core.times import beijing_iso, beijing_now
 from app.modules.account.model import AdvertiserAccount, DeliverySubject, DouyinAccount, ProductLibrary
 from app.modules.material_title.model import MaterialTitle
 from app.modules.material_video.model import MaterialVideo
+from app.modules.system_admin.domain.scope import DataScope, owner_match
 from app.modules.standard_delivery.crud import (
     accounts_by_drafts,
     get_draft_row,
@@ -393,11 +394,13 @@ def draft_item(
     }
 
 
-def draft_filters(query: DraftQuery, user_id: int) -> list[ColumnElement[bool]]:
-    """草稿列表：只看当前投手，收费模式精确，其余筛选项有值才加上。"""
+def draft_filters(
+    query: DraftQuery, user_id: int, scope: DataScope | None = None
+) -> list[ColumnElement[bool]]:
+    """草稿列表：仅本人看自己的，勾了部门则看这些部门里投手的。收费模式精确。"""
     filters: list[ColumnElement[bool]] = [
         DeliveryTaskDraft.is_deleted == 0,
-        DeliveryTaskDraft.pitcher_user_id == user_id,
+        owner_match(DeliveryTaskDraft.pitcher_user_id, user_id, scope),
         DeliveryTaskDraft.charge_mode == query.charge_mode,
     ]
     if query.template_id is not None:
@@ -443,20 +446,26 @@ async def _draft_page(session: AsyncSession, rows: list[Any]) -> list[dict[str, 
     ]
 
 
-async def list_drafts(session: AsyncSession, query: DraftQuery, user_id: int) -> dict[str, Any]:
-    """分页列出当前投手自己的草稿。"""
+async def list_drafts(
+    session: AsyncSession, query: DraftQuery, user_id: int, scope: DataScope | None = None
+) -> dict[str, Any]:
+    """分页列草稿。仅本人时只看自己，勾了部门则看这些部门里投手的。"""
     params = PageParams(page=query.page, page_size=query.page_size)
     rows, total = await page_drafts(
-        session, draft_filters(query, user_id), offset=params.offset, limit=params.page_size
+        session, draft_filters(query, user_id, scope), offset=params.offset, limit=params.page_size
     )
     return page_data(await _draft_page(session, rows), total, params)
 
 
 async def get_draft(
-    session: AsyncSession, draft_id: int, user_id: int, allowed: set[str]
+    session: AsyncSession,
+    draft_id: int,
+    user_id: int,
+    allowed: set[str],
+    scope: DataScope | None = None,
 ) -> dict[str, Any]:
-    """取当前投手自己的一条草稿。别人的按不存在。"""
-    found = await get_draft_row(session, draft_id, user_id)
+    """取数据范围内的一条草稿。范围外的按不存在。"""
+    found = await get_draft_row(session, draft_id, user_id, scope)
     if found is None:
         raise ApiError(404, "投放草稿不存在")
     _require_mode(found[0].charge_mode, allowed)
@@ -665,11 +674,13 @@ def rule_item(
     }
 
 
-def rule_filters(query: RuleQuery, user_id: int) -> list[ColumnElement[bool]]:
-    """规则列表：只看当前投手，收费模式精确。"""
+def rule_filters(
+    query: RuleQuery, user_id: int, scope: DataScope | None = None
+) -> list[ColumnElement[bool]]:
+    """规则列表：仅本人看自己的，勾了部门则看这些部门里投手的。收费模式精确。"""
     filters: list[ColumnElement[bool]] = [
         DeliveryAutoRule.is_deleted == 0,
-        DeliveryAutoRule.pitcher_user_id == user_id,
+        owner_match(DeliveryAutoRule.pitcher_user_id, user_id, scope),
         DeliveryAutoRule.charge_mode == query.charge_mode,
     ]
     name = (query.name or "").strip()
@@ -695,18 +706,26 @@ async def _rule_page(session: AsyncSession, rows: list[Any]) -> list[dict[str, A
     return [rule_item(row, template, series.get(row.id, [])) for row, template in rows]
 
 
-async def list_rules(session: AsyncSession, query: RuleQuery, user_id: int) -> dict[str, Any]:
-    """分页列出当前投手自己的自动规则。"""
+async def list_rules(
+    session: AsyncSession, query: RuleQuery, user_id: int, scope: DataScope | None = None
+) -> dict[str, Any]:
+    """分页列自动规则。仅本人时只看自己，勾了部门则看这些部门里投手的。"""
     params = PageParams(page=query.page, page_size=query.page_size)
     rows, total = await page_rules(
-        session, rule_filters(query, user_id), offset=params.offset, limit=params.page_size
+        session, rule_filters(query, user_id, scope), offset=params.offset, limit=params.page_size
     )
     return page_data(await _rule_page(session, rows), total, params)
 
 
-async def get_rule(session: AsyncSession, rule_id: int, user_id: int, allowed: set[str]) -> dict[str, Any]:
-    """取当前投手自己的一条规则。"""
-    found = await get_rule_row(session, rule_id, user_id)
+async def get_rule(
+    session: AsyncSession,
+    rule_id: int,
+    user_id: int,
+    allowed: set[str],
+    scope: DataScope | None = None,
+) -> dict[str, Any]:
+    """取数据范围内的一条规则。范围外的按不存在。"""
+    found = await get_rule_row(session, rule_id, user_id, scope)
     if found is None:
         raise ApiError(404, "自动规则不存在")
     _require_mode(found[0].charge_mode, allowed)

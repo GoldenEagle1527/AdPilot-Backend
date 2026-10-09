@@ -1,4 +1,4 @@
-"""全域漫剧机器人 HTTP。开放按推广链接和按剧条件两组规则，只认登录态。"""
+"""全域漫剧机器人 HTTP。按推广链接和按剧条件都要漫剧机器人菜单。规则没有归属人，有菜单即可看全部。"""
 
 from __future__ import annotations
 
@@ -7,10 +7,10 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import require_token
 from app.core.db import get_session
 from app.core.envelope import Envelope, success
 from app.core.pagination import PageData
+from app.modules.system_admin import require_menu
 from app.modules.uni_robot.port import UniRobotCatalog
 from app.modules.uni_template.catalog import DatabaseUniRobotCatalog
 from app.modules.uni_robot.schema import (
@@ -49,7 +49,7 @@ from app.modules.uni_robot.service import (
 router = APIRouter(
     prefix="/api/v1/uni-robot",
     tags=["uni-robot"],
-    dependencies=[Depends(require_token)],
+    dependencies=[Depends(require_menu("80"))],
 )
 
 SessionDep = Annotated[AsyncSession, Depends(get_session)]

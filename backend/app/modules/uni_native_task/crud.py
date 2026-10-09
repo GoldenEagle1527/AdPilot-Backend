@@ -13,6 +13,7 @@ from app.modules.material.model import ManhuaSeries
 from app.modules.material_title.model import MaterialTitle
 from app.modules.material_video.model import MaterialVideo, MaterialVideoPitcher
 from app.modules.standard_delivery.model import DeliveryTemplate
+from app.modules.system_admin.domain.scope import DataScope, owner_match
 from app.modules.uni_native_task.model import (
     UniNativeTask,
     UniNativeTaskAccount,
@@ -165,13 +166,18 @@ async def page_tasks(
 
 
 async def get_task_row(
-    session: AsyncSession, task_id: int, user_id: int, *, series_present: bool
+    session: AsyncSession,
+    task_id: int,
+    user_id: int,
+    *,
+    series_present: bool,
+    scope: DataScope | None = None,
 ) -> TaskHead | None:
-    """取当前投手自己的一条未删除任务。"""
+    """取数据范围内的一条未删除任务。不传范围时只取当前投手自己的。"""
     result = await session.execute(
         _joined(series_present).where(
             UniNativeTask.id == task_id,
-            UniNativeTask.pitcher_user_id == user_id,
+            owner_match(UniNativeTask.pitcher_user_id, user_id, scope),
             UniNativeTask.is_deleted == 0,
         )
     )

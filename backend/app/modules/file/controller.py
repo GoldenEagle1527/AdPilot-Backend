@@ -1,4 +1,4 @@
-"""文件上传 HTTP。不在接口层做菜单鉴权，只认登录态。"""
+"""文件上传 HTTP。要有素材管理里的文件上传菜单。"""
 
 from __future__ import annotations
 
@@ -6,14 +6,15 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, File, UploadFile
 
-from app.core.auth import require_token
 from app.core.envelope import Envelope, success
 from app.modules.file.schema import FileUploadData
 from app.modules.file.service import upload_file
+from app.modules.system_admin import require_menu
 
 router = APIRouter(prefix="/api/v1/files", tags=["file"])
 
-PrincipalDep = Annotated[dict[str, Any], Depends(require_token)]
+# 素材管理 / 文件上传
+PrincipalDep = Annotated[dict[str, Any], Depends(require_menu("103"))]
 
 
 @router.post(

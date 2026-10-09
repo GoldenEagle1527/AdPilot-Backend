@@ -14,6 +14,7 @@ from app.modules.material_title.model import MaterialTitle
 from app.modules.material_video.model import MaterialVideo
 from app.modules.material_video.schema import VideoQuery
 from app.modules.material_video.service import video_filters
+from app.modules.system_admin.domain.scope import DataScope, owner_match
 from app.modules.standard_delivery.model import (
     DeliveryAutoRule,
     DeliveryAutoRuleSeries,
@@ -311,12 +312,14 @@ async def page_drafts(
     return [_as_draft_row(item) for item in result.all()], total
 
 
-async def get_draft_row(session: AsyncSession, draft_id: int, user_id: int) -> DraftRow | None:
-    """取当前投手自己的一条未删除草稿。"""
+async def get_draft_row(
+    session: AsyncSession, draft_id: int, user_id: int, scope: DataScope | None = None
+) -> DraftRow | None:
+    """取数据范围内的一条未删除草稿。不传范围时只取当前投手自己的。"""
     result = await session.execute(
         _draft_joined().where(
             DeliveryTaskDraft.id == draft_id,
-            DeliveryTaskDraft.pitcher_user_id == user_id,
+            owner_match(DeliveryTaskDraft.pitcher_user_id, user_id, scope),
             DeliveryTaskDraft.is_deleted == 0,
         )
     )
@@ -425,12 +428,14 @@ async def page_rules(
     return list(result.all()), total
 
 
-async def get_rule_row(session: AsyncSession, rule_id: int, user_id: int) -> RuleRow | None:
-    """取当前投手自己的一条未删除规则。"""
+async def get_rule_row(
+    session: AsyncSession, rule_id: int, user_id: int, scope: DataScope | None = None
+) -> RuleRow | None:
+    """取数据范围内的一条未删除规则。不传范围时只取当前投手自己的。"""
     result = await session.execute(
         _rule_joined().where(
             DeliveryAutoRule.id == rule_id,
-            DeliveryAutoRule.pitcher_user_id == user_id,
+            owner_match(DeliveryAutoRule.pitcher_user_id, user_id, scope),
             DeliveryAutoRule.is_deleted == 0,
         )
     )

@@ -63,6 +63,8 @@ def http_client(session: FakeSession, catalog: FakeUniRobotCatalog | None, *, lo
             "nickname": "测",
             "login_account": "tester",
             "tenant": "agent",
+            "enabled": True,
+            "menu_ids": ["80"],
         }
     if catalog is not None:
         app.dependency_overrides[get_catalog] = lambda: catalog

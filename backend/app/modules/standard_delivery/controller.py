@@ -55,6 +55,7 @@ from app.modules.standard_delivery.service import (
     update_template,
 )
 from app.modules.system_admin.domain.access import effective_menu_ids, user_by_login
+from app.modules.system_admin.domain.scope import resolve_data_scope
 
 router = APIRouter(
     prefix="/api/v1/standard-delivery",
@@ -66,9 +67,12 @@ SessionDep = Annotated[AsyncSession, Depends(get_session)]
 PrincipalDep = Annotated[dict[str, Any], Depends(require_token)]
 
 # 免费 / 付费菜单。模板 45/50，任务 39/46，自动规则 51/52。
+# 产品快照 104、抄到模板 105。模板本身仍按收费模式，不按部门藏。
 TEMPLATE_MENU = {"IAA": "45", "IAP": "50"}
 DRAFT_MENU = {"IAA": "39", "IAP": "46"}
 RULE_MENU = {"IAA": "51", "IAP": "52"}
+MENU_PRODUCT_SNAPSHOT = "104"
+MENU_COPY_SNAPSHOT = "105"
 
 _FORBIDDEN = "已登录但无对应菜单或组件"
 
@@ -99,6 +103,12 @@ async def _allowed(session: AsyncSession, principal: dict[str, Any], mapping: di
 def _require_query_mode(allowed: set[str], charge_mode: str) -> None:
     """列表上的收费模式必须落在已授权的菜单里。"""
     if charge_mode not in allowed:
+        raise ApiError(403, _FORBIDDEN)
+
+
+async def _require_node(session: AsyncSession, principal: dict[str, Any], menu_id: str) -> None:
+    """会话里要有这一个节点。"""
+    if menu_id not in await _granted(session, principal):
         raise ApiError(403, _FORBIDDEN)
 
 
@@ -161,8 +171,8 @@ async def get_product_snapshots(
     principal: PrincipalDep,
     query: Annotated[ProductSnapshotQuery, Query()],
 ) -> dict[str, Any]:
-    """列出可抄到标准模板的产品快照。"""
-    await _allowed(session, principal, TEMPLATE_MENU)
+    """列出可抄到标准模板的产品快照。快照没有归属人，有菜单即可看全部。"""
+    await _require_node(session, principal, MENU_PRODUCT_SNAPSHOT)
     return success(await list_snapshots(session, query))
 
 
@@ -175,7 +185,7 @@ async def post_product_snapshot(
     body: ProductSnapshotWrite, session: SessionDep, principal: PrincipalDep
 ) -> dict[str, Any]:
     """保存名称、主图、卖点和行动号召。不连厂商。"""
-    await _allowed(session, principal, TEMPLATE_MENU)
+    await _require_node(session, principal, MENU_PRODUCT_SNAPSHOT)
     return success(await create_snapshot(session, body))
 
 
@@ -187,7 +197,8 @@ async def post_product_snapshot(
 async def post_copy_product_snapshot(
     template_id: int, body: ProductSnapshotCopy, session: SessionDep, principal: PrincipalDep
 ) -> dict[str, Any]:
-    """只覆盖产品名称、主图、卖点和行动号召。"""
+    """只覆盖产品名称、主图、卖点和行动号召。还要有目标模板的免费或付费菜单。"""
+    await _require_node(session, principal, MENU_COPY_SNAPSHOT)
     allowed = await _allowed(session, principal, TEMPLATE_MENU)
     return success(await copy_snapshot_onto_template(session, template_id, body.snapshot_id, allowed))
 
@@ -213,9 +224,10 @@ async def get_task_drafts(
     principal: PrincipalDep,
     query: Annotated[DraftQuery, Query()],
 ) -> dict[str, Any]:
-    """只列出当前投手自己的草稿。"""
+    """仅本人看自己的草稿；勾了部门则看这些部门里投手的。改删仍只动自己的。"""
     _require_query_mode(await _allowed(session, principal, DRAFT_MENU), query.charge_mode)
-    return success(await list_drafts(session, query, _user_id(principal)))
+    scope = await resolve_data_scope(session, principal)
+    return success(await list_drafts(session, query, _user_id(principal), scope))
 
 
 @router.get(
@@ -224,9 +236,10 @@ async def get_task_drafts(
     summary="查询一条投放任务草稿",
 )
 async def get_one_task_draft(draft_id: int, session: SessionDep, principal: PrincipalDep) -> dict[str, Any]:
-    """取自己的一条草稿。"""
+    """取数据范围内的一条草稿。改删提交仍只动自己的。"""
     allowed = await _allowed(session, principal, DRAFT_MENU)
-    return success(await get_draft(session, draft_id, _user_id(principal), allowed))
+    scope = await resolve_data_scope(session, principal)
+    return success(await get_draft(session, draft_id, _user_id(principal), allowed, scope))
 
 
 @router.post("/task-drafts", response_model=Envelope[DraftItem], summary="新增投放任务草稿")
@@ -283,9 +296,10 @@ async def get_auto_rules(
     principal: PrincipalDep,
     query: Annotated[RuleQuery, Query()],
 ) -> dict[str, Any]:
-    """只列出当前投手自己的规则。"""
+    """仅本人看自己的规则；勾了部门则看这些部门里投手的。改删仍只动自己的。"""
     _require_query_mode(await _allowed(session, principal, RULE_MENU), query.charge_mode)
-    return success(await list_rules(session, query, _user_id(principal)))
+    scope = await resolve_data_scope(session, principal)
+    return success(await list_rules(session, query, _user_id(principal), scope))
 
 
 @router.get(
@@ -294,9 +308,10 @@ async def get_auto_rules(
     summary="查询一条自动投放规则",
 )
 async def get_one_auto_rule(rule_id: int, session: SessionDep, principal: PrincipalDep) -> dict[str, Any]:
-    """取自己的一条规则。"""
+    """取数据范围内的一条规则。改删仍只动自己的。"""
     allowed = await _allowed(session, principal, RULE_MENU)
-    return success(await get_rule(session, rule_id, _user_id(principal), allowed))
+    scope = await resolve_data_scope(session, principal)
+    return success(await get_rule(session, rule_id, _user_id(principal), allowed, scope))
 
 
 @router.post("/auto-rules", response_model=Envelope[RuleItem], summary="新增自动投放规则")

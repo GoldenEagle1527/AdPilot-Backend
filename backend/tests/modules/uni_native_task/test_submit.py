@@ -184,6 +184,9 @@ class HttpTests(unittest.TestCase):
                 "nickname": "投手",
                 "login_account": "pitcher",
                 "tenant": "agent",
+                "enabled": True,
+                "menu_ids": ["56"],
+                "data_scope": {"self_only": True, "department_ids": []},
             }
         return TestClient(app)
 

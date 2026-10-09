@@ -49,6 +49,7 @@ from app.modules.oceanengine.service import (
 from app.modules.system_admin import require_menu
 from app.modules.system_admin.deps import SessionDep
 from app.modules.system_admin.domain.access import effective_menu_ids, user_by_login
+from app.modules.system_admin.domain.scope import resolve_data_scope
 
 router = APIRouter(prefix="/api/v1/oceanengine", tags=["oceanengine"])
 
@@ -123,10 +124,14 @@ async def get_advertisers(
     principal: MenuAdvertiser,
     query: Annotated[AdvertiserQuery, Query()],
 ) -> dict[str, Any]:
-    """有菜单 63 看全部含失效户；只有 32 时 only_user_id 为当前用户。"""
-    only_user_id = await _advertiser_only_user_id(session, principal)
-    scoped = query.model_copy(update={"only_user_id": only_user_id})
-    data = await list_advertisers(session, scoped)
+    """有菜单 63 时按部门数据范围看户（仅本人则只看自己的，未分配户在勾了部门时可见）。只有 32 时只看自己的有效户。"""
+    if "63" in await _granted_menu_ids(session, principal):
+        scope = await resolve_data_scope(session, principal)
+        data = await list_advertisers(session, query, scope, org_wide=True)
+    else:
+        only_user_id = await _advertiser_only_user_id(session, principal)
+        scoped = query.model_copy(update={"only_user_id": only_user_id})
+        data = await list_advertisers(session, scoped)
     await session.commit()
     return success(data)
 
