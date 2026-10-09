@@ -14,6 +14,7 @@ from app.modules.standard_delivery.model import (
     AudienceDistrict,
     BidType,
     ChargeMode,
+    LibraryKind,
     OceanDeliveryMode,
     OperationStatus,
     OptimizeGoal,
@@ -77,11 +78,9 @@ def _check_delivery_schedule(
 def _check_template_extras(
     district: AudienceDistrict | None,
     city_codes: list[int],
-    product_library_id: int | None,
-    product_select: ProductSelect | None,
     product_image_id: str | None,
 ) -> str | None:
-    """地域和城市成对。商品库和选择方式成对。主图只收 img- 号。"""
+    """地域和城市成对。商品库类型和选择方式各自可空。主图只收 img- 号。"""
     if any(code <= 0 for code in city_codes):
         raise ValueError("城市编码须为正整数")
     if len(city_codes) != len(set(city_codes)):
@@ -94,8 +93,6 @@ def _check_template_extras(
             raise ValueError("不限地域不能填写城市")
     elif not city_codes:
         raise ValueError("按行政区域划分须选择城市")
-    if (product_library_id is None) ^ (product_select is None):
-        raise ValueError("商品库和商品选择须同时填写")
     if product_image_id is None:
         return None
     image_id = product_image_id.strip()
@@ -159,9 +156,11 @@ class TemplateWrite(BaseModel):
     district: AudienceDistrict | None = Field(None, description="用户定向地域：NONE 不限、REGION 行政区域")
     city_codes: list[int] = Field(default_factory=list, max_length=200, description="城市编码。不限时不传或空数组")
     project_budget: Money | None = Field(None, description="项目预算，单位元。标准模板可保存")
-    product_library_id: int | None = Field(None, description="商品库 id，product_library.id。视频库或小说库")
+    library_kind: LibraryKind | None = Field(
+        None, description="商品库类型：video 视频库、novel 小说库。不选具体商品库行，可以不填"
+    )
     product_select: ProductSelect | None = Field(
-        None, description="商品选择：this_series 本剧、other_series 非本剧、manual 手动选择"
+        None, description="商品选择：this_series 本剧、other_series 非本剧、manual 手动选择。可以不填，不和商品库类型成对"
     )
     material_boost: bool = Field(False, description="素材一键起量。产品说明没有这一项，不传则为关")
     promotion_operation: OperationStatus | None = Field(None, description="广告开关：ENABLE 或 DISABLE。不是项目开关")
@@ -184,8 +183,6 @@ class TemplateWrite(BaseModel):
         self.product_image_id = _check_template_extras(
             self.district,
             list(self.city_codes),
-            self.product_library_id,
-            self.product_select,
             self.product_image_id,
         )
         return self
@@ -217,8 +214,12 @@ class TemplateUpdate(BaseModel):
     district: AudienceDistrict | None = Field(None, description="用户定向地域：NONE 或 REGION")
     city_codes: list[int] = Field(default_factory=list, max_length=200, description="城市编码。不限时为空")
     project_budget: Money | None = Field(None, description="项目预算，单位元")
-    product_library_id: int | None = Field(None, description="商品库 id")
-    product_select: ProductSelect | None = Field(None, description="this_series、other_series、manual")
+    library_kind: LibraryKind | None = Field(
+        None, description="商品库类型：video 视频库、novel 小说库。不选具体商品库行，可以不填"
+    )
+    product_select: ProductSelect | None = Field(
+        None, description="this_series、other_series、manual。可以不填，不和商品库类型成对"
+    )
     material_boost: bool = Field(False, description="素材一键起量。不传则为关")
     promotion_operation: OperationStatus | None = Field(None, description="广告开关 ENABLE 或 DISABLE")
     douyin_account_id: int | None = Field(None, description="一个已启用的标准抖音号 id")
@@ -236,8 +237,6 @@ class TemplateUpdate(BaseModel):
         self.product_image_id = _check_template_extras(
             self.district,
             list(self.city_codes),
-            self.product_library_id,
-            self.product_select,
             self.product_image_id,
         )
         return self
@@ -270,7 +269,7 @@ class TemplateItem(BaseModel):
     district: str | None
     city_codes: list[int]
     project_budget: str | None
-    product_library_id: str | None
+    library_kind: str | None
     product_select: str | None
     material_boost: bool
     promotion_operation: str | None

@@ -1,14 +1,14 @@
 # 契约：create-template
 
 业务id：standard-delivery
-文档版本：3
+文档版本：4
 方法：POST
 路径：/api/v1/standard-delivery/templates
 作用：新增一条标准投放模板。写入确认提交要用的巨量字段。不向巨量提交。全域模板不收这些字段。
 
 作者：
 状态：draft
-更新日期：2026-10-08
+更新日期：2026-10-09
 
 ## 请求
 
@@ -37,8 +37,8 @@
 | district | body | string \| null | 否 | `NONE` 不限、`REGION` 行政区域。不限不能带 `city_codes` |
 | city_codes | body | integer[] | 否 | 城市编码。`REGION` 时至少 1 个，不重复。不传为空数组 |
 | project_budget | body | number \| null | 否 | 项目预算，单位元，大于 0。不要传 `roi_coefficient` |
-| product_library_id | body | integer \| null | 否 | `product_library.id`。须未删除，类型是视频库或小说库。与 `product_select` 成对 |
-| product_select | body | string \| null | 否 | `this_series` 本剧、`other_series` 非本剧、`manual` 手动选择 |
+| library_kind | body | string \| null | 否 | `video` 视频库、`novel` 小说库。只记账户管理里的库类型，不选某一行 `product_library`。可以不填 |
+| product_select | body | string \| null | 否 | `this_series` 本剧、`other_series` 非本剧、`manual` 手动选择。可以不填。不要求和 `library_kind` 成对 |
 | material_boost | body | boolean | 否 | 素材一键起量。产品说明没有这一项，不传为 `false` |
 | promotion_operation | body | string \| null | 否 | 广告开关 `ENABLE` 或 `DISABLE`。不是项目开关 |
 | douyin_account_id | body | integer \| null | 否 | 一个已启用的标准抖音号。不写全域投手分配表 |
@@ -86,9 +86,7 @@
 | 400 | `出价面板不在该主体上：…` | 选项不是主体面板拆出来的 |
 | 409 | `模板名称已存在` | 同一收费模式下重名 |
 | 400 | `抖音号不是已启用的标准号` | `douyin_account_id` 不是已启用的标准号 |
-| 404 | `商品库不存在` | `product_library_id` 不存在或已软删 |
-| 400 | `商品库类型须为视频库或小说库` | 商品库类型不是 video 或 novel |
-| 422 | `name: ...` | 名称空白、超长、枚举不认识、面板重复、广告条数越界、多传字段 |
+| 422 | `name: ...` | 名称空白、超长、枚举不认识、面板重复、广告条数越界、多传字段。不收 `product_library_id` |
 
 ## 被谁调用
 
@@ -100,6 +98,7 @@
 
 | 日期 | 文档版本 | 破坏？ | 变更 | 作者 |
 | --- | --- | --- | --- | --- |
+| 2026-10-09 | 4 | 是 | 不再接收 `product_library_id`。改为可选 `library_kind`（`video` / `novel`）。`product_select` 可单独填写，不再和商品库成对 | |
 | 2026-10-08 | 3 | 否 | 可保存广告位置、定向、项目预算、商品策略、素材起量开关、广告状态、抖音号、产品主图、标题选择模式。不传仍能保存旧字段 | |
 | 2026-10-08 | 2 | 是 | 新增必填的巨量投放模式、竞价、投放时间、广告来源、产品名称、每广告视频数和标题数。旧请求缺这些字段会 422。快照见 [_history/create-template-v1.md](_history/create-template-v1.md) | |
 | 2026-09-29 | 1 | 否 | 初稿 | |

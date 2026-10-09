@@ -8,6 +8,7 @@ from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
+from unittest.mock import AsyncMock, patch
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -23,7 +24,7 @@ from app.modules.oceanengine.runtime import install_ocean_client
 from app.modules.standard_delivery.controller import router
 from app.modules.standard_delivery.crud import SeriesBrief
 from app.modules.standard_delivery.model import DeliveryTaskDraft, DeliveryTemplate
-from app.modules.standard_delivery.submit import slice_materials, submit_draft, submit_loaded
+from app.modules.standard_delivery.submit import libraries_for_kind, slice_materials, submit_draft, submit_loaded
 
 BACKEND = Path(__file__).resolve().parents[3]
 CREATED = datetime(2026, 10, 8, 6, 0, tzinfo=BEIJING)
@@ -475,6 +476,63 @@ class HttpTests(unittest.TestCase):
         hidden = self._client(Empty()).post("/api/v1/standard-delivery/task-drafts/40/submit")
         self.assertEqual(hidden.status_code, 404)
         self.assertEqual(hidden.json()["message"], "投放草稿不存在")
+
+
+class LibraryResolveTests(unittest.TestCase):
+    def test_kind_resolves_the_pitcher_library_for_that_org(self) -> None:
+        """有库类型时按投手、账户组织和类型选库，不读模板上的商品库行。"""
+        library = _library()
+
+        async def run() -> dict[int, ProductLibrary]:
+            with (
+                patch(
+                    "app.modules.standard_delivery.submit.choose_library",
+                    new=AsyncMock(return_value=6),
+                ) as choose,
+                patch(
+                    "app.modules.standard_delivery.submit.get_library_by_id",
+                    new=AsyncMock(return_value=library),
+                ) as getter,
+            ):
+                found = await libraries_for_kind(
+                    object(),
+                    user_id=3,
+                    library_kind="novel",
+                    accounts=[_account(90001, 31)],
+                )
+            choose.assert_awaited_once()
+            self.assertEqual(choose.await_args.args[1:], (3, 1, "novel"))
+            getter.assert_awaited_once()
+            self.assertEqual(getter.await_args.args[1], 6)
+            return found
+
+        found = asyncio.run(run())
+        self.assertIs(found[90001], library)
+
+    def test_missing_kind_does_not_invent_a_library(self) -> None:
+        """类型没填时直接拒绝，不去挑一个库。"""
+        with (
+            patch("app.modules.standard_delivery.submit.choose_library", new=AsyncMock()) as choose,
+            self.assertRaises(ApiError) as caught,
+        ):
+            asyncio.run(
+                libraries_for_kind(
+                    object(),
+                    user_id=3,
+                    library_kind="",
+                    accounts=[_account(90001, 31)],
+                )
+            )
+        self.assertEqual(caught.exception.status_code, 404)
+        self.assertEqual(caught.exception.message, "商品库不存在")
+        choose.assert_not_awaited()
+
+    def test_submit_ignores_template_library_row_and_theater_links(self) -> None:
+        """确认提交不读模板商品库行，专辑链接也不抄剧场推广链。"""
+        text = (BACKEND / "app" / "modules" / "standard_delivery" / "submit.py").read_text(encoding="utf-8")
+        self.assertNotIn("template.product_library_id", text)
+        self.assertNotIn("promotion_url", text)
+        self.assertIn("draft.album_url", text)
 
 
 class IsolationTests(unittest.TestCase):

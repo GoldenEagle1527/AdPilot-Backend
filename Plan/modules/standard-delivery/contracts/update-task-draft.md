@@ -18,7 +18,7 @@
 | draft_id | path | integer | 是 | 草稿 id |
 | body | body | object | 是 | 字段与 [create-task-draft.md](create-task-draft.md) 相同 |
 
-仍然只有一个 `douyin_account_id`，可以不传。正文须带 `album_url` 和 `project_operation`。广告开关、版位、项目预算、商品库可以不传，确认提交用模板。不收 `asset_ids`。
+仍然只有一个 `douyin_account_id`，可以不传。正文须带 `album_url` 和 `project_operation`。广告开关、版位、项目预算、商品库可以不传。商品库不传时，确认提交按模板 `library_kind` 解析，不读模板上的商品库行。不收 `asset_ids`。
 
 ## 响应
 

@@ -22,7 +22,6 @@ from app.modules.material_video.model import MaterialVideo
 from app.modules.standard_delivery.crud import (
     accounts_by_drafts,
     get_draft_row,
-    get_library_by_id,
     get_library_by_no,
     get_rule_row,
     get_series,
@@ -169,7 +168,7 @@ def template_item(row: DeliveryTemplate, subject_name: str) -> dict[str, Any]:
         "district": row.district,
         "city_codes": [int(code) for code in (row.city_codes or [])],
         "project_budget": None if row.project_budget is None else _money(row.project_budget),
-        "product_library_id": None if row.product_library_id is None else str(row.product_library_id),
+        "library_kind": row.library_kind,
         "product_select": row.product_select,
         "material_boost": bool(row.material_boost),
         "promotion_operation": row.promotion_operation,
@@ -200,7 +199,8 @@ def _apply_standard_template(row: DeliveryTemplate, body: TemplateWrite | Templa
     row.placement = None if body.placement is None else str(body.placement)
     row.district = None if body.district is None else str(body.district)
     row.city_codes = list(body.city_codes) or None
-    row.product_library_id = body.product_library_id
+    row.product_library_id = None
+    row.library_kind = None if body.library_kind is None else str(body.library_kind)
     row.product_select = None if body.product_select is None else str(body.product_select)
     row.material_boost = bool(body.material_boost)
     row.promotion_operation = None if body.promotion_operation is None else str(body.promotion_operation)
@@ -253,18 +253,12 @@ async def get_template(session: AsyncSession, template_id: int, allowed: set[str
 
 
 async def _require_template_links(session: AsyncSession, body: TemplateWrite | TemplateUpdate) -> None:
-    """标准抖音号和商品库都要真实存在。商品库只收视频库或小说库。"""
-    if body.douyin_account_id is not None:
-        douyin = await get_standard_douyin(session, body.douyin_account_id)
-        if douyin is None:
-            raise ApiError(400, "抖音号不是已启用的标准号")
-    if body.product_library_id is None:
+    """标准抖音号要真实存在。商品库类型只记 video 或 novel，不查某一行商品库。"""
+    if body.douyin_account_id is None:
         return
-    library = await get_library_by_id(session, body.product_library_id)
-    if library is None:
-        raise ApiError(404, "商品库不存在")
-    if library.library_kind not in ("video", "novel"):
-        raise ApiError(400, "商品库类型须为视频库或小说库")
+    douyin = await get_standard_douyin(session, body.douyin_account_id)
+    if douyin is None:
+        raise ApiError(400, "抖音号不是已启用的标准号")
 
 
 async def create_template(session: AsyncSession, body: TemplateWrite, allowed: set[str]) -> dict[str, Any]:

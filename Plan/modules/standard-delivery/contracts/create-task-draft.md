@@ -29,7 +29,7 @@
 | project_budget | body | number \| null | 否 | 项目预算，元，大于 0，最多两位小数。不传则确认提交用模板 |
 | ad_budget | body | number | 是 | 广告预算，元，大于 0，最多两位小数 |
 | optimize_goal | body | string | 是 | 免费只能 `AD_CONVERT_TYPE_ACTIVE`，付费只能 `AD_CONVERT_TYPE_PAY` |
-| library_no | body | integer \| null | 否 | `product_library.library_no`。标准库须已分给当前投手；兜底库可用。不传则确认提交用模板上的商品库 |
+| library_no | body | integer \| null | 否 | `product_library.library_no`。标准库须已分给当前投手；兜底库可用。不传则确认提交按模板 `library_kind` 解析，不读模板上的商品库行 |
 | album_url | body | string | 是 | 手填的短剧专辑链接，一条 `http` 或 `https`。不是剧场推广链 |
 | project_operation | body | string | 是 | 项目开关：`ENABLE` 或 `DISABLE` |
 | promotion_operation | body | string \| null | 否 | 广告开关：`ENABLE` 或 `DISABLE`。不传则确认提交用模板上的广告状态 |

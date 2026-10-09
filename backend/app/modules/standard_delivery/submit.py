@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.envelope import ApiError
 from app.core.times import beijing_now
+from app.modules.account.commands import choose_library
 from app.modules.account.model import AdvertiserAccount, DeliverySubject, DouyinAccount, ProductLibrary
 from app.modules.material_title.model import MaterialTitle
 from app.modules.material_video.model import MaterialVideo
@@ -291,11 +292,13 @@ async def submit_loaded(
     accounts: list[AdvertiserAccount],
     videos: list[MaterialVideo],
     titles: list[MaterialTitle],
+    libraries: dict[int, ProductLibrary] | None = None,
 ) -> dict[str, Any]:
     """按账户建项目，再按模板的条数切广告。不改模板的 delivery_mode。
 
     草稿没写的版位、项目预算、广告开关用模板。定向、商品选择方式、主图和标题模式只在模板上。
-    草稿上的标题列表视为对标题模式的覆盖。专辑链接仍只用草稿的 album_url。
+    草稿上的标题列表视为对标题模式的覆盖。专辑链接仍只用草稿的 album_url，不抄剧场推广链。
+    libraries 按巨量广告主 id 给每个账户自己的商品库；不传则全部用 library。
     """
     _reject_unready(template, draft)
     placement = _picked_placement(draft, template)
@@ -316,11 +319,12 @@ async def submit_loaded(
     built: list[dict[str, Any]] = []
     for account, promotions in zip(accounts, slices, strict=True):
         advertiser_id = int(account.advertiser_id)
+        chosen = library if libraries is None else libraries[advertiser_id]
         product = await upload_product(
             session,
             ProductCreate(
                 advertiser_id=advertiser_id,
-                library_no=int(library.library_no),
+                library_no=int(chosen.library_no),
                 book_name=series.book_name,
             ),
         )
@@ -335,7 +339,7 @@ async def submit_loaded(
             draft=draft,
             template=template,
             douyin=douyin,
-            library=library,
+            library=chosen,
             product_id=int(product["product_id"]),
             placement=placement,
             budget=budget,
@@ -392,6 +396,32 @@ async def submit_loaded(
     return {"id": str(draft.id), "aweme_id": douyin.aweme_id, "accounts": built}
 
 
+async def libraries_for_kind(
+    session: AsyncSession,
+    *,
+    user_id: int,
+    library_kind: str,
+    accounts: list[AdvertiserAccount],
+) -> dict[int, ProductLibrary]:
+    """按账户所属组织解析商品库。先用该投手这个类型的标准库，没有再用该组织的兜底库。"""
+    if library_kind not in ("video", "novel"):
+        raise ApiError(404, "商品库不存在")
+    if not accounts:
+        raise ApiError(404, "商品库不存在")
+    resolved: dict[int, ProductLibrary] = {}
+    cache: dict[int, ProductLibrary] = {}
+    for account in accounts:
+        org_id = int(account.organization_id)
+        if org_id not in cache:
+            library_id = await choose_library(session, user_id, org_id, library_kind)
+            found = await get_library_by_id(session, library_id)
+            if found is None:
+                raise ApiError(404, "商品库不存在")
+            cache[org_id] = found
+        resolved[int(account.advertiser_id)] = cache[org_id]
+    return resolved
+
+
 async def submit_draft(
     session: AsyncSession, draft_id: int, user_id: int, allowed: set[str]
 ) -> dict[str, Any]:
@@ -408,15 +438,28 @@ async def submit_draft(
         douyin = await get_standard_douyin(session, int(template.douyin_account_id))
         if douyin is None:
             raise ApiError(400, "抖音号不是已启用的标准号")
-    if library is None:
-        if template.product_library_id is None:
-            raise ApiError(404, "商品库不存在")
-        library = await get_library_by_id(session, int(template.product_library_id))
-        if library is None:
-            raise ApiError(404, "商品库不存在")
     accounts = (await accounts_by_drafts(session, [draft.id])).get(draft.id, [])
     videos = (await videos_by_drafts(session, [draft.id])).get(draft.id, [])
     titles = (await titles_by_drafts(session, [draft.id])).get(draft.id, [])
+    libraries: dict[int, ProductLibrary] | None = None
+    if library is None:
+        kind = template.library_kind
+        if kind not in ("video", "novel"):
+            raise ApiError(404, "商品库不存在")
+        libraries = await libraries_for_kind(
+            session, user_id=user_id, library_kind=kind, accounts=accounts
+        )
+        library = next(iter(libraries.values()))
     return await submit_loaded(
-        session, draft, template, subject, douyin, series, library, accounts, videos, titles
+        session,
+        draft,
+        template,
+        subject,
+        douyin,
+        series,
+        library,
+        accounts,
+        videos,
+        titles,
+        libraries,
     )

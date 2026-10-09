@@ -44,7 +44,7 @@
 | project_budget | string \| null | 项目预算，元，两位小数。空表示用模板 |
 | ad_budget | string | 广告预算，元，两位小数 |
 | optimize_goal | string | 免费 `AD_CONVERT_TYPE_ACTIVE`，付费 `AD_CONVERT_TYPE_PAY` |
-| product_library_id | string \| null | 商品库行 id。空表示用模板 |
+| product_library_id | string \| null | 草稿上的商品库行 id。空表示确认提交按模板 `library_kind` 解析 |
 | library_no | integer \| null | 巨量商品库 id |
 | library_name | string \| null | 商品库名称 |
 | album_url | string \| null | 手填的短剧专辑链接，一条。不是剧场推广链 |

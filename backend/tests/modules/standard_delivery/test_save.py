@@ -25,7 +25,14 @@ from app.modules.standard_delivery.crud import (
     visible_videos_stmt,
 )
 from app.modules.standard_delivery.model import DeliveryTaskAccount, DeliveryTaskDraft, DeliveryTemplate
-from app.modules.standard_delivery.schema import DraftQuery, DraftWrite, RuleWrite, TemplateQuery, TemplateWrite
+from app.modules.standard_delivery.schema import (
+    DraftQuery,
+    DraftWrite,
+    RuleWrite,
+    TemplateQuery,
+    TemplateUpdate,
+    TemplateWrite,
+)
 from app.modules.uni_template.schema import TemplateWrite as UniTemplateWrite
 from app.modules.standard_delivery.service import (
     create_draft,
@@ -41,6 +48,9 @@ ALLOWED = {"IAA", "IAP"}
 MIGRATION = Path(__file__).resolve().parents[3] / "alembic" / "versions" / "20261008_01_standard_submit_fields.py"
 FIELDS_MIGRATION = (
     Path(__file__).resolve().parents[3] / "alembic" / "versions" / "20261008_04_standard_template_fields.py"
+)
+KIND_MIGRATION = (
+    Path(__file__).resolve().parents[3] / "alembic" / "versions" / "20261009_01_template_library_kind.py"
 )
 _TEMPLATE_FIELDS = {
     "ocean_delivery_mode": "MANUAL",
@@ -195,6 +205,44 @@ class BodyTests(unittest.TestCase):
     def test_template_name_is_stripped(self) -> None:
         """模板名称去首尾空白。"""
         self.assertEqual(template_body().name, "免费模板")
+
+    def test_product_select_alone_is_accepted(self) -> None:
+        """只填商品选择、不填商品库类型，不再要求成对。"""
+        body = template_body(product_select="this_series")
+        self.assertEqual(body.product_select, "this_series")
+        self.assertIsNone(body.library_kind)
+        self.assertFalse(hasattr(body, "product_library_id"))
+
+    def test_library_kind_alone_is_accepted(self) -> None:
+        """只填视频库或小说库，商品选择可以空着。"""
+        body = template_body(library_kind="novel")
+        self.assertEqual(body.library_kind, "novel")
+        self.assertIsNone(body.product_select)
+
+    def test_product_fields_can_both_be_omitted(self) -> None:
+        """商品库类型和商品选择都可以不填。"""
+        body = template_body()
+        self.assertIsNone(body.library_kind)
+        self.assertIsNone(body.product_select)
+
+    def test_unknown_library_kind_is_rejected(self) -> None:
+        """商品库类型只收视频库和小说库。"""
+        with self.assertRaises(ValidationError) as caught:
+            template_body(library_kind="drama")
+        self.assertNotIn("商品库和商品选择须同时填写", str(caught.exception))
+
+    def test_update_accepts_product_select_without_a_library_row(self) -> None:
+        """整表保存只带商品选择时通过校验，不再 422。"""
+        body = TemplateUpdate(
+            name="免费模板",
+            subject_id=7,
+            ads_per_account=2,
+            product_select="this_series",
+            **_TEMPLATE_FIELDS,
+        )
+        self.assertEqual(body.product_select, "this_series")
+        self.assertIsNone(body.library_kind)
+        self.assertFalse(hasattr(body, "product_library_id"))
 
     def test_one_douyin_rejects_a_list(self) -> None:
         """一次任务只有一个抖音号，传数组直接拒。"""
@@ -386,6 +434,16 @@ class FilterTests(unittest.TestCase):
         self.assertIn("aigc_dynamic_creative IS NULL", text)
         self.assertIn("AND title_select_mode IS NULL", text)
 
+    def test_library_kind_revision_follows_the_template_fields(self) -> None:
+        """新修订接在标准模板字段后面。类型可空，不再把商品库行和选择绑成一对。"""
+        text = KIND_MIGRATION.read_text(encoding="utf-8")
+        upgrade = text.split("def upgrade", 1)[1].split("def downgrade", 1)[0]
+        self.assertIn('revision: str = "20261009_01"', text)
+        self.assertIn('down_revision: Union[str, None] = "20261008_04"', text)
+        self.assertIn("library_kind", upgrade)
+        self.assertNotIn("product_library_id IS NULL AND product_select IS NULL", upgrade)
+        self.assertNotIn("nullable=False", upgrade)
+
     def test_advertisers_belong_to_the_current_pitcher(self) -> None:
         """账户下拉只取当前投手名下仍然有效的户。"""
         sql = str(owned_advertisers_stmt([90001], 3).compile(compile_kwargs={"literal_binds": True}))
@@ -448,15 +506,7 @@ class CreateTemplateTests(unittest.TestCase):
         """版位、定向、预算、商品策略、广告状态、抖音号、主图和标题模式落在标准行上。"""
         douyin = DouyinAccount(aweme_id="aweme-1", name="标准号", delivery_mode="standard", enabled=True)
         douyin.id = 4
-        library = ProductLibrary(
-            name="视频库",
-            library_no=77001,
-            library_kind="video",
-            organization_id=1,
-            library_role="fallback",
-        )
-        library.id = 6
-        session = FakeSession([[make_subject()], [], [douyin], [library]])
+        session = FakeSession([[make_subject()], [], [douyin]])
         item = asyncio.run(
             create_template(
                 session,
@@ -465,8 +515,8 @@ class CreateTemplateTests(unittest.TestCase):
                     district="REGION",
                     city_codes=[110000],
                     project_budget="300.50",
-                    product_library_id=6,
-                    product_select="this_series",
+                    library_kind="video",
+                    product_select="manual",
                     material_boost=True,
                     promotion_operation="ENABLE",
                     douyin_account_id=4,
@@ -480,8 +530,9 @@ class CreateTemplateTests(unittest.TestCase):
         self.assertEqual(item["district"], "REGION")
         self.assertEqual(item["city_codes"], [110000])
         self.assertEqual(item["project_budget"], "300.50")
-        self.assertEqual(item["product_library_id"], "6")
-        self.assertEqual(item["product_select"], "this_series")
+        self.assertEqual(item["library_kind"], "video")
+        self.assertNotIn("product_library_id", item)
+        self.assertEqual(item["product_select"], "manual")
         self.assertTrue(item["material_boost"])
         self.assertEqual(item["promotion_operation"], "ENABLE")
         self.assertEqual(item["douyin_account_id"], "4")
@@ -489,6 +540,8 @@ class CreateTemplateTests(unittest.TestCase):
         self.assertEqual(item["title_select_mode"], "manual")
         row = session.added[0]
         self.assertEqual(row.project_budget, Decimal("300.50"))
+        self.assertEqual(row.library_kind, "video")
+        self.assertIsNone(row.product_library_id)
         self.assertEqual(row.standard_title_select_mode, "manual")
         self.assertIsNone(row.title_select_mode)
         self.assertIsNone(row.roi_coefficient)

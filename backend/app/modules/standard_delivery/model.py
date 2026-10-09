@@ -68,6 +68,13 @@ class ProductSelect(StrEnum):
     MANUAL = "manual"
 
 
+class LibraryKind(StrEnum):
+    """商品库类型。模板只记视频库或小说库，不记某一行商品库。"""
+
+    VIDEO = "video"
+    NOVEL = "novel"
+
+
 class OceanDeliveryMode(StrEnum):
     """巨量创建项目的投放模式。不是本表的 delivery_mode。"""
 
@@ -137,9 +144,8 @@ _STANDARD_EXTRAS = (
     "AND (district IS DISTINCT FROM 'NONE' OR city_codes IS NULL OR cardinality(city_codes) = 0) "
     "AND (district IS DISTINCT FROM 'REGION' OR (city_codes IS NOT NULL AND cardinality(city_codes) > 0)) "
     "AND (project_budget IS NULL OR (project_budget > 0 AND project_budget <= 99999999.99)) "
+    "AND (library_kind IS NULL OR library_kind IN ('video', 'novel')) "
     "AND (product_select IS NULL OR product_select IN ('this_series', 'other_series', 'manual')) "
-    "AND ((product_library_id IS NULL AND product_select IS NULL) "
-    "OR (product_library_id IS NOT NULL AND product_select IS NOT NULL)) "
     "AND (promotion_operation IS NULL OR promotion_operation IN ('ENABLE', 'DISABLE')) "
     "AND (product_image_id IS NULL OR (product_image_id LIKE 'img-%' AND char_length(product_image_id) BETWEEN 5 AND 64)) "
     "AND (standard_title_select_mode IS NULL OR standard_title_select_mode IN ('manual', 'auto'))"
@@ -150,6 +156,7 @@ _UNI_EXTRAS_EMPTY = (
     "AND district IS NULL "
     "AND city_codes IS NULL "
     "AND product_library_id IS NULL "
+    "AND library_kind IS NULL "
     "AND product_select IS NULL "
     "AND material_boost IS NULL "
     "AND promotion_operation IS NULL "
@@ -340,7 +347,12 @@ class DeliveryTemplate(BaseModel):
         Integer,
         ForeignKey("product_library.id", ondelete="RESTRICT"),
         nullable=True,
-        comment="商品库 id。视频库或小说库。仅标准模板",
+        comment="遗留列，可空。模板页不选具体商品库，写入接口不收这个 id。仅标准模板",
+    )
+    library_kind: Mapped[str | None] = mapped_column(
+        String(16),
+        nullable=True,
+        comment="商品库类型：video 视频库、novel 小说库。不存具体商品库行。仅标准模板",
     )
     product_select: Mapped[str | None] = mapped_column(
         String(16),

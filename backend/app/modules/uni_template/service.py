@@ -116,6 +116,7 @@ def _clear_standard_only(row: DeliveryTemplate) -> None:
     row.district = None
     row.city_codes = None
     row.product_library_id = None
+    row.library_kind = None
     row.product_select = None
     row.material_boost = None
     row.promotion_operation = None
