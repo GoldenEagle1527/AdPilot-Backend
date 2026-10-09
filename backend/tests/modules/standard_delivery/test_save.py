@@ -52,6 +52,9 @@ FIELDS_MIGRATION = (
 KIND_MIGRATION = (
     Path(__file__).resolve().parents[3] / "alembic" / "versions" / "20261009_01_template_library_kind.py"
 )
+AUDIENCE_MIGRATION = (
+    Path(__file__).resolve().parents[3] / "alembic" / "versions" / "20261009_02_template_audience_gender_age.py"
+)
 _TEMPLATE_FIELDS = {
     "ocean_delivery_mode": "MANUAL",
     "bid_type": "CUSTOM",
@@ -348,6 +351,28 @@ class BodyTests(unittest.TestCase):
                 title_select_mode="manual",
                 product_image_id="img-cover",
             )
+        with self.assertRaises(ValidationError):
+            UniTemplateWrite(
+                name="全域甲",
+                subject_id=1,
+                charge_mode="IAA",
+                project_budget="10",
+                roi_coefficient="1.2",
+                aigc_dynamic_creative=False,
+                title_select_mode="manual",
+                gender="male",
+            )
+        with self.assertRaises(ValidationError):
+            UniTemplateWrite(
+                name="全域甲",
+                subject_id=1,
+                charge_mode="IAA",
+                project_budget="10",
+                roi_coefficient="1.2",
+                aigc_dynamic_creative=False,
+                title_select_mode="manual",
+                age_bands=["18_23"],
+            )
 
     def test_standard_template_rejects_uni_only_columns(self) -> None:
         """标准模板不收全域 ROI 系数和 AIGC。标题模式用自己的列。"""
@@ -370,6 +395,27 @@ class BodyTests(unittest.TestCase):
             template_body(product_image_id="cover")
         region = template_body(district="REGION", city_codes=[110000, 310000])
         self.assertEqual(region.city_codes, [110000, 310000])
+
+    def test_gender_defaults_to_none_and_age_bands_reject_duplicates(self) -> None:
+        """不传性别是不限。年龄空数组是不限。重复年龄段直接拒。"""
+        body = template_body()
+        self.assertEqual(body.gender, "none")
+        self.assertEqual(body.age_bands, [])
+        chosen = template_body(gender="female", age_bands=["50_plus", "18_23"])
+        self.assertEqual(chosen.gender, "female")
+        self.assertEqual([str(band) for band in chosen.age_bands], ["50_plus", "18_23"])
+        with self.assertRaises(ValidationError):
+            template_body(age_bands=["18_23", "18_23"])
+        with self.assertRaises(ValidationError):
+            template_body(gender="all")
+        with self.assertRaises(ValidationError):
+            TemplateUpdate(
+                name="免费模板",
+                subject_id=7,
+                ads_per_account=2,
+                age_bands=["24_30", "24_30"],
+                **_TEMPLATE_FIELDS,
+            )
 
 
 class FilterTests(unittest.TestCase):
@@ -443,6 +489,17 @@ class FilterTests(unittest.TestCase):
         self.assertIn("library_kind", upgrade)
         self.assertNotIn("product_library_id IS NULL AND product_select IS NULL", upgrade)
         self.assertNotIn("nullable=False", upgrade)
+
+    def test_audience_revision_follows_library_kind(self) -> None:
+        """性别和年龄接在商品库类型后面。全域行这两列必须为空。"""
+        text = AUDIENCE_MIGRATION.read_text(encoding="utf-8")
+        upgrade = text.split("def upgrade", 1)[1].split("def downgrade", 1)[0]
+        self.assertIn('revision: str = "20261009_02"', text)
+        self.assertIn('down_revision: Union[str, None] = "20261009_01"', text)
+        self.assertIn("gender", upgrade)
+        self.assertIn("age_bands", upgrade)
+        self.assertIn("AND gender IS NULL", text)
+        self.assertIn("AND age_bands IS NULL", text)
 
     def test_advertisers_belong_to_the_current_pitcher(self) -> None:
         """账户下拉只取当前投手名下仍然有效的户。"""
@@ -546,6 +603,23 @@ class CreateTemplateTests(unittest.TestCase):
         self.assertIsNone(row.title_select_mode)
         self.assertIsNone(row.roi_coefficient)
         self.assertIsNone(row.aigc_dynamic_creative)
+
+    def test_gender_and_age_round_trip(self) -> None:
+        """保存男和 18–23、24–30 后，读出的就是这两项。"""
+        session = FakeSession([[make_subject()], []])
+        saved = asyncio.run(
+            create_template(
+                session,
+                template_body(gender="male", age_bands=["18_23", "24_30"]),
+                ALLOWED,
+            )
+        )
+        self.assertEqual(saved["gender"], "male")
+        self.assertEqual(saved["age_bands"], ["18_23", "24_30"])
+        row = session.added[0]
+        self.assertEqual(row.gender, "male")
+        self.assertEqual(row.age_bands, ["18_23", "24_30"])
+        self.assertEqual(row.delivery_mode, "standard")
 
     def test_unknown_standard_douyin_is_rejected(self) -> None:
         """模板上的抖音号必须是已启用的标准号。"""

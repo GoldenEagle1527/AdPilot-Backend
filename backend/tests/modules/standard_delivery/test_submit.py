@@ -435,6 +435,45 @@ class SubmitTests(unittest.TestCase):
         self.assertEqual(result["accounts"][0]["promotions"][0]["operation"], "DISABLE")
         self.assertEqual(project["audience"], {"district": "NONE"})
         self.assertNotIn("city", project["audience"])
+        self.assertNotIn("gender", project["audience"])
+        self.assertNotIn("age", project["audience"])
+
+    def test_gender_and_age_land_on_the_project_audience(self) -> None:
+        """男和两个年龄段写进项目定向。不限的性别和空年龄不传。"""
+        template = _template()
+        template.district = "NONE"
+        template.gender = "male"
+        template.age_bands = ["18_23", "24_30"]
+        _port, _session, _template_row, result = _run(template=template)
+        audience = result["accounts"][0]["project"]["audience"]
+        self.assertEqual(
+            audience,
+            {
+                "district": "NONE",
+                "gender": "GENDER_MALE",
+                "age": ["AGE_BETWEEN_18_23", "AGE_BETWEEN_24_30"],
+            },
+        )
+        skipped = _template()
+        skipped.gender = "none"
+        skipped.age_bands = []
+        _port, _session, _template_row, plain = _run(template=skipped)
+        plain_audience = plain["accounts"][0]["project"]["audience"]
+        self.assertNotIn("gender", plain_audience)
+        self.assertNotIn("age", plain_audience)
+
+    def test_female_and_remaining_age_bands_use_ocean_enums(self) -> None:
+        """女和其余年龄段按巨量枚举写进 audience，不另传不限标记。"""
+        template = _template()
+        template.gender = "female"
+        template.age_bands = ["31_40", "41_49", "50_plus"]
+        _port, _session, _template_row, result = _run(template=template)
+        audience = result["accounts"][0]["project"]["audience"]
+        self.assertEqual(audience["gender"], "GENDER_FEMALE")
+        self.assertEqual(
+            audience["age"],
+            ["AGE_BETWEEN_31_40", "AGE_BETWEEN_41_49", "AGE_ABOVE_50"],
+        )
 
 
 class HttpTests(unittest.TestCase):

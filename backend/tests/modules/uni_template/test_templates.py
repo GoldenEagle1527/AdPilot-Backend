@@ -369,10 +369,16 @@ class HttpTests(unittest.TestCase):
         self.assertEqual(body_json["data"]["douyin_accounts"], [])
 
     def test_extra_field_is_422(self) -> None:
-        """多传字段拒绝。"""
+        """多传字段拒绝。标准模板的性别和年龄也不收。"""
         client = http_client(FakeSession())
         payload = body().model_dump(mode="json")
         payload["ads_per_account"] = 2
         res = client.post(PREFIX, json=payload)
         self.assertEqual(res.status_code, 422)
         self.assertIn("ads_per_account", res.json()["message"])
+        gendered = body().model_dump(mode="json")
+        gendered["gender"] = "male"
+        gendered["age_bands"] = ["18_23", "24_30"]
+        rejected = client.post(PREFIX, json=gendered)
+        self.assertEqual(rejected.status_code, 422)
+        self.assertIn("gender", rejected.json()["message"])

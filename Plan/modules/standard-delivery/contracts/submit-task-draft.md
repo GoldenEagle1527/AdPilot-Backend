@@ -1,7 +1,7 @@
 # 契约：submit-task-draft
 
 业务id：standard-delivery
-文档版本：3
+文档版本：4
 方法：POST
 路径：/api/v1/standard-delivery/task-drafts/{draft_id}/submit
 作用：确认提交当前投手自己的一条草稿。按模板切广告，经已装上的客户端建项目、传商品和主图，并把报文放在返回值里。
@@ -36,7 +36,7 @@
 | project | object | 准备交给创建项目的报文 |
 | promotions | array | 这个账户上的广告报文。视频或标题不够一整块时后面的账户可以是空数组 |
 
-`project.delivery_mode` 取模板的 `ocean_delivery_mode`（`MANUAL` 或 `PROCEDURAL`），不写回模板列 `delivery_mode`。`project.audience`：模板 `district=REGION` 且有城市编码时为 `district=REGION` 加 `city`；否则 `district=NONE`，不带城市。`project.delivery_setting.budget` 用草稿项目预算，草稿没写则用模板 `project_budget`。`project.related_product.product_id` 用本次返回的商品 id。商品库用草稿的库；草稿没写则按模板 `library_kind` 解析，不读模板 `product_library_id`。广告 `operation` 用草稿广告开关，草稿没写则用模板 `promotion_operation`。`promotion_materials.playlet_series_url_list` 只用草稿 `album_url`，不把剧场 IAA 推广链抄进去。
+`project.delivery_mode` 取模板的 `ocean_delivery_mode`（`MANUAL` 或 `PROCEDURAL`），不写回模板列 `delivery_mode`。`project.audience`：模板 `district=REGION` 且有城市编码时为 `district=REGION` 加 `city`；否则 `district=NONE`，不带城市。`gender` 为 `male` 时带 `GENDER_MALE`，`female` 时带 `GENDER_FEMALE`，`none` 或不填则不带 `gender`。`age_bands` 非空时写成 `age`：`18_23`→`AGE_BETWEEN_18_23`，`24_30`→`AGE_BETWEEN_24_30`，`31_40`→`AGE_BETWEEN_31_40`，`41_49`→`AGE_BETWEEN_41_49`，`50_plus`→`AGE_ABOVE_50`。空数组不带 `age`。`project.delivery_setting.budget` 用草稿项目预算，草稿没写则用模板 `project_budget`。`project.related_product.product_id` 用本次返回的商品 id。商品库用草稿的库；草稿没写则按模板 `library_kind` 解析，不读模板 `product_library_id`。广告 `operation` 用草稿广告开关，草稿没写则用模板 `promotion_operation`。`promotion_materials.playlet_series_url_list` 只用草稿 `album_url`，不把剧场 IAA 推广链抄进去。
 
 `promotions[].project_id` 用本账户刚返回的项目 id。`promotion_materials.playlet_series_url_list` 只有草稿的 `album_url` 一条。视频素材带素材库 `material_id`，没有巨量视频号时不补 `video_id`。手动投放且模板有 `roi_goal` 时，ROI 在广告上；付费自动投放时 ROI 在项目的 `delivery_setting.roi_goal`。标准行不读 `roi_coefficient`。
 
@@ -73,6 +73,7 @@
 
 | 日期 | 文档版本 | 破坏？ | 变更 | 作者 |
 | --- | --- | --- | --- | --- |
+| 2026-10-09 | 4 | 否 | 项目 `audience` 在非不限时带上模板的性别和年龄。不限则省略 `gender`、`age` | |
 | 2026-10-09 | 3 | 是 | 草稿没写商品库时按模板 `library_kind` 解析投手标准库或组织兜底库。不再读模板 `product_library_id`。类型为空时不另选库。专辑链接仍只用草稿 | |
 | 2026-10-08 | 2 | 否 | 草稿未覆盖时读取模板的广告位置、定向、项目预算、商品库、广告状态、抖音号、主图。有 `img-` 主图则不再上传。专辑链接仍只用草稿 | |
 | 2026-10-08 | 1 | 否 | 初稿 | |

@@ -11,7 +11,9 @@ from zoneinfo import ZoneInfo
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_validator
 
 from app.modules.standard_delivery.model import (
+    AgeBand,
     AudienceDistrict,
+    AudienceGender,
     BidType,
     ChargeMode,
     LibraryKind,
@@ -101,6 +103,13 @@ def _check_template_extras(
     return image_id
 
 
+def _unique_age_bands(bands: list[AgeBand]) -> list[AgeBand]:
+    """年龄段不重复。空列表表示不限，不另收一个不限标记。"""
+    if len(bands) != len(set(bands)):
+        raise ValueError("年龄段重复")
+    return bands
+
+
 def _pair(start: object, end: object, label: str, *, allow_equal: bool) -> None:
     """上下限必须成对，且下限不超过上限。"""
     if (start is None) ^ (end is None):
@@ -155,6 +164,14 @@ class TemplateWrite(BaseModel):
     )
     district: AudienceDistrict | None = Field(None, description="用户定向地域：NONE 不限、REGION 行政区域")
     city_codes: list[int] = Field(default_factory=list, max_length=200, description="城市编码。不限时不传或空数组")
+    gender: AudienceGender = Field(
+        AudienceGender.NONE, description="用户定向性别：none 不限、male 男、female 女。不传为不限"
+    )
+    age_bands: list[AgeBand] = Field(
+        default_factory=list,
+        max_length=5,
+        description="年龄段：18_23、24_30、31_40、41_49、50_plus。空数组表示不限，不另传不限标记",
+    )
     project_budget: Money | None = Field(None, description="项目预算，单位元。标准模板可保存")
     library_kind: LibraryKind | None = Field(
         None, description="商品库类型：video 视频库、novel 小说库。不选具体商品库行，可以不填"
@@ -185,6 +202,7 @@ class TemplateWrite(BaseModel):
             list(self.city_codes),
             self.product_image_id,
         )
+        self.age_bands = _unique_age_bands(list(self.age_bands))
         return self
 
 
@@ -213,6 +231,12 @@ class TemplateUpdate(BaseModel):
     placement: Placement | None = Field(None, description="广告位置：aweme、aweme_feed、universal")
     district: AudienceDistrict | None = Field(None, description="用户定向地域：NONE 或 REGION")
     city_codes: list[int] = Field(default_factory=list, max_length=200, description="城市编码。不限时为空")
+    gender: AudienceGender = Field(AudienceGender.NONE, description="用户定向性别：none、male、female。不传为不限")
+    age_bands: list[AgeBand] = Field(
+        default_factory=list,
+        max_length=5,
+        description="年龄段。空数组表示不限。不重复，不另传不限标记",
+    )
     project_budget: Money | None = Field(None, description="项目预算，单位元")
     library_kind: LibraryKind | None = Field(
         None, description="商品库类型：video 视频库、novel 小说库。不选具体商品库行，可以不填"
@@ -239,6 +263,7 @@ class TemplateUpdate(BaseModel):
             list(self.city_codes),
             self.product_image_id,
         )
+        self.age_bands = _unique_age_bands(list(self.age_bands))
         return self
 
 
@@ -268,6 +293,8 @@ class TemplateItem(BaseModel):
     placement: str | None
     district: str | None
     city_codes: list[int]
+    gender: str
+    age_bands: list[str]
     project_budget: str | None
     library_kind: str | None
     product_select: str | None

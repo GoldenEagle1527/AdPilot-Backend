@@ -1,4 +1,4 @@
-"""全域模板的入参和出参。多传字段一律 422。"""
+"""全域模板的入参和出参。多传字段一律 422。不收标准模板的 gender、age_bands。"""
 
 from __future__ import annotations
 

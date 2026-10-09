@@ -167,6 +167,8 @@ def template_item(row: DeliveryTemplate, subject_name: str) -> dict[str, Any]:
         "placement": row.placement,
         "district": row.district,
         "city_codes": [int(code) for code in (row.city_codes or [])],
+        "gender": row.gender or "none",
+        "age_bands": [str(band) for band in (row.age_bands or [])],
         "project_budget": None if row.project_budget is None else _money(row.project_budget),
         "library_kind": row.library_kind,
         "product_select": row.product_select,
@@ -199,6 +201,8 @@ def _apply_standard_template(row: DeliveryTemplate, body: TemplateWrite | Templa
     row.placement = None if body.placement is None else str(body.placement)
     row.district = None if body.district is None else str(body.district)
     row.city_codes = list(body.city_codes) or None
+    row.gender = body.gender.value
+    row.age_bands = [band.value for band in body.age_bands] or None
     row.product_library_id = None
     row.library_kind = None if body.library_kind is None else str(body.library_kind)
     row.product_select = None if body.product_select is None else str(body.product_select)

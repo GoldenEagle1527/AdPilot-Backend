@@ -24,7 +24,7 @@
 | aigc_dynamic_creative | body | boolean | 是 | AIGC 动态创意 |
 | title_select_mode | body | string | 是 | `manual` 或 `auto` |
 
-这是整表替换，不是补丁。多传字段返回 422。
+这是整表替换，不是补丁。多传字段返回 422。不收标准模板的 `gender`、`age_bands`。
 
 ## 响应
 
@@ -52,4 +52,5 @@
 
 | 日期 | 文档版本 | 破坏？ | 变更 | 作者 |
 | --- | --- | --- | --- | --- |
+| 2026-10-09 | 1 | 否 | 文档：写明不收标准模板的 `gender`、`age_bands`，多传仍 422 | |
 | 2026-09-30 | 1 | 否 | 初稿 | |

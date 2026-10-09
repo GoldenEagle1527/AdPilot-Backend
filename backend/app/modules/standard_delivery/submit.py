@@ -119,11 +119,32 @@ def _picked_operation(draft: DeliveryTaskDraft, template: DeliveryTemplate) -> s
     return str(operation)
 
 
+_OCEAN_GENDER = {"male": "GENDER_MALE", "female": "GENDER_FEMALE"}
+_OCEAN_AGE = {
+    "18_23": "AGE_BETWEEN_18_23",
+    "24_30": "AGE_BETWEEN_24_30",
+    "31_40": "AGE_BETWEEN_31_40",
+    "41_49": "AGE_BETWEEN_41_49",
+    "50_plus": "AGE_ABOVE_50",
+}
+
+
 def _picked_audience(template: DeliveryTemplate) -> dict[str, Any]:
-    """定向只在模板上。不限不带城市；选了行政区域才带城市编码。"""
+    """定向只在模板上。不限不带城市；选了行政区域才带城市编码。
+
+    性别不限不传 gender。年龄不限不传 age。
+    """
     if template.district == "REGION" and template.city_codes:
-        return {"district": "REGION", "city": [int(code) for code in template.city_codes]}
-    return {"district": "NONE"}
+        audience: dict[str, Any] = {"district": "REGION", "city": [int(code) for code in template.city_codes]}
+    else:
+        audience = {"district": "NONE"}
+    gender = _OCEAN_GENDER.get(template.gender or "")
+    if gender is not None:
+        audience["gender"] = gender
+    ages = [_OCEAN_AGE[str(band)] for band in (template.age_bands or [])]
+    if ages:
+        audience["age"] = ages
+    return audience
 
 
 def _stored_image_id(template: DeliveryTemplate) -> str | None:
