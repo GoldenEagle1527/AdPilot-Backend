@@ -652,3 +652,50 @@ class OeReportSnapshot(BaseModel):
     )
     synced_at: Mapped[datetime] = mapped_column(_TS, nullable=False, comment="快照时间")
     raw_payload: Mapped[dict | None] = mapped_column(JSONB, nullable=True, comment="最近一次巨量原文，列表不返回")
+
+
+class OeMaterialReport(BaseModel):
+    """素材小时报表。一行是一个广告主、一小时、一条素材、一条广告、一个项目。
+
+    只存《OC投放中台》素材数据表里标明从 MATERIAL_DATA 直接读取的维度和指标。
+    回收率、收益率、点击率、千次展示费用、点击单价、转化成本、转化率、激活成本、
+    激活 ARPU、盈亏、组平均 ROI 都是文档给出的公式，不建列，也不向巨量要这些字段。
+    """
+
+    __tablename__ = "oe_material_report"
+    __table_args__ = (
+        UniqueConstraint(
+            "advertiser_id",
+            "stat_time_hour",
+            "material_id",
+            "cdp_promotion_id",
+            "cdp_project_id",
+            name="uq_oe_material_report_grain",
+        ),
+        Index("ix_oe_material_report_advertiser_hour", "advertiser_id", "stat_time_hour"),
+        {"comment": "巨量素材小时报表。公式字段不落库。"},
+    )
+
+    advertiser_id: Mapped[int] = mapped_column(BigInteger, nullable=False, comment="查询用的巨量广告主 id")
+    stat_time_hour: Mapped[str] = mapped_column(
+        String(64), nullable=False, comment="时间。近 8 天为小时，更早的日期为天"
+    )
+    material_id: Mapped[int] = mapped_column(BigInteger, nullable=False, comment="素材 id")
+    ad_platform_material_name: Mapped[str | None] = mapped_column(Text, nullable=True, comment="素材名称")
+    cdp_promotion_id: Mapped[int] = mapped_column(BigInteger, nullable=False, comment="广告 id")
+    cdp_promotion_name: Mapped[str | None] = mapped_column(Text, nullable=True, comment="广告名称")
+    cdp_project_id: Mapped[int] = mapped_column(BigInteger, nullable=False, comment="项目 id")
+    cdp_project_name: Mapped[str | None] = mapped_column(Text, nullable=True, comment="项目名称")
+    stat_cost: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False, comment="消耗，单位元")
+    attribution_billing_game_in_app_ltv_1day: Mapped[Decimal] = mapped_column(
+        Numeric(18, 2), nullable=False, comment="广告收益(当日)，计费当日付费金额"
+    )
+    stat_pay_amount: Mapped[Decimal] = mapped_column(
+        Numeric(18, 2), nullable=False, comment="付费金额。广告总收益和回收金额都是这个字段"
+    )
+    show_cnt: Mapped[int] = mapped_column(BigInteger, nullable=False, comment="展示数")
+    click_cnt: Mapped[int] = mapped_column(BigInteger, nullable=False, comment="点击数")
+    convert_cnt: Mapped[int] = mapped_column(BigInteger, nullable=False, comment="转化数")
+    active: Mapped[int] = mapped_column(BigInteger, nullable=False, comment="激活数")
+    game_addiction: Mapped[int] = mapped_column(BigInteger, nullable=False, comment="关键行为数")
+    synced_at: Mapped[datetime] = mapped_column(_TS, nullable=False, comment="本行写入时间")
