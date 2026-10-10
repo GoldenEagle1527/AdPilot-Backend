@@ -192,6 +192,30 @@ class PromotionLinkItem(BaseModel):
     promotion_create_time: str | None
 
 
+class PromotionCollectCreate(BaseModel):
+    """批量采集：选一部短剧，指定执行时间和付费类型。只建任务，不在这次请求里调常读。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    series_id: int = Field(ge=1, description="短剧，漫剧流转剧库主键。book_id 从剧库取")
+    execute_at: BeijingTime = Field(description="执行时间，YYYY-MM-DD HH:MM:SS，到点才拉推广链")
+    charge_type: Literal["all", "paid", "free"] = Field(
+        "all", description="付费类型：all 全部、paid 付费、free 免费，默认全部"
+    )
+
+
+class PromotionCollectResult(BaseModel):
+    """刚建好的手动采集任务。状态是 pending，列表在开始执行前不展示它。"""
+
+    id: str
+    series_id: str
+    book_name: str
+    collector_name: str
+    charge_type: str
+    status: str
+    execute_at: str
+
+
 class PromotionLinkCreate(BaseModel):
     """人工新增：选短剧，五个档位各填 URL；剧场按档位 IAA/IAP 自动挂应用，空档不建行，至少一条。"""
 

@@ -8,10 +8,10 @@ from contextlib import asynccontextmanager
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.clients.changdu import ChangduClient
+from app.clients.changdu_factory import promotion_client
 from app.core.config import get_settings
 from app.core.times import beijing_now
-from app.modules.theater.changdu import matches_tab, promotion_fields
+from app.modules.theater.changdu import link_matches, promotion_fields
 from app.modules.theater.crud import (
     claim_due_tasks,
     create_due_auto_tasks,
@@ -70,14 +70,15 @@ async def fetch_one(factory: async_sessionmaker[AsyncSession], task_id: int) -> 
         task, series = row
         # 回滚会让对象过期，异步下再读属性会报错，出错分支要用的值先取出来
         failures, book_id, book_name, tab_text = task.retry_count + 1, series.book_id, series.book_name, series.tab_text
+        charge_filter = task.charge_filter
         # 结束读事务、把连接还回池，调常读期间不占连接
         await session.commit()
         try:
-            items = await ChangduClient().list_promotions(book_id)
+            items = await promotion_client().list_promotions(book_id)
             links = [
                 {**promotion_fields(item), "series_id": series.id, "task_id": task_id}
                 for item in items
-                if matches_tab(item, tab_text)
+                if link_matches(item, charge_filter=charge_filter, tab_text=tab_text)
             ]
             await insert_missing_links(session, links)
             task.status, task.reason = (

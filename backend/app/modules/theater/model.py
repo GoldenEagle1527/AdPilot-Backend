@@ -8,6 +8,7 @@ from enum import StrEnum
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
@@ -158,6 +159,10 @@ class TheaterPromotionTask(BaseModel):
     __table_args__ = (
         Index("ix_theater_promotion_tasks_status_execute", "status", "execute_at"),
         Index("ix_theater_promotion_tasks_series", "series_id"),
+        CheckConstraint(
+            "charge_filter IS NULL OR charge_filter IN ('all', 'IAA', 'IAP')",
+            name="ck_theater_promotion_tasks_charge",
+        ),
         {"comment": "番茄推广链同步任务。一次采集一行，到预估可投时间自动建或批量采集手动建。"},
     )
 
@@ -192,6 +197,11 @@ class TheaterPromotionTask(BaseModel):
     )
     retry_count: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0", comment="已重试次数，最多 5 次"
+    )
+    charge_filter: Mapped[str | None] = mapped_column(
+        String(8),
+        nullable=True,
+        comment="手动批量采集的付费类型：all 全部、IAA 免费、IAP 付费。空表示自动任务，按短剧页签过滤",
     )
 
 

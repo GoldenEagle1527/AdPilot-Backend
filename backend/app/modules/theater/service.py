@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, time, timedelta
 from typing import Any
 
-from sqlalchemy import ColumnElement
+from sqlalchemy import ColumnElement, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.envelope import ApiError
@@ -32,6 +32,7 @@ from app.modules.theater.crud import (
 from app.modules.theater.model import (
     DeliveryMode,
     PromotionLinkSource,
+    PromotionTaskSource,
     PromotionTaskStatus,
     TheaterApp,
     TheaterPlatform,
@@ -45,6 +46,7 @@ from app.modules.theater.schema import (
     AppStatusUpdate,
     PlatformQuery,
     PlatformUpdate,
+    PromotionCollectCreate,
     PromotionLinkCreate,
     PromotionLinkQuery,
     PromotionLinkUpdate,
@@ -247,6 +249,48 @@ async def list_promotion_tasks(session: AsyncSession, query: PromotionTaskQuery)
         session, promotion_task_filters(query), offset=params.offset, limit=params.page_size
     )
     return page_data([promotion_task_item(*row) for row in rows], total, params)
+
+
+# 表单「全部 / 付费 / 免费」落到任务上的过滤值。付费是常读 2，免费是常读 3。
+_CHARGE_FILTER = {"all": "all", "paid": "IAP", "free": "IAA"}
+
+
+async def create_manual_promotion_task(
+    session: AsyncSession, body: PromotionCollectCreate, principal: dict[str, Any]
+) -> dict[str, Any]:
+    """写入一条来源为手动的初始任务。book_id 留在剧库，到执行时间再由任务去拉。"""
+    found = await session.execute(
+        select(ManhuaSeries).where(ManhuaSeries.id == body.series_id, ManhuaSeries.is_deleted == 0)
+    )
+    series = found.scalar_one_or_none()
+    if series is None:
+        raise ApiError(404, "短剧不存在")
+    if not int(series.book_id or 0):
+        raise ApiError(400, "短剧没有 book_id")
+    nickname = str(principal.get("nickname") or "").strip() or SYSTEM_COLLECTOR
+    row = TheaterPromotionTask(
+        series_id=series.id,
+        collector_id=int(principal["id"]),
+        source=PromotionTaskSource.MANUAL,
+        status=PromotionTaskStatus.PENDING,
+        reason="",
+        execute_at=body.execute_at,
+        finished_at=None,
+        retry_count=0,
+        charge_filter=_CHARGE_FILTER[body.charge_type],
+    )
+    session.add(row)
+    await session.commit()
+    await session.refresh(row)
+    return {
+        "id": str(row.id),
+        "series_id": str(series.id),
+        "book_name": series.book_name,
+        "collector_name": nickname,
+        "charge_type": body.charge_type,
+        "status": row.status,
+        "execute_at": beijing_iso(row.execute_at),
+    }
 
 
 def promotion_link_item(link: TheaterPromotionLink, book_name: str, app_name: str | None) -> dict[str, Any]:

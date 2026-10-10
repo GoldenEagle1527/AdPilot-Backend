@@ -15,7 +15,7 @@ from sqlalchemy.dialects import postgresql
 from app.clients.changdu import ChangduError
 from app.core.times import BEIJING
 from app.modules.material.model import ManhuaSeries
-from app.modules.theater.changdu import matches_tab, promotion_fields
+from app.modules.theater.changdu import link_matches, matches_tab, promotion_fields
 from app.modules.theater.crud import claim_due_tasks, create_due_auto_tasks
 from app.modules.theater.model import TheaterPromotionTask
 from app.tasks import promotion_tasks
@@ -94,9 +94,19 @@ class FakeSession:
 
 
 class FetchOneTests(unittest.TestCase):
-    def _run(self, *, tab: str = "IAP", failures: int = 0, items: Any = None, error: Exception | None = None):
+    def _run(
+        self,
+        *,
+        tab: str = "IAP",
+        failures: int = 0,
+        items: Any = None,
+        error: Exception | None = None,
+        charge_filter: str | None = None,
+    ):
         """用假会话、假常读、假钉钉跑一条已失败 failures 次的任务，返回 (任务行, 插入的推广链, 钉钉通知 mock)。"""
-        task = TheaterPromotionTask(series_id=8, status="running", reason="", retry_count=failures)
+        task = TheaterPromotionTask(
+            series_id=8, status="running", reason="", retry_count=failures, charge_filter=charge_filter
+        )
         task.id = 3
         series = ManhuaSeries(book_id=88, book_name="甲剧", tab_text=tab)
         series.id = 8
@@ -116,7 +126,7 @@ class FetchOneTests(unittest.TestCase):
         notify.return_value.promotion_failed = AsyncMock()
         with (
             patch.object(promotion_tasks, "get_task_with_series", AsyncMock(return_value=(task, series))),
-            patch.object(promotion_tasks, "ChangduClient", client),
+            patch.object(promotion_tasks, "promotion_client", client),
             patch.object(promotion_tasks, "ChangduNotify", notify),
             patch.object(promotion_tasks, "insert_missing_links", insert),
         ):
@@ -131,6 +141,20 @@ class FetchOneTests(unittest.TestCase):
         self.assertEqual([link["promotion_id"] for link in inserted], [1])
         self.assertEqual((inserted[0]["series_id"], inserted[0]["task_id"]), (8, 3))
         notified.assert_not_called()
+
+    def test_manual_all_keeps_both_walls(self) -> None:
+        """手动采集选全部时，付费和免费推广链都落库。"""
+        task, inserted, notified = self._run(charge_filter="all", items=[promotion(1, 2), promotion(2, 3)])
+        self.assertEqual((task.status, task.reason), ("success", ""))
+        self.assertEqual([link["promotion_id"] for link in inserted], [1, 2])
+        notified.assert_not_called()
+
+    def test_manual_free_ignores_series_tab(self) -> None:
+        """手动采集选免费时按免费墙过滤，不跟短剧页签。"""
+        _task, inserted, _notified = self._run(
+            tab="IAP", charge_filter="IAA", items=[promotion(1, 2), promotion(2, 3)]
+        )
+        self.assertEqual([link["promotion_id"] for link in inserted], [2])
 
     def test_no_matched_link_fails_without_notify(self) -> None:
         """常读有返回但没有符合页签的推广链，任务失败写原因；不是调用失败，不推钉钉。"""
@@ -166,6 +190,9 @@ class MappingTests(unittest.TestCase):
         self.assertTrue(matches_tab(promotion(1, 2), "IAP"))
         self.assertFalse(matches_tab(promotion(1, 3), "IAP"))
         self.assertTrue(matches_tab(promotion(1, 3), "IAA"))
+        self.assertTrue(link_matches(promotion(1, 2), charge_filter="all", tab_text="IAA"))
+        self.assertTrue(link_matches(promotion(1, 3), charge_filter="IAA", tab_text="IAP"))
+        self.assertFalse(link_matches(promotion(1, 2), charge_filter="IAA", tab_text="IAP"))
 
 
 class InsertMissingLinksTests(unittest.TestCase):

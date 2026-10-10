@@ -18,6 +18,16 @@ def matches_tab(item: dict[str, Any], tab_text: str) -> bool:
     return media_config.get("media_config_type") == MEDIA_CONFIG_TYPES.get(tab_text)
 
 
+def link_matches(item: dict[str, Any], *, charge_filter: str | None, tab_text: str) -> bool:
+    """手动采集按所选付费类型过滤。全部接受付费 2 和免费 3；没选则跟短剧页签。"""
+    if charge_filter == "all":
+        media = (item.get("media_config") or {}).get("media_config_type")
+        return media in (2, 3)
+    if charge_filter in MEDIA_CONFIG_TYPES:
+        return matches_tab(item, charge_filter)
+    return matches_tab(item, tab_text)
+
+
 def promotion_fields(item: dict[str, Any]) -> dict[str, Any]:
     """把常读一条推广链收成推广链表字段。剧场、短剧、任务由调用方补。"""
     info = item.get("promotion_info") or {}     

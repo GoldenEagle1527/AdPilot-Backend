@@ -23,6 +23,8 @@ from app.modules.theater.schema import (
     PlatformItem,
     PlatformQuery,
     PlatformUpdate,
+    PromotionCollectCreate,
+    PromotionCollectResult,
     PromotionLinkCreate,
     PromotionLinkCreateResult,
     PromotionLinkItem,
@@ -33,6 +35,7 @@ from app.modules.theater.schema import (
 )
 from app.modules.theater.service import (
     create_app,
+    create_manual_promotion_task,
     create_promotion_links,
     list_apps,
     list_platforms,
@@ -132,6 +135,20 @@ async def get_promotion_tasks(
 ) -> dict[str, Any]:
     """按剧名模糊、状态、执行时间筛选，只返回爬虫处理中、成功、失败，按执行时间倒序。"""
     return success(await list_promotion_tasks(session, query))
+
+
+@router.post(
+    "/promotion-tasks",
+    response_model=Envelope[PromotionCollectResult],
+    summary="批量采集番茄推广链",
+)
+async def post_promotion_task(
+    body: PromotionCollectCreate,
+    session: SessionDep,
+    principal: Annotated[dict[str, Any], Depends(require_menu("86"))],
+) -> dict[str, Any]:
+    """选短剧和执行时间，写入一条手动任务。这次请求不调常读。"""
+    return success(await create_manual_promotion_task(session, body, principal))
 
 
 @router.get(
