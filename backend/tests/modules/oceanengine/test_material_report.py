@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import unittest
 from datetime import date, datetime, timezone
+from pathlib import Path
+from unittest.mock import Mock, patch
 
 from app.modules.account.model import OeMaterialReport
 from app.modules.oceanengine.material_report import (
@@ -11,6 +14,7 @@ from app.modules.oceanengine.material_report import (
     pair_report_reads,
     report_days,
     row_from_report,
+    run_hourly_material_report,
     usable_access_token,
 )
 
@@ -80,6 +84,19 @@ class MaterialReportShapeTests(unittest.TestCase):
             {4: "live-token"},
         )
         self.assertEqual(pairs, [(1873916032590219, "live-token")])
+
+    def test_hourly_pull_does_not_run_while_mock(self) -> None:
+        settings = Mock()
+        settings.oceanengine.mock = True
+        with patch("app.modules.oceanengine.material_report.get_settings", return_value=settings):
+            written = asyncio.run(run_hourly_material_report(object()))
+        self.assertEqual(written, 0)
+
+    def test_process_starts_hourly_material_report_only_when_mock_is_off(self) -> None:
+        main = (Path(__file__).resolve().parents[3] / "main.py").read_text(encoding="utf-8")
+        self.assertIn("_material_report_loop", main)
+        self.assertIn("if not settings.oceanengine.mock:", main)
+        self.assertIn("_MATERIAL_REPORT_INTERVAL_SECONDS = 3600", main)
 
     def test_canned_snapshot_row_is_not_a_material_row(self) -> None:
         """假客户端的广告快照没有素材主键，不能写进新表。"""

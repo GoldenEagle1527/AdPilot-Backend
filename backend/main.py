@@ -31,11 +31,12 @@ from app.modules.uni_template import router as uni_template_router
 
 logger = logging.getLogger("adpilot")
 _RULE_INTERVAL_SECONDS = 60
+_MATERIAL_REPORT_INTERVAL_SECONDS = 3600
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    """启动时接库和 Redis。mock 时选定假客户端并写一次巨量种子。约每分钟跑到点规则。"""
+    """启动时接库和 Redis。mock 时选定假客户端并写一次巨量种子。约每分钟跑到点规则。关闭 mock 时每小时拉素材报表。"""
     settings = get_settings()
     init_engine(settings)
     init_redis(settings)
@@ -45,14 +46,22 @@ async def lifespan(_app: FastAPI):
     if settings.oceanengine.mock:
         await _seed_oceanengine()
     ticker = asyncio.create_task(_due_rules_loop())
+    material_ticker = None
+    if not settings.oceanengine.mock:
+        material_ticker = asyncio.create_task(_material_report_loop())
     try:
         yield
     finally:
         ticker.cancel()
-        try:
-            await ticker
-        except asyncio.CancelledError:
-            pass
+        if material_ticker is not None:
+            material_ticker.cancel()
+        for task in (ticker, material_ticker):
+            if task is None:
+                continue
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
         await close_redis()
         await dispose_engine()
 
@@ -76,6 +85,23 @@ async def _due_rules_loop() -> None:
         except Exception:
             logger.exception("到点规则本轮失败")
         await asyncio.sleep(_RULE_INTERVAL_SECONDS)
+
+
+async def _material_report_loop() -> None:
+    """关闭 mock 时启动。先拉一次，之后每小时拉近 30 天素材报表。"""
+    from app.modules.oceanengine.material_report import run_hourly_material_report
+
+    while True:
+        try:
+            async for session in get_session():
+                written = await run_hourly_material_report(session)
+                logger.info("素材报表本小时写入 %s 行", written)
+                break
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("素材报表本小时失败")
+        await asyncio.sleep(_MATERIAL_REPORT_INTERVAL_SECONDS)
 
 
 async def _seed_oceanengine() -> None:
