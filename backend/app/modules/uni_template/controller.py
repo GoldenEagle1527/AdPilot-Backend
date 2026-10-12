@@ -10,6 +10,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session
 from app.core.envelope import Envelope, success
 from app.core.pagination import PageData
+from app.modules.standard_delivery.product_snapshot import create_snapshot, delete_snapshot, list_snapshots
+from app.modules.standard_delivery.schema import (
+    ProductSnapshotItem,
+    ProductSnapshotQuery,
+    ProductSnapshotWrite,
+)
 from app.modules.system_admin import require_menu
 from app.modules.uni_template.schema import (
     DeletedItem,
@@ -40,6 +46,44 @@ DouyinDep = Annotated[dict[str, Any], Depends(require_menu("61"))]
 def _user_id(principal: dict[str, Any]) -> int:
     """登录主体上的用户 id。"""
     return int(principal["id"])
+
+
+@router.get(
+    "/product-snapshots",
+    response_model=Envelope[PageData[ProductSnapshotItem]],
+    summary="分页查询产品模板",
+)
+async def get_product_snapshots(
+    session: SessionDep,
+    _principal: PrincipalDep,
+    query: Annotated[ProductSnapshotQuery, Query()],
+) -> dict[str, Any]:
+    """列出与标准投放共用的产品模板。"""
+    return success(await list_snapshots(session, query))
+
+
+@router.post(
+    "/product-snapshots",
+    response_model=Envelope[ProductSnapshotItem],
+    summary="保存产品模板",
+)
+async def post_product_snapshot(
+    body: ProductSnapshotWrite, session: SessionDep, _principal: PrincipalDep
+) -> dict[str, Any]:
+    """把产品名称、主图、卖点和行动号召存成一份模板。"""
+    return success(await create_snapshot(session, body))
+
+
+@router.delete(
+    "/product-snapshots/{snapshot_id}",
+    response_model=Envelope[DeletedItem],
+    summary="删除产品模板",
+)
+async def remove_product_snapshot(
+    snapshot_id: int, session: SessionDep, _principal: PrincipalDep
+) -> dict[str, Any]:
+    """软删一份产品模板。标准投放删的是同一条。"""
+    return success(await delete_snapshot(session, snapshot_id))
 
 
 @router.get("", response_model=Envelope[PageData[TemplateItem]], summary="分页查询全域模板")

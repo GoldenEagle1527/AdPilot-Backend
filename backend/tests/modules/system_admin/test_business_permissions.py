@@ -157,6 +157,13 @@ class MenuRouteTests(unittest.TestCase):
                 None,
             ),
             (
+                _client(standard_router, menus=["45"]),
+                "delete",
+                "/api/v1/standard-delivery/product-snapshots/1",
+                None,
+            ),
+            (_client(uni_template_router, menus=["61"]), "get", "/api/v1/uni-templates/product-snapshots", None),
+            (
                 _client(standard_router, menus=["39"]),
                 "post",
                 "/api/v1/standard-delivery/templates/1/copy-product-snapshot",
@@ -192,6 +199,13 @@ class MenuRouteTests(unittest.TestCase):
                 "/api/v1/standard-delivery/product-snapshots",
                 None,
             ),
+            (
+                _client(standard_router, menus=["104"]),
+                "delete",
+                "/api/v1/standard-delivery/product-snapshots/1",
+                None,
+            ),
+            (_client(uni_template_router, menus=["60"]), "get", "/api/v1/uni-templates/product-snapshots", None),
             (
                 _client(standard_router, menus=["39", "46"]),
                 "get",

@@ -34,6 +34,7 @@ from app.modules.standard_delivery.crud import list_assigned_standard_douyin
 from app.modules.standard_delivery.product_snapshot import (
     copy_snapshot_onto_template,
     create_snapshot,
+    delete_snapshot,
     list_snapshots,
 )
 from app.modules.standard_delivery.submit import submit_draft
@@ -198,6 +199,19 @@ async def post_product_snapshot(
     """保存名称、主图、卖点和行动号召。不连厂商。"""
     await _require_node(session, principal, MENU_PRODUCT_SNAPSHOT)
     return success(await create_snapshot(session, body))
+
+
+@router.delete(
+    "/product-snapshots/{snapshot_id}",
+    response_model=Envelope[DeletedItem],
+    summary="删除产品快照",
+)
+async def remove_product_snapshot(
+    snapshot_id: int, session: SessionDep, principal: PrincipalDep
+) -> dict[str, Any]:
+    """软删产品模板。全域编辑页删的是同一张表。"""
+    await _require_node(session, principal, MENU_PRODUCT_SNAPSHOT)
+    return success(await delete_snapshot(session, snapshot_id))
 
 
 @router.post(

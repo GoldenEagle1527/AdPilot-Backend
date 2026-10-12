@@ -1,4 +1,4 @@
-"""产品快照的保存、列表，以及抄到标准模板。没有全域厂商同步。"""
+"""产品快照的保存、列表、删除，以及抄到标准模板。标准和全域共用这一张表。没有厂商同步。"""
 
 from __future__ import annotations
 
@@ -83,6 +83,21 @@ async def create_snapshot(session: AsyncSession, body: ProductSnapshotWrite) -> 
     await session.commit()
     await session.refresh(row)
     return snapshot_item(row)
+
+
+async def delete_snapshot(session: AsyncSession, snapshot_id: int) -> dict[str, Any]:
+    """软删一条产品快照。标准和全域编辑页删的是同一条。"""
+    row = await session.scalar(
+        select(DeliveryProductSnapshot).where(
+            DeliveryProductSnapshot.id == snapshot_id,
+            DeliveryProductSnapshot.is_deleted == 0,
+        )
+    )
+    if row is None:
+        raise ApiError(404, "产品快照不存在")
+    row.mark_deleted()
+    await session.commit()
+    return {"id": str(row.id), "deleted": True}
 
 
 async def copy_snapshot_onto_template(

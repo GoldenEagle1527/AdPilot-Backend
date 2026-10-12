@@ -850,7 +850,7 @@ class DeliveryAutoRuleRun(BaseModel):
 
 
 class DeliveryProductSnapshot(BaseModel):
-    """可被标准模板抄走的产品信息。没有厂商同步。"""
+    """标准和全域模板都能选用的产品信息。没有厂商同步。"""
 
     __tablename__ = "delivery_product_snapshot"
     __table_args__ = (
