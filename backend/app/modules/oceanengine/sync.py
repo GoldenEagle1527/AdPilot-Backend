@@ -14,13 +14,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.times import beijing_now
 from app.modules.account.model import AdvertiserAccount, OeApp, OeOrganization, OeOrganizationGrant
-from app.modules.oceanengine.client import OceanEngineClient, OceanEngineError
+from app.modules.oceanengine.client import OceanEngineError, OceanEnginePort
 from app.modules.oceanengine.runtime import (
     _PAGE_SIZE,
     _access_token,
     _app_for_live,
-    _live_client,
     _page_count,
+    get_ocean_client,
 )
 
 _EBP_ROLES = frozenset(
@@ -57,7 +57,7 @@ async def sync_from_oceanengine(session: AsyncSession, app: OeApp | None = None)
 
 
 async def _sync_organizations(session: AsyncSession, app: OeApp) -> OeApp:
-    client = _live_client()
+    client = get_ocean_client()
     body = await client.list_authorized_accounts(await _access_token(session, app))
     rows = (body.get("data") or {}).get("list") or []
     seen: list[int] = []
@@ -105,7 +105,7 @@ async def _sync_organizations(session: AsyncSession, app: OeApp) -> OeApp:
 
 
 async def _sync_advertisers(session: AsyncSession, app: OeApp) -> None:
-    client = _live_client()
+    client = get_ocean_client()
     token = await _access_token(session, app)
     orgs = (
         await session.scalars(
@@ -342,7 +342,7 @@ def _csv_account_rows(text: str) -> list[dict[str, Any]]:
 
 
 async def _list_org_advertisers(
-    client: OceanEngineClient, token: str, session: AsyncSession, org: OeOrganization
+    client: OceanEnginePort, token: str, session: AsyncSession, org: OeOrganization
 ) -> tuple[list[dict[str, Any]], bool]:
     """返回广告主名单，以及这份名单是否完整。"""
     org_id = int(org.ocean_account_id)
@@ -389,7 +389,7 @@ async def _collect_capped(fetch: Any) -> tuple[list[dict[str, Any]], bool]:
 
 
 async def _ebp_account_export(
-    client: OceanEngineClient, token: str, session: AsyncSession, org: OeOrganization
+    client: OceanEnginePort, token: str, session: AsyncSession, org: OeOrganization
 ) -> tuple[list[dict[str, Any]], bool]:
     """超过 1 万条时创建或接着查异步导出。未完成则名单不完整。"""
     task_id = org.ebp_account_task_id
@@ -472,7 +472,7 @@ async def _upsert_advertiser_name(
 
 
 async def _refresh_balance_batch(
-    session: AsyncSession, client: OceanEngineClient, token: str, org: OeOrganization
+    session: AsyncSession, client: OceanEnginePort, token: str, org: OeOrganization
 ) -> None:
     """给过期或未同步的户补余额和公司名。单户失败不影响名单。"""
     cutoff = beijing_now() - _BALANCE_TTL

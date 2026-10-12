@@ -1,0 +1,202 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "全域模板怎样变成端原生任务",
+    "locale": "zh-CN",
+    "output": "架构导览/.archify/sequence-uni-template-task-20260930-061256/uni-template-task.html",
+    "quality_profile": "showcase",
+    "column_fit": "spread",
+    "viewBox": [
+      1080,
+      680
+    ],
+    "repository": {
+      "url": "https://github.com/GoldenEagle1527/AdPilot-Backend",
+      "provider": "github",
+      "revision": "6643359e825abd3e4d1fda4b626c90ef8f0e8dbe"
+    }
+  },
+  "participants": [
+    {
+      "id": "caller",
+      "type": "external",
+      "label": "投手",
+      "sublabel": "提交模板和素材",
+      "sources": [
+        {
+          "path": "backend/app/modules/uni_native_task/controller.py",
+          "line": 49,
+          "end_line": 50,
+          "label": "本地保存"
+        }
+      ]
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "任务接口",
+      "sublabel": "状态保持未提交",
+      "sources": [
+        {
+          "path": "backend/app/modules/uni_native_task/service.py",
+          "line": 287,
+          "end_line": 313,
+          "label": "新增任务"
+        }
+      ]
+    },
+    {
+      "id": "template",
+      "type": "database",
+      "label": "全域模板",
+      "sublabel": "预算和系数的默认",
+      "sources": [
+        {
+          "path": "backend/app/modules/uni_native_task/service.py",
+          "line": 230,
+          "end_line": 233,
+          "label": "读取模板"
+        }
+      ]
+    },
+    {
+      "id": "media",
+      "type": "database",
+      "label": "素材账户",
+      "sublabel": "短剧视频标题和号",
+      "sources": [
+        {
+          "path": "backend/app/modules/uni_native_task/service.py",
+          "line": 234,
+          "end_line": 245,
+          "label": "继续核对"
+        }
+      ]
+    },
+    {
+      "id": "task",
+      "type": "database",
+      "label": "任务表",
+      "sublabel": "只写本地编号",
+      "sources": [
+        {
+          "path": "backend/app/modules/uni_native_task/model.py",
+          "line": 75,
+          "end_line": 83,
+          "label": "执行时间为空"
+        }
+      ]
+    }
+  ],
+  "messages": [
+    {
+      "id": "submit",
+      "from": "caller",
+      "to": "api",
+      "y": 176,
+      "label": "提交任务",
+      "variant": "emphasis"
+    },
+    {
+      "id": "read",
+      "from": "api",
+      "to": "template",
+      "y": 220,
+      "label": "读取全域模板",
+      "variant": "default"
+    },
+    {
+      "id": "defaults",
+      "from": "template",
+      "to": "api",
+      "y": 264,
+      "label": "带回预算系数",
+      "variant": "return"
+    },
+    {
+      "id": "check",
+      "from": "api",
+      "to": "media",
+      "y": 312,
+      "label": "核对素材和账户",
+      "variant": "default"
+    },
+    {
+      "id": "ok",
+      "from": "media",
+      "to": "api",
+      "y": 356,
+      "label": "全部对上",
+      "variant": "return"
+    },
+    {
+      "id": "save",
+      "from": "api",
+      "to": "task",
+      "y": 408,
+      "label": "写入未提交任务",
+      "variant": "emphasis"
+    },
+    {
+      "id": "back",
+      "from": "task",
+      "to": "api",
+      "y": 452,
+      "label": "行已提交",
+      "variant": "return"
+    },
+    {
+      "id": "reply",
+      "from": "api",
+      "to": "caller",
+      "y": 500,
+      "label": "返回已保存任务",
+      "variant": "return"
+    }
+  ],
+  "activations": [
+    {
+      "participant": "api",
+      "from": 176,
+      "to": 506,
+      "type": "backend"
+    },
+    {
+      "participant": "template",
+      "from": 214,
+      "to": 270,
+      "type": "database"
+    },
+    {
+      "participant": "media",
+      "from": 306,
+      "to": 362,
+      "type": "database"
+    },
+    {
+      "participant": "task",
+      "from": 402,
+      "to": 458,
+      "type": "database"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "模板怎样被用上",
+      "items": [
+        "任务要引用一条未删除的全域模板。",
+        "预算和系数可以沿用模板，也可以这次改掉。"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "没有发给巨量",
+      "items": [
+        "不上传素材，也不调用巨量。执行时间保持为空。",
+        "剧场表不参与这次核对。"
+      ]
+    }
+  ]
+}

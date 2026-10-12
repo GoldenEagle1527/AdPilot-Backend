@@ -1,4 +1,4 @@
-"""视频素材 HTTP。不在接口层做菜单鉴权，只认登录态。"""
+"""视频素材 HTTP。视频页要菜单 89，批量删除要组件 90。列表在勾了部门时加上这些部门上传的素材。"""
 
 from __future__ import annotations
 
@@ -7,10 +7,11 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import require_token
 from app.core.db import get_session
 from app.core.envelope import Envelope, success
 from app.core.pagination import PageData
+from app.modules.system_admin import require_menu
+from app.modules.system_admin.domain.scope import resolve_data_scope
 from app.modules.material_video.schema import (
     BatchDeleted,
     BatchPitcherBody,
@@ -48,7 +49,10 @@ from app.modules.material_video.service import (
 router = APIRouter(prefix="/api/v1/material", tags=["material"])
 
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
-PrincipalDep = Annotated[dict[str, Any], Depends(require_token)]
+# 素材管理 / 视频
+PrincipalDep = Annotated[dict[str, Any], Depends(require_menu("89"))]
+# 素材管理 / 视频 / 批量删除
+BatchDeleteDep = Annotated[dict[str, Any], Depends(require_menu("90"))]
 
 
 @router.get(
@@ -61,8 +65,9 @@ async def get_video_tags(
     principal: PrincipalDep,
     query: Annotated[TagQuery, Query()],
 ) -> dict[str, Any]:
-    """按名称模糊列出当前用户能看见的素材标签。"""
-    return success(await list_tags(session, query, int(principal["id"])))
+    """按名称模糊列出当前用户能看见的素材标签。可见范围与视频列表相同。"""
+    scope = await resolve_data_scope(session, principal)
+    return success(await list_tags(session, query, int(principal["id"]), scope))
 
 
 @router.get(
@@ -75,8 +80,9 @@ async def get_videos(
     principal: PrincipalDep,
     query: Annotated[VideoQuery, Query()],
 ) -> dict[str, Any]:
-    """按可见范围和筛选条件分页列出视频素材。"""
-    return success(await list_videos(session, query, int(principal["id"])))
+    """公有、自己的、共享给自己的；勾了部门再加这些部门上传的。"""
+    scope = await resolve_data_scope(session, principal)
+    return success(await list_videos(session, query, int(principal["id"]), scope))
 
 
 @router.post(
@@ -160,7 +166,7 @@ async def post_video_ownership(
 async def post_batch_delete_videos(
     body: VideoIdsBody,
     session: SessionDep,
-    principal: PrincipalDep,
+    principal: BatchDeleteDep,
 ) -> dict[str, Any]:
     """软删自己上传的多条视频。有一条不是自己的就整批不删。"""
     return success(await batch_delete_videos(session, body, int(principal["id"])))

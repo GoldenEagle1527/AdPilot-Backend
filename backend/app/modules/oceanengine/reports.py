@@ -6,28 +6,52 @@ import json
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
+from app.core.pagination import PageParams, page_data
 from app.core.times import beijing_now
 from app.modules.account.model import AdvertiserAccount, OeReportSnapshot
 from app.modules.oceanengine.runtime import (
     _PAGE_SIZE,
     _access_token,
     _app_for_live,
-    _live_client,
     _page_count,
-    _prepare,
+    get_ocean_client,
 )
 
 
-async def list_reports(session: AsyncSession) -> list[dict[str, Any]]:
-    """报表不分页。关闭 mock 时先拉当天自定义报表再读快照。"""
-    await _prepare(session)
+async def list_reports(session: AsyncSession, params: PageParams) -> dict[str, Any]:
+    """关闭 mock 时先拉当天自定义报表，再按页返回快照。不传 page 时是第一页。"""
     if not get_settings().oceanengine.mock:
         await _sync_reports(session)
-    return await _report_rows(session)
+    filters = [OeReportSnapshot.is_deleted == 0]
+    total = int(
+        await session.scalar(select(func.count()).select_from(OeReportSnapshot).where(*filters)) or 0
+    )
+    rows = await session.execute(
+        select(
+            OeReportSnapshot.promotion_id,
+            OeReportSnapshot.stat_cost,
+            OeReportSnapshot.attribution_micro_game_0d_roi,
+            OeReportSnapshot.advertiser_id,
+        )
+        .where(*filters)
+        .order_by(OeReportSnapshot.promotion_id)
+        .offset(params.offset)
+        .limit(params.page_size)
+    )
+    items = [
+        {
+            "promotion_id": int(promotion_id),
+            "stat_cost": float(stat_cost),
+            "attribution_micro_game_0d_roi": float(roi),
+            "advertiser_id": int(advertiser_id),
+        }
+        for promotion_id, stat_cost, roi, advertiser_id in rows.all()
+    ]
+    return page_data(items, total, params)
 
 
 def _report_metric(raw: dict[str, Any], name: str) -> Any:
@@ -50,7 +74,7 @@ def _report_promotion_id(raw: dict[str, Any]) -> int | None:
 
 
 async def _sync_reports(session: AsyncSession) -> None:
-    client = _live_client()
+    client = get_ocean_client()
     app = await _app_for_live(session)
     token = await _access_token(session, app)
     advertiser_ids = (

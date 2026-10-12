@@ -31,6 +31,16 @@ _ROWS = [
 ]
 
 
+async def ensure_theater_platforms(session) -> None:
+    """平台表没有行时插入番茄 id 1 和鸥溪 id 22。已有行则不动。"""
+    from sqlalchemy import func, select
+
+    count = await session.scalar(select(func.count()).select_from(TheaterPlatform))
+    if count:
+        return
+    await session.execute(insert(TheaterPlatform).values(_ROWS))
+
+
 def _bind_database() -> None:
     """固定连到脚本里的库，不跟 deployment yaml 的 postgres 走。"""
     settings = get_settings()

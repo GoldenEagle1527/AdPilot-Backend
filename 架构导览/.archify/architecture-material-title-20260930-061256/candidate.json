@@ -1,0 +1,116 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "标题库记什么",
+    "locale": "zh-CN",
+    "output": "架构导览/.archify/architecture-material-title-20260930-061256/material-title.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/GoldenEagle1527/AdPilot-Backend",
+      "provider": "github",
+      "revision": "6643359e825abd3e4d1fda4b626c90ef8f0e8dbe"
+    }
+  },
+  "components": [
+    {
+      "id": "caller",
+      "type": "external",
+      "label": "调用方",
+      "sublabel": "只能维护自己的标题",
+      "pos": [
+        32,
+        230
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/modules/material_title/controller.py",
+          "line": 30,
+          "end_line": 33,
+          "label": "要带令牌"
+        }
+      ]
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "标题接口",
+      "sublabel": "新增修改和软删",
+      "pos": [
+        326,
+        230
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/modules/material_title/__init__.py",
+          "line": 1,
+          "end_line": 1,
+          "label": "模块说明"
+        }
+      ]
+    },
+    {
+      "id": "db",
+      "type": "database",
+      "label": "标题表",
+      "sublabel": "分类名和上传者",
+      "pos": [
+        620,
+        230
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/modules/material_title/model.py",
+          "line": 20,
+          "end_line": 23,
+          "label": "标题表"
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "go",
+      "from": "caller",
+      "to": "api",
+      "label": "标题请求",
+      "variant": "emphasis"
+    },
+    {
+      "id": "write",
+      "from": "api",
+      "to": "db",
+      "label": "读写标题"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "这个模块做什么",
+      "items": [
+        "按分类保存标题。上传者是当前登录用户。",
+        "改和删都只针对自己上传的那几条。"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "它还不做什么",
+      "items": [
+        "不上传到巨量，也不生成投放任务。",
+        "别人的标题整批都不会被改掉。"
+      ]
+    }
+  ]
+}

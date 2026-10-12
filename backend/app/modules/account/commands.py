@@ -524,7 +524,7 @@ async def _pitcher_ids_by_douyin(session: AsyncSession, account_ids: list[int]) 
 
 
 def _douyin_data(row: DouyinAccount, pitcher_user_ids: list[int]) -> dict[str, Any]:
-    pitchers = [] if row.delivery_mode == "standard" else pitcher_user_ids
+    pitchers = pitcher_user_ids
     return {
         "id": row.id,
         "aweme_id": row.aweme_id,
@@ -618,8 +618,6 @@ async def update_douyin(session: AsyncSession, account_id: int, body: DouyinUpda
     await _aweme_free(session, body.delivery_mode, body.aweme_id, row.id)
     await _require_department(session, body.department_id)
     await _require_owner(session, body.owner_user_id)
-    if body.delivery_mode == "standard" and await _douyin_pitcher_count(session, row.id):
-        raise ApiError(422, "标准号不能分配投手，须先处理分配后再改模式")
     if row.enabled and not body.enabled:
         await _reject_if_busy(await _enabled_promotions(session, douyin_account_id=row.id))
     row.aweme_id = body.aweme_id
@@ -648,10 +646,8 @@ async def set_douyin_enabled(
 async def assign_douyin(
     session: AsyncSession, account_id: int, body: AssignPitchersBody
 ) -> dict[str, Any]:
-    """覆盖这一个全域号的投手。标准号 422。不改部门和负责人。"""
+    """覆盖这一个抖音号的投手。标准和全域都可以分配。不改部门和负责人。"""
     row = await _alive_douyin(session, account_id)
-    if row.delivery_mode != "uni":
-        raise ApiError(422, "标准号不能分配投手")
     user_ids = list(dict.fromkeys(body.pitcher_user_ids))
     await _require_pitchers(session, user_ids)
     await session.execute(delete(DouyinPitcher).where(DouyinPitcher.douyin_account_id == row.id))
@@ -911,11 +907,7 @@ async def assign_product_library_pitchers(
 
 
 async def sync_advertisers(session: AsyncSession, oe_app_id: int | None) -> dict[str, int]:
-    """手动同步广告主。mock 只把种子对齐到表；关闭 mock 时按传入的应用同步。"""
-    if get_settings().oceanengine.mock:
-        from app.modules.account.seed import ensure_oceanengine_seed
-
-        await ensure_oceanengine_seed(session)
+    """手动同步广告主。mock 只统计库里已有的广告主；关闭 mock 时按传入的应用同步。"""
     apps = await _sync_target_apps(session, oe_app_id)
     await _reject_open_advertiser_sync(session, apps)
     runs = await _open_advertiser_runs(session, apps)

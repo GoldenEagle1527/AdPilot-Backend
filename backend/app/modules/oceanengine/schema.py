@@ -20,12 +20,6 @@ class OrganizationItem(BaseModel):
     token_valid: bool
 
 
-class OrganizationList(BaseModel):
-    """不分页的组织列表。"""
-
-    items: list[OrganizationItem]
-
-
 class AdvertiserItem(BaseModel):
     """一条广告主，含余额（元）和公司名。"""
 
@@ -124,19 +118,29 @@ class VideoItem(VideoCreate):
 
 
 class ProductCreate(BaseModel):
-    """商品库上传一条剧。"""
+    """按巨量库号上传一条剧。不再收 drama_name 和 file_url。"""
 
     model_config = ConfigDict(extra="forbid")
 
-    drama_name: str = Field(min_length=1)
-    file_url: str = Field(min_length=1)
+    advertiser_id: int
+    library_no: int
+    book_name: str = Field(min_length=1, max_length=512)
 
 
-class ProductItem(ProductCreate):
-    """已登记的商品。"""
+class ProductItem(BaseModel):
+    """已登记的商品。product_id 来自客户端。"""
 
-    library_id: int
+    advertiser_id: int
+    library_no: int
+    book_name: str
     product_id: int
+
+
+class ImageItem(BaseModel):
+    """产品主图。image_id 不是视频的 local- 号。"""
+
+    advertiser_id: int
+    image_id: str
 
 
 class ReportItem(BaseModel):
@@ -146,12 +150,6 @@ class ReportItem(BaseModel):
     stat_cost: float
     attribution_micro_game_0d_roi: float
     advertiser_id: int
-
-
-class ReportList(BaseModel):
-    """不分页的报表。"""
-
-    items: list[ReportItem]
 
 
 class PromotionStatusBody(BaseModel):
@@ -177,18 +175,12 @@ class PromotionStatusList(BaseModel):
     items: list[PromotionStatusItem]
 
 
-class AutoPauseBody(BaseModel):
-    """按报表阈值关停。operator 目前只接受小于等于。"""
+class PromotionCreate(BaseModel):
+    """创建一条广告。opt_status 跟草稿开关一致。"""
 
     model_config = ConfigDict(extra="forbid")
 
-    metric: Literal["stat_cost", "roi"]
-    operator: Literal["lte"]
-    threshold: float
-
-
-class AutoPauseResult(BaseModel):
-    """命中关停与保留的广告 id。"""
-
-    paused: list[int]
-    kept: list[int]
+    advertiser_id: int
+    name: str = Field(min_length=1, max_length=255)
+    opt_status: Literal["ENABLE", "DISABLE"]
+    payload: dict[str, Any]

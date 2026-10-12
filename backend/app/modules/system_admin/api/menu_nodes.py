@@ -8,10 +8,11 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 
 from app.core.envelope import Envelope, success
+from app.core.pagination import PageData, PageParams, page_params, page_slice
 from app.modules.system_admin.deps import MENU_ROLE_QUERY, MENU_ROLES, SessionDep, require_menu
 from app.modules.system_admin.domain.enums import MENU_TYPE_DIRECTORY
 from app.modules.system_admin.domain.models import MenuNode, Role, RoleMenu
-from app.modules.system_admin.schemas.common import MenuTree
+from app.modules.system_admin.schemas.common import MenuNodeOut
 
 router = APIRouter(prefix="/api/v1/system-admin", tags=["system-admin"])
 
@@ -58,18 +59,19 @@ def _to_dict(
 
 @router.get(
     "/menu-nodes",
-    response_model=Envelope[MenuTree],
+    response_model=Envelope[PageData[MenuNodeOut]],
     response_model_exclude_none=True,
     summary="查询菜单树",
 )
 async def list_menu_nodes(
     session: SessionDep,
     _principal: PrincipalDep,
+    params: Annotated[PageParams, Depends(page_params)],
     business_domain: str | None = Query(default=None),
     name: str | None = Query(default=None),
     include_assigned_roles: bool = Query(default=False),
 ):
-    """返回完整菜单树；可按业务域、名称过滤，可选带回每个节点已分配角色。"""
+    """按顶级节点分页。子节点仍挂在 children 上。include_assigned_roles 行为不变。"""
     nodes = list((await session.execute(select(MenuNode))).scalars().all())
     by_id = {n.id: n for n in nodes}
 
@@ -114,4 +116,4 @@ async def list_menu_nodes(
             for child in children_of.get(parent_id, [])
         ]
 
-    return success({"items": build(None)})
+    return success(page_slice(build(None), params))

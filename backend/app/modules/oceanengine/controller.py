@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
+from sqlalchemy import select
 
 from app.core.envelope import ApiError, Envelope, success
-from app.core.pagination import PageData
+from app.core.pagination import PageData, PageParams, page_params
 from app.modules.account.api import router as account_router
 from app.modules.account.commands import assert_oauth_state, choose_library
 from app.modules.account.model import ProductLibrary
@@ -16,18 +17,17 @@ from app.modules.oceanengine.schema import (
     AdvertiserQuery,
     AuthorizeData,
     AuthorizeQuery,
-    AutoPauseBody,
-    AutoPauseResult,
+    ImageItem,
     OAuthCallbackQuery,
     OAuthTokenData,
-    OrganizationList,
+    OrganizationItem,
     ProductCreate,
     ProductItem,
     ProjectCreate,
     ProjectItem,
     PromotionStatusBody,
     PromotionStatusList,
-    ReportList,
+    ReportItem,
     VideoCreate,
     VideoItem,
 )
@@ -38,14 +38,15 @@ from app.modules.oceanengine.service import (
     list_organizations,
     list_reports,
     oauth_callback,
-    run_auto_pause,
     update_promotions,
+    upload_image,
     upload_product,
     upload_video,
 )
 from app.modules.system_admin import require_menu
 from app.modules.system_admin.deps import SessionDep
 from app.modules.system_admin.domain.access import effective_menu_ids, user_by_login
+from app.modules.system_admin.domain.scope import resolve_data_scope
 
 router = APIRouter(prefix="/api/v1/oceanengine", tags=["oceanengine"])
 
@@ -96,12 +97,16 @@ async def _assert_upload_library(
 
 @router.get(
     "/organizations",
-    response_model=Envelope[OrganizationList],
+    response_model=Envelope[PageData[OrganizationItem]],
     summary="授权组织列表",
 )
-async def get_organizations(session: SessionDep, _principal: Menu64) -> dict[str, Any]:
-    """列出授权组织，不分页。"""
-    data = {"items": await list_organizations(session)}
+async def get_organizations(
+    session: SessionDep,
+    _principal: Menu64,
+    params: Annotated[PageParams, Depends(page_params)],
+) -> dict[str, Any]:
+    """列出授权组织。不传 page 时返回第一页。"""
+    data = await list_organizations(session, params)
     await session.commit()
     return success(data)
 
@@ -116,10 +121,14 @@ async def get_advertisers(
     principal: MenuAdvertiser,
     query: Annotated[AdvertiserQuery, Query()],
 ) -> dict[str, Any]:
-    """有菜单 63 看全部含失效户；只有 32 时 only_user_id 为当前用户。"""
-    only_user_id = await _advertiser_only_user_id(session, principal)
-    scoped = query.model_copy(update={"only_user_id": only_user_id})
-    data = await list_advertisers(session, scoped)
+    """有菜单 63 时按部门数据范围看户（仅本人则只看自己的，未分配户在勾了部门时可见）。只有 32 时只看自己的有效户。"""
+    if "63" in await _granted_menu_ids(session, principal):
+        scope = await resolve_data_scope(session, principal)
+        data = await list_advertisers(session, query, scope, org_wide=True)
+    else:
+        only_user_id = await _advertiser_only_user_id(session, principal)
+        scoped = query.model_copy(update={"only_user_id": only_user_id})
+        data = await list_advertisers(session, scoped)
     await session.commit()
     return success(data)
 
@@ -190,31 +199,60 @@ async def post_video(
 
 
 @router.post(
-    "/product-libraries/{library_id}/products",
+    "/products",
     response_model=Envelope[ProductItem],
     summary="商品库上传",
 )
 async def post_product(
-    library_id: int,
     session: SessionDep,
-    _principal: Menu32,
+    principal: Menu32,
     body: ProductCreate,
 ) -> dict[str, Any]:
-    """向商品库追加一条剧。库 id 必须是 choose_library 选出的那一个。"""
-    await _assert_upload_library(session, _principal, library_id)
-    data = await upload_product(session, library_id, body)
+    """按 library_no 追加一条剧。库必须是 choose_library 选出的那一个。"""
+    library = await session.scalar(
+        select(ProductLibrary).where(
+            ProductLibrary.library_no == body.library_no,
+            ProductLibrary.is_deleted == 0,
+        )
+    )
+    if library is None:
+        raise ApiError(404, "商品库不存在")
+    await _assert_upload_library(session, principal, library.id)
+    data = await upload_product(session, body)
+    await session.commit()
+    return success(data)
+
+
+@router.post(
+    "/images",
+    response_model=Envelope[ImageItem],
+    summary="上传产品主图",
+)
+async def post_image(
+    session: SessionDep,
+    _principal: Menu32,
+    advertiser_id: Annotated[int, Form()],
+    image_file: Annotated[UploadFile, File()],
+) -> dict[str, Any]:
+    """本地文件上传。不收图片 URL。"""
+    content = await image_file.read()
+    data = await upload_image(session, advertiser_id, image_file.filename or "image", content)
     await session.commit()
     return success(data)
 
 
 @router.get(
     "/reports",
-    response_model=Envelope[ReportList],
+    response_model=Envelope[PageData[ReportItem]],
     summary="自定义报表",
 )
-async def get_reports(session: SessionDep, _principal: Menu32) -> dict[str, Any]:
-    """广告消耗与回收率，不分页。"""
-    data = {"items": await list_reports(session)}
+async def get_reports(
+    session: SessionDep,
+    _principal: Menu32,
+    params: Annotated[PageParams, Depends(page_params)],
+) -> dict[str, Any]:
+    """广告消耗与回收率。不传 page 时返回第一页。"""
+    data = await list_reports(session, params)
     await session.commit()
     return success(data)
 
@@ -231,22 +269,6 @@ async def post_promotion_status(
 ) -> dict[str, Any]:
     """批量暂停或启用广告。"""
     data = {"items": await update_promotions(session, body)}
-    await session.commit()
-    return success(data)
-
-
-@router.post(
-    "/auto-pause/run",
-    response_model=Envelope[AutoPauseResult],
-    summary="按阈值自动关停",
-)
-async def post_auto_pause(
-    session: SessionDep,
-    _principal: Menu32,
-    body: AutoPauseBody,
-) -> dict[str, Any]:
-    """用报表判断并暂停命中的广告。"""
-    data = await run_auto_pause(session, body)
     await session.commit()
     return success(data)
 

@@ -1,0 +1,150 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "全域模板记什么",
+    "locale": "zh-CN",
+    "output": "架构导览/.archify/architecture-uni-template-20260930-061256/uni-template.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/GoldenEagle1527/AdPilot-Backend",
+      "provider": "github",
+      "revision": "6643359e825abd3e4d1fda4b626c90ef8f0e8dbe"
+    }
+  },
+  "components": [
+    {
+      "id": "caller",
+      "type": "external",
+      "label": "投手",
+      "sublabel": "全员能看自己的号",
+      "pos": [
+        32,
+        230
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/modules/uni_template/controller.py",
+          "line": 31,
+          "end_line": 34,
+          "label": "要带令牌"
+        }
+      ]
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "模板接口",
+      "sublabel": "保存和分配抖音号",
+      "pos": [
+        326,
+        230
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/modules/uni_template/service.py",
+          "line": 1,
+          "end_line": 3,
+          "label": "不创建任务"
+        }
+      ]
+    },
+    {
+      "id": "table",
+      "type": "database",
+      "label": "全域模板",
+      "sublabel": "模板表里的全域行",
+      "pos": [
+        620,
+        230
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/modules/standard_delivery/model.py",
+          "line": 39,
+          "end_line": 43,
+          "label": "模式列"
+        },
+        {
+          "path": "backend/app/modules/uni_template/model.py",
+          "line": 1,
+          "end_line": 1,
+          "label": "不另建模板表"
+        }
+      ]
+    },
+    {
+      "id": "assign",
+      "type": "database",
+      "label": "抖音分配",
+      "sublabel": "只改当前投手的行",
+      "pos": [
+        326,
+        440
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/modules/uni_template/model.py",
+          "line": 11,
+          "end_line": 17,
+          "label": "分配表"
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "go",
+      "from": "caller",
+      "to": "api",
+      "label": "模板请求",
+      "variant": "emphasis"
+    },
+    {
+      "id": "save",
+      "from": "api",
+      "to": "table",
+      "label": "写入模板"
+    },
+    {
+      "id": "own",
+      "from": "api",
+      "to": "assign",
+      "label": "分配抖音号"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "这个模块做什么",
+      "items": [
+        "全域模板和标准模板共用一张表，用模式列分开。",
+        "模板人人可见。抖音号只属于当前投手。"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "它还不做什么",
+      "items": [
+        "保存模板时不分配抖音号，分配走另一条接口。",
+        "不创建端原生任务，也不调用巨量。"
+      ]
+    }
+  ]
+}

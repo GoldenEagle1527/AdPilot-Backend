@@ -15,4 +15,11 @@ def apply_cors(app: FastAPI, settings: Settings) -> None:
         allow_credentials=not wildcard,
         allow_methods=["*"],
         allow_headers=["*"],
+        expose_headers=[
+            "Content-Disposition",
+            "X-Total-Count",
+            "X-Export-Scope",
+            "X-Page",
+            "X-Page-Size",
+        ],
     )

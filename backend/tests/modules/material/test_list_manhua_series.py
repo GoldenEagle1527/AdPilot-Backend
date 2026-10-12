@@ -16,8 +16,8 @@ from pydantic import ValidationError
 from app.core.db import get_session
 from app.core.times import BEIJING
 from app.modules.material.controller import PrincipalDep, router
-from app.modules.material.schema import ManhuaSeriesQuery
-from app.modules.material.service import export_cells, rows_to_xlsx, to_item
+from app.modules.material.schema import ManhuaSeriesExportQuery, ManhuaSeriesQuery
+from app.modules.material.service import export_cells, export_window, rows_to_xlsx, to_item
 
 
 class StampParamTests(unittest.TestCase):
@@ -152,3 +152,65 @@ class ExportTests(unittest.TestCase):
         self.assertEqual(sheet["J1"].value, "抖音名")
         self.assertEqual(sheet.max_column, 10)
         self.assertEqual(sheet.max_row, 1)
+        self.assertEqual(res.headers["x-export-scope"], "full")
+        self.assertEqual(res.headers["x-total-count"], "0")
+
+    def test_export_without_page_is_the_full_filter(self) -> None:
+        """不传 page 和 page_size 时不是第一页。"""
+        self.assertIsNone(export_window(ManhuaSeriesExportQuery()))
+        self.assertEqual(export_window(ManhuaSeriesExportQuery(page=2)).page, 2)
+        self.assertEqual(export_window(ManhuaSeriesExportQuery(page=2)).page_size, 20)
+        self.assertEqual(export_window(ManhuaSeriesExportQuery(page_size=5)).page, 1)
+
+    def test_export_page_is_only_that_page(self) -> None:
+        """传入 page 时文件只含该页，响应头带筛选总数。"""
+        app = FastAPI()
+        app.include_router(router)
+
+        async def _session():
+            yield None
+
+        class Row:
+            id = 7
+            playlet_id = 9
+            book_id = 8
+            category_text = "玄幻"
+            tab_text = "IAA"
+            thumb_url = ""
+            book_name = "第二页"
+            episode_amount = 3
+            publish_status = 1
+            delivery_status = False
+            publish_time = ""
+            estimate_publish_time = None
+            create_time = ""
+            collected_at = datetime(2026, 9, 22, 1, 0, tzinfo=BEIJING)
+            douyin_nick_name = "号"
+
+        principal = get_args(PrincipalDep)[1].dependency
+        app.dependency_overrides[get_session] = _session
+        app.dependency_overrides[principal] = lambda: {"menu_ids": ["95"], "enabled": True}
+        client = TestClient(app)
+        with (
+            patch("app.modules.material.service.list_series", new=AsyncMock()) as listed,
+            patch(
+                "app.modules.material.service.page_series",
+                new=AsyncMock(return_value=([Row()], 41)),
+            ) as paged,
+        ):
+            res = client.post(
+                "/api/v1/material/manhua-series/export",
+                params={"page": 2, "page_size": 1, "tab_text": "IAA"},
+            )
+        self.assertEqual(res.status_code, 200, res.text)
+        listed.assert_not_called()
+        self.assertEqual(paged.await_args.kwargs["offset"], 1)
+        self.assertEqual(paged.await_args.kwargs["limit"], 1)
+        self.assertEqual(res.headers["x-export-scope"], "page")
+        self.assertEqual(res.headers["x-total-count"], "41")
+        self.assertEqual(res.headers["x-page"], "2")
+        self.assertEqual(res.headers["x-page-size"], "1")
+        sheet = load_workbook(io.BytesIO(res.content)).active
+        assert sheet is not None
+        self.assertEqual(sheet.max_row, 2)
+        self.assertEqual(sheet["A2"].value, "第二页")

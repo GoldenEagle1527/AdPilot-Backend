@@ -32,10 +32,7 @@ class AuthorizeUrlChannelTests(unittest.IsolatedAsyncioTestCase):
         )
         session = AsyncMock()
         session.scalar = AsyncMock(return_value=app)
-        with (
-            patch("app.modules.oceanengine.oauth.get_settings", return_value=_live_settings()),
-            patch("app.modules.oceanengine.oauth._prepare", new=AsyncMock()),
-        ):
+        with patch("app.modules.oceanengine.oauth.get_settings", return_value=_live_settings()):
             url = await authorize_url(session, "third")
         self.assertIn("app_id=1870857293665690", url)
         self.assertNotIn("agency", url)
@@ -43,10 +40,7 @@ class AuthorizeUrlChannelTests(unittest.IsolatedAsyncioTestCase):
     async def test_missing_channel_app_is_404_even_when_app_id_configured(self) -> None:
         session = AsyncMock()
         session.scalar = AsyncMock(return_value=None)
-        with (
-            patch("app.modules.oceanengine.oauth.get_settings", return_value=_live_settings()),
-            patch("app.modules.oceanengine.oauth._prepare", new=AsyncMock()),
-        ):
+        with patch("app.modules.oceanengine.oauth.get_settings", return_value=_live_settings()):
             with self.assertRaises(ApiError) as raised:
                 await authorize_url(session, "third")
         self.assertEqual(raised.exception.status_code, 404)

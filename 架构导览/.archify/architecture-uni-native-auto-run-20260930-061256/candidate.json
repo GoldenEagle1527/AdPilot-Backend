@@ -1,0 +1,122 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "执行记录只供查询",
+    "locale": "zh-CN",
+    "output": "架构导览/.archify/architecture-uni-native-auto-run-20260930-061256/uni-native-auto-run.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/GoldenEagle1527/AdPilot-Backend",
+      "provider": "github",
+      "revision": "6643359e825abd3e4d1fda4b626c90ef8f0e8dbe"
+    }
+  },
+  "components": [
+    {
+      "id": "caller",
+      "type": "external",
+      "label": "调用方",
+      "sublabel": "按规则和剧名查询",
+      "pos": [
+        32,
+        230
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/modules/uni_native_auto_run/controller.py",
+          "line": 17,
+          "end_line": 20,
+          "label": "只读接口"
+        }
+      ]
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "记录接口",
+      "sublabel": "列表详情和失败日志",
+      "pos": [
+        326,
+        230
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/modules/uni_native_auto_run/__init__.py",
+          "line": 1,
+          "end_line": 1,
+          "label": "只存和列出"
+        }
+      ]
+    },
+    {
+      "id": "db",
+      "type": "database",
+      "label": "记录表",
+      "sublabel": "一次执行和失败原因",
+      "pos": [
+        620,
+        230
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/modules/uni_native_auto_run/model.py",
+          "line": 1,
+          "end_line": 5,
+          "label": "页面不能手建"
+        },
+        {
+          "path": "backend/app/modules/uni_native_auto_run/service.py",
+          "line": 121,
+          "end_line": 136,
+          "label": "写入函数未挂上"
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "go",
+      "from": "caller",
+      "to": "api",
+      "label": "查询记录",
+      "variant": "emphasis"
+    },
+    {
+      "id": "read",
+      "from": "api",
+      "to": "db",
+      "label": "读取记录"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "这个模块做什么",
+      "items": [
+        "列出未删除的执行记录，以及这一次的失败短剧。"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "它还不做什么",
+      "items": [
+        "页面不能手建。启动和接口都不会写入。",
+        "写入函数留给以后的执行器，现在没有调用方。",
+        "不跑机器人，也不调用巨量。"
+      ]
+    }
+  ]
+}

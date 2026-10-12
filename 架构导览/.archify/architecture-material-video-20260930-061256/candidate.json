@@ -1,0 +1,116 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "视频素材记什么",
+    "locale": "zh-CN",
+    "output": "架构导览/.archify/architecture-material-video-20260930-061256/material-video.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/GoldenEagle1527/AdPilot-Backend",
+      "provider": "github",
+      "revision": "6643359e825abd3e4d1fda4b626c90ef8f0e8dbe"
+    }
+  },
+  "components": [
+    {
+      "id": "caller",
+      "type": "external",
+      "label": "调用方",
+      "sublabel": "上传者或被共享的人",
+      "pos": [
+        32,
+        230
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/modules/material_video/controller.py",
+          "line": 48,
+          "end_line": 51,
+          "label": "要带令牌"
+        }
+      ]
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "视频接口",
+      "sublabel": "可见范围和批量操作",
+      "pos": [
+        326,
+        230
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/modules/material_video/__init__.py",
+          "line": 1,
+          "end_line": 1,
+          "label": "模块说明"
+        }
+      ]
+    },
+    {
+      "id": "db",
+      "type": "database",
+      "label": "视频表",
+      "sublabel": "标签共享和投手",
+      "pos": [
+        620,
+        230
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/modules/material_video/model.py",
+          "line": 55,
+          "end_line": 58,
+          "label": "视频表"
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "go",
+      "from": "caller",
+      "to": "api",
+      "label": "素材请求",
+      "variant": "emphasis"
+    },
+    {
+      "id": "write",
+      "from": "api",
+      "to": "db",
+      "label": "读写素材"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "这个模块做什么",
+      "items": [
+        "登记一条视频素材，并记录共享人和投手。",
+        "公有私有、批量删除都写在这几张表里。"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "它还不做什么",
+      "items": [
+        "文件字节不在这里。字节上传走文件模块。",
+        "不把视频传到巨量，也不创建广告。"
+      ]
+    }
+  ]
+}

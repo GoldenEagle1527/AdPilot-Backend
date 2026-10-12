@@ -27,6 +27,18 @@ from app.tasks.celery_app import celery_app
 MAX_ATTEMPTS = 5
 # 无符合的推广链原因
 NO_MATCH_REASON = "常读无符合的推广链"
+
+
+def _matches_charge(item: dict, charge_filter: str | None, tab_text: str) -> bool:
+    """手动任务按 charge_filter 过滤。全部收付费 2 和免费 3；指定 IAA/IAP 走剧场 matches_tab；空则跟短剧页签。"""
+    if charge_filter == "all":
+        media = (item.get("media_config") or {}).get("media_config_type")
+        return media in (2, 3)
+    if charge_filter in ("IAA", "IAP"):
+        return matches_tab(item, charge_filter)
+    return matches_tab(item, tab_text)
+
+
 # 一次执行同时调常读的任务共用的数据库连接数
 POOL_SIZE = 5
 # 每分钟最多领多少条，要在 60 秒软超时内跑完、不撞常读 30 次/秒限频；没领到的下一分钟接着领
@@ -70,6 +82,7 @@ async def fetch_one(factory: async_sessionmaker[AsyncSession], task_id: int) -> 
         task, series = row
         # 回滚会让对象过期，异步下再读属性会报错，出错分支要用的值先取出来
         failures, book_id, book_name, tab_text = task.retry_count + 1, series.book_id, series.book_name, series.tab_text
+        charge_filter = task.charge_filter
         # 结束读事务、把连接还回池，调常读期间不占连接
         await session.commit()
         try:
@@ -77,7 +90,7 @@ async def fetch_one(factory: async_sessionmaker[AsyncSession], task_id: int) -> 
             links = [
                 {**promotion_fields(item), "series_id": series.id, "task_id": task_id}
                 for item in items
-                if matches_tab(item, tab_text)
+                if _matches_charge(item, charge_filter, tab_text)
             ]
             await insert_missing_links(session, links)
             task.status, task.reason = (

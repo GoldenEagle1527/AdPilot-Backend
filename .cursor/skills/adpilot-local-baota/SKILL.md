@@ -32,7 +32,9 @@ python main.py
 
 ## 交给用户的服务器命令
 
-代码在 `main` 上之后，把下面整段发给用户，让他们在宝塔机器的仓库根执行。不要代跑。
+代码在 `main` 上之后，把命令交给用户，让他们在宝塔机器上执行。不要代跑。
+
+先拉代码，再重启。重启在仓库根：
 
 ```bash
 cd /www/wwwroot/AdPilot-Backend
@@ -40,11 +42,20 @@ git pull origin main
 docker compose up -d --build
 ```
 
-这次提交改了表时，再附上：
+这次提交改了表时，再附上迁移。迁移在 `backend/`：
 
 ```bash
 cd /www/wwwroot/AdPilot-Backend/backend
-ADPILOT_ENV=prod alembic upgrade head
+alembic revision --autogenerate -m "说明"
+alembic upgrade head
 ```
 
-只动 `AdPilot-Backend` 这一个容器。宝塔里其它 Python 项目保持原样。
+`说明` 换成这次表变更的一句话。只动 `AdPilot-Backend` 这一个容器。宝塔里其它 Python 项目保持原样。
+
+## 更新前核对线上库
+
+表变更可能和线上现状对不上时（列已在、类型不同、手工改过表、迁移链和模型不一致），先看服务器上的库，再决定能不能按上面两行直接迁。
+
+看的时候只读：`SELECT`、`information_schema`、`\d`、`alembic_version`。对照模型和将要生成的 revision，能对上就把迁移命令交给用户。对不上就先改仓库里的迁移，改完再交命令。
+
+看服务器上的库时严禁任何修改：不执行 `INSERT` / `UPDATE` / `DELETE` / DDL，不在这台库上跑 `alembic upgrade` 或 `revision`。

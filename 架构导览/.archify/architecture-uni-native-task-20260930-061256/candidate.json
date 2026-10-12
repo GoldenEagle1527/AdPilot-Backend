@@ -1,0 +1,172 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "端原生任务只保存在本地",
+    "locale": "zh-CN",
+    "output": "架构导览/.archify/architecture-uni-native-task-20260930-061256/uni-native-task.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/GoldenEagle1527/AdPilot-Backend",
+      "provider": "github",
+      "revision": "6643359e825abd3e4d1fda4b626c90ef8f0e8dbe"
+    }
+  },
+  "components": [
+    {
+      "id": "caller",
+      "type": "external",
+      "label": "投手",
+      "sublabel": "只看自己的任务",
+      "pos": [
+        32,
+        230
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/modules/uni_native_task/controller.py",
+          "line": 49,
+          "end_line": 50,
+          "label": "不调巨量"
+        }
+      ]
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "任务接口",
+      "sublabel": "已保存且未提交",
+      "pos": [
+        326,
+        230
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/modules/uni_native_task/service.py",
+          "line": 287,
+          "end_line": 313,
+          "label": "写入任务"
+        }
+      ]
+    },
+    {
+      "id": "task",
+      "type": "database",
+      "label": "任务表",
+      "sublabel": "账户链接视频标题",
+      "pos": [
+        620,
+        230
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/modules/uni_native_task/model.py",
+          "line": 75,
+          "end_line": 83,
+          "label": "状态留空执行"
+        }
+      ]
+    },
+    {
+      "id": "template",
+      "type": "database",
+      "label": "全域模板",
+      "sublabel": "预算和系数可覆盖",
+      "pos": [
+        326,
+        36
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/modules/uni_native_task/service.py",
+          "line": 218,
+          "end_line": 245,
+          "label": "先核模板"
+        }
+      ]
+    },
+    {
+      "id": "media",
+      "type": "database",
+      "label": "素材和账户",
+      "sublabel": "短剧视频标题抖音号",
+      "pos": [
+        326,
+        440
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/modules/uni_native_task/service.py",
+          "line": 1,
+          "end_line": 1,
+          "label": "不上传素材"
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "go",
+      "from": "caller",
+      "to": "api",
+      "label": "保存任务",
+      "variant": "emphasis"
+    },
+    {
+      "id": "write",
+      "from": "api",
+      "to": "task",
+      "label": "写入任务"
+    },
+    {
+      "id": "read-t",
+      "from": "api",
+      "to": "template",
+      "label": "读取模板"
+    },
+    {
+      "id": "read-m",
+      "from": "api",
+      "to": "media",
+      "label": "核对素材"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "本地留下什么",
+      "items": [
+        "任务记下模板、短剧、预算、系数，以及账户和链接。",
+        "视频和标题只存本地编号，状态是已保存未提交。"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "没有发给巨量",
+      "items": [
+        "不上传素材，也不调用巨量。执行时间保持为空。",
+        "核对时不读剧场表。"
+      ]
+    }
+  ]
+}

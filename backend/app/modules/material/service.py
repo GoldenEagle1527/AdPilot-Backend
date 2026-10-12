@@ -14,7 +14,7 @@ from app.core.pagination import PageParams, page_data
 from app.core.times import BEIJING, beijing_iso, beijing_stamp, parse_beijing_stamp
 from app.modules.material.crud import insert_missing_series, list_series, page_series
 from app.modules.material.model import ManhuaSeries
-from app.modules.material.schema import ManhuaSeriesQuery
+from app.modules.material.schema import ManhuaSeriesExportQuery, ManhuaSeriesFilters, ManhuaSeriesQuery
 
 
 def to_item(row: ManhuaSeries) -> dict[str, Any]:
@@ -39,7 +39,7 @@ def to_item(row: ManhuaSeries) -> dict[str, Any]:
     }
 
 
-def series_filters(query: ManhuaSeriesQuery) -> list[ColumnElement[bool]]:
+def series_filters(query: ManhuaSeriesFilters) -> list[ColumnElement[bool]]:
     """列表和导出共用的筛选。"""
     filters: list[ColumnElement[bool]] = [ManhuaSeries.is_deleted == 0]
     if query.tab_text:
@@ -142,15 +142,33 @@ def rows_to_xlsx(headers: list[str], rows: list[list[str]]) -> bytes:
     return buffer.getvalue()
 
 
-async def export_manhua_series(session: AsyncSession, query: ManhuaSeriesQuery) -> bytes:
-    """按列表相同筛选导出全部匹配行。page、page_size 不参与。
+def export_window(query: ManhuaSeriesExportQuery) -> PageParams | None:
+    """两个分页参数都不传时导出全部。传入任一则只导出该页。"""
+    if query.page is None and query.page_size is None:
+        return None
+    return PageParams(page=query.page or 1, page_size=query.page_size or 20)
 
-    ponytail: 匹配行一次读进内存再打成 xlsx。到十万行再改成分批写入或加上限。
+
+async def export_manhua_series(
+    session: AsyncSession, query: ManhuaSeriesExportQuery
+) -> tuple[bytes, int, PageParams | None]:
+    """按列表相同筛选导出。不传 page 与 page_size 时是全部匹配行，不是第一页。
+
+    传入其中任一参数时只导出该页。返回 (xlsx, 筛选总数, 页参数或 None)。
+    ponytail: 全量导出走一次读进内存。到十万行再改成分批写入或加上限。
     """
     filters = series_filters(query)
-    rows = await list_series(session, filters)
+    window = export_window(query)
+    if window is None:
+        rows = await list_series(session, filters)
+        total = len(rows)
+    else:
+        rows, total = await page_series(
+            session, filters, offset=window.offset, limit=window.page_size
+        )
     headers = [label for _key, label in _EXPORT_COLUMNS]
-    return rows_to_xlsx(headers, [export_cells(to_item(row)) for row in rows])
+    payload = rows_to_xlsx(headers, [export_cells(to_item(row)) for row in rows])
+    return payload, total, window
 
 
 def tab_text_from_price(single_price: object) -> str:

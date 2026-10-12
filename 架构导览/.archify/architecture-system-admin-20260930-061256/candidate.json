@@ -1,0 +1,152 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "系统管理记什么",
+    "locale": "zh-CN",
+    "output": "架构导览/.archify/architecture-system-admin-20260930-061256/system-admin.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/GoldenEagle1527/AdPilot-Backend",
+      "provider": "github",
+      "revision": "6643359e825abd3e4d1fda4b626c90ef8f0e8dbe"
+    }
+  },
+  "components": [
+    {
+      "id": "caller",
+      "type": "external",
+      "label": "管理员",
+      "sublabel": "已登录的管理请求",
+      "pos": [
+        32,
+        230
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/modules/system_admin/deps.py",
+          "line": 28,
+          "end_line": 50,
+          "label": "菜单校验"
+        }
+      ]
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "系统管理",
+      "sublabel": "部门用户角色菜单",
+      "pos": [
+        326,
+        230
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/modules/system_admin/__init__.py",
+          "line": 19,
+          "end_line": 31,
+          "label": "挂上接口"
+        }
+      ]
+    },
+    {
+      "id": "db",
+      "type": "database",
+      "label": "权限表",
+      "sublabel": "用户部门角色和菜单",
+      "pos": [
+        620,
+        230
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/modules/system_admin/domain/models.py",
+          "line": 89,
+          "end_line": 92,
+          "label": "用户表"
+        }
+      ]
+    },
+    {
+      "id": "redis",
+      "type": "database",
+      "label": "登录会话",
+      "sublabel": "改权限后刷新或踢掉",
+      "pos": [
+        326,
+        36
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/modules/system_admin/domain/access.py",
+          "line": 104,
+          "end_line": 118,
+          "label": "刷新会话"
+        },
+        {
+          "path": "backend/app/core/auth.py",
+          "line": 223,
+          "end_line": 240,
+          "label": "改写会话"
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "go",
+      "from": "caller",
+      "to": "api",
+      "label": "管理请求",
+      "variant": "emphasis"
+    },
+    {
+      "id": "write",
+      "from": "api",
+      "to": "db",
+      "label": "读写组织"
+    },
+    {
+      "id": "touch",
+      "from": "api",
+      "to": "redis",
+      "label": "变更后刷新",
+      "variant": "security"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "这个模块做什么",
+      "items": [
+        "维护部门、用户、角色、菜单和数据范围。",
+        "登录时要的身份和菜单，也是从这些表算出来的。"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "它还不做什么",
+      "items": [
+        "不签发登录令牌。签发在登录接口。",
+        "停用、删除、重置密码会清掉该用户的会话。",
+        "不连接巨量，也不保存投放草稿。"
+      ]
+    }
+  ]
+}

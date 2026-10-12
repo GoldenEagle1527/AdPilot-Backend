@@ -1,0 +1,121 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "文件上传去哪",
+    "locale": "zh-CN",
+    "output": "架构导览/.archify/architecture-file-upload-20260930-061256/file-upload.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/GoldenEagle1527/AdPilot-Backend",
+      "provider": "github",
+      "revision": "6643359e825abd3e4d1fda4b626c90ef8f0e8dbe"
+    }
+  },
+  "components": [
+    {
+      "id": "caller",
+      "type": "external",
+      "label": "调用方",
+      "sublabel": "已登录后上传一个文件",
+      "pos": [
+        32,
+        230
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/modules/file/controller.py",
+          "line": 14,
+          "end_line": 16,
+          "label": "上传路由"
+        }
+      ]
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "上传接口",
+      "sublabel": "读入后交给存储",
+      "pos": [
+        326,
+        230
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/modules/file/service.py",
+          "line": 35,
+          "end_line": 44,
+          "label": "转存文件"
+        }
+      ]
+    },
+    {
+      "id": "tos",
+      "type": "cloud",
+      "label": "对象存储",
+      "sublabel": "返回公网地址",
+      "pos": [
+        620,
+        230
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/storage/tos.py",
+          "line": 14,
+          "end_line": 20,
+          "label": "创建客户端"
+        },
+        {
+          "path": "backend/app/storage/tos.py",
+          "line": 34,
+          "end_line": 45,
+          "label": "写入对象"
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "go",
+      "from": "caller",
+      "to": "api",
+      "label": "上传文件",
+      "variant": "emphasis"
+    },
+    {
+      "id": "put",
+      "from": "api",
+      "to": "tos",
+      "label": "转存字节"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "这个模块做什么",
+      "items": [
+        "接收一个文件，转到对象存储，返回地址和对象键。"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "它还不做什么",
+      "items": [
+        "不写业务表。密钥没配时上传会失败。",
+        "整份文件先读进内存，大文件还没有改成流式。"
+      ]
+    }
+  ]
+}

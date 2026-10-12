@@ -1,0 +1,688 @@
+"""漫剧标准投放的入参和出参。多传字段一律 422。"""
+
+from __future__ import annotations
+
+import re
+from datetime import date, datetime
+from decimal import Decimal
+from typing import Annotated, Any
+from zoneinfo import ZoneInfo
+
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
+
+from app.modules.standard_delivery.model import (
+    AgeBand,
+    AudienceDistrict,
+    AudienceGender,
+    BidType,
+    ChargeMode,
+    LibraryKind,
+    OceanDeliveryMode,
+    OperationStatus,
+    OptimizeGoal,
+    Placement,
+    ProductSelect,
+    ScheduleType,
+    TitleSelectMode,
+)
+
+BEIJING = ZoneInfo("Asia/Shanghai")
+
+NameText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=128)]
+PanelText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64)]
+def weighted_length(text: str) -> Decimal:
+    """字母和数字各算半个字，其余字符算一个字。"""
+    total = Decimal(0)
+    for char in text:
+        if char.isascii() and (char.isalpha() or char.isdigit()):
+            total += Decimal("0.5")
+        else:
+            total += Decimal(1)
+    return total
+
+
+def _bounded_tag(value: str, low: Decimal, high: Decimal, label: str) -> str:
+    """按加权字数限制标签。超长的普通字符也不收。"""
+    text = value.strip()
+    length = weighted_length(text)
+    if not text or len(text) > 20 or length < low or length > high:
+        raise ValueError(f"{label}长度须为 {low}–{high} 个字，字母和数字算半个字")
+    return text
+
+
+def _selling_point(value: str) -> str:
+    """产品卖点 6–9 个字。"""
+    return _bounded_tag(value, Decimal(6), Decimal(9), "产品卖点")
+
+
+def _call_to_action(value: str) -> str:
+    """行动号召 2–6 个字。"""
+    return _bounded_tag(value, Decimal(2), Decimal(6), "行动号召")
+
+
+def _batch_title(value: str) -> str:
+    """批量粘贴的标题按 5–55 个字，不在 30 处截断。"""
+    text = value.strip()
+    if not 5 <= len(text) <= 55:
+        raise ValueError("标题长度须为 5–55 个字")
+    return text
+
+
+SellingPointText = Annotated[str, BeforeValidator(_selling_point)]
+CallToActionText = Annotated[str, BeforeValidator(_call_to_action)]
+BatchTitleText = Annotated[str, BeforeValidator(_batch_title)]
+AdSourceText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
+ProductNameText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=20)]
+AlbumUrlText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2048)]
+Money = Annotated[Decimal, Field(gt=0, le=Decimal("99999999.99"), max_digits=10, decimal_places=2)]
+CostBound = Annotated[Decimal, Field(ge=0, le=Decimal("99999999.99"), max_digits=10, decimal_places=2)]
+RoiBound = Annotated[Decimal, Field(ge=0, le=Decimal("9999"), max_digits=8, decimal_places=4)]
+RoiGoal = Annotated[Decimal, Field(ge=0, le=Decimal("9999.999"), max_digits=7, decimal_places=3)]
+_SCHEDULE_TIME = re.compile(r"^[01]{336}$")
+_IMAGE_ID = re.compile(r"^img-[A-Za-z0-9_-]+$")
+
+
+def _aware(value: datetime) -> datetime:
+    """无时区按北京时间，有时区折到北京。"""
+    if value.tzinfo is None:
+        return value.replace(tzinfo=BEIJING)
+    return value.astimezone(BEIJING)
+
+
+def _unique_ids(values: list[int], label: str) -> list[int]:
+    """拒绝重复 id，顺序保留。"""
+    if len(values) != len(set(values)):
+        raise ValueError(f"{label}重复")
+    return values
+
+
+def _check_delivery_schedule(
+    schedule_type: ScheduleType,
+    start: date | None,
+    end: date | None,
+    schedule_time: str | None,
+) -> str | None:
+    """从今天起不能带日期。自选起止必须成对。时段空着表示不限。"""
+    if schedule_type == ScheduleType.FROM_NOW:
+        if start is not None or end is not None:
+            raise ValueError("从今天起长期投放不能填写开始或结束日期")
+    elif start is None or end is None:
+        raise ValueError("设置开始和结束时间须同时填写日期")
+    elif start > end:
+        raise ValueError("投放结束日期不能早于开始日期")
+    if schedule_time is None:
+        return None
+    if _SCHEDULE_TIME.fullmatch(schedule_time) is None:
+        raise ValueError("投放时段须为 48×7 的 0/1 字符串，空表示不限")
+    return schedule_time
+
+
+def _check_template_extras(
+    district: AudienceDistrict | None,
+    city_codes: list[int],
+    product_image_id: str | None,
+) -> str | None:
+    """地域和城市成对。商品库类型和选择方式各自可空。主图只收 img- 号。"""
+    if any(code <= 0 for code in city_codes):
+        raise ValueError("城市编码须为正整数")
+    if len(city_codes) != len(set(city_codes)):
+        raise ValueError("城市重复")
+    if district is None:
+        if city_codes:
+            raise ValueError("未选地域时不能填写城市")
+    elif district == AudienceDistrict.NONE:
+        if city_codes:
+            raise ValueError("不限地域不能填写城市")
+    elif not city_codes:
+        raise ValueError("按行政区域划分须选择城市")
+    if product_image_id is None:
+        return None
+    image_id = product_image_id.strip()
+    if _IMAGE_ID.fullmatch(image_id) is None or len(image_id) > 64:
+        raise ValueError("产品主图须为 img- 开头的图片 id")
+    return image_id
+
+
+def _unique_age_bands(bands: list[AgeBand]) -> list[AgeBand]:
+    """年龄段不重复。空列表表示不限，不另收一个不限标记。"""
+    if len(bands) != len(set(bands)):
+        raise ValueError("年龄段重复")
+    return bands
+
+
+def _pair(start: object, end: object, label: str, *, allow_equal: bool) -> None:
+    """上下限必须成对，且下限不超过上限。"""
+    if (start is None) ^ (end is None):
+        raise ValueError(f"{label}须同时填写开始和结束")
+    if start is None or end is None:
+        return
+    if allow_equal:
+        if start > end:
+            raise ValueError(f"{label}的开始不能晚于结束")
+        return
+    if start >= end:
+        raise ValueError(f"{label}的结束须晚于开始")
+
+
+class TemplateQuery(BaseModel):
+    """模板列表。收费模式必填，免费和付费分两次查。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    page: int = Field(1, ge=1, description="页码，从 1 起")
+    page_size: int = Field(20, ge=1, le=100, description="每页条数，最大 100")
+    charge_mode: ChargeMode = Field(description="IAA 免费、IAP 付费")
+    name: str | None = Field(None, description="模板名称，模糊")
+    subject_id: int | None = Field(None, description="投放主体 id")
+
+
+class TemplateWrite(BaseModel):
+    """新增模板。收费模式创建后不可改。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: NameText = Field(description="模板名称，1–128 字")
+    charge_mode: ChargeMode = Field(description="IAA 免费、IAP 付费")
+    subject_id: int = Field(description="投放主体 id，须为标准投放且收费模式一致")
+    bid_panels: list[PanelText] = Field(default_factory=list, max_length=20, description="出价面板，付费至少一条")
+    ads_per_account: int = Field(ge=1, le=100, description="每账户广告条数，1–100")
+    ocean_delivery_mode: OceanDeliveryMode = Field(description="巨量投放模式：MANUAL 手动、PROCEDURAL 自动。不是 delivery_mode")
+    bid_type: BidType = Field(description="竞价策略：CUSTOM 稳定成本、NO_BID 最大转化")
+    schedule_type: ScheduleType = Field(description="投放时间：SCHEDULE_FROM_NOW 或 SCHEDULE_START_END")
+    schedule_start_date: date | None = Field(None, description="投放开始日期。只有 SCHEDULE_START_END 才填")
+    schedule_end_date: date | None = Field(None, description="投放结束日期。只有 SCHEDULE_START_END 才填")
+    schedule_time: str | None = Field(None, description="投放时段。空表示不限。有值则为 48×7 的 0/1 串")
+    ad_source: AdSourceText = Field(description="广告来源，1–100 字")
+    product_name: ProductNameText = Field(description="产品名称，最多 20 字")
+    selling_points: list[SellingPointText] = Field(default_factory=list, max_length=10, description="产品卖点，每条 6–9 个字，字母和数字算半个字")
+    call_to_action_buttons: list[CallToActionText] = Field(default_factory=list, max_length=10, description="行动号召，每条 2–6 个字，字母和数字算半个字")
+    roi_goal: RoiGoal | None = Field(None, description="ROI 目标。标准模板不用 roi_coefficient")
+    videos_per_ad: int = Field(ge=1, le=30, description="每个广告使用视频数，1–30")
+    titles_per_ad: int = Field(ge=1, le=10, description="每个广告使用标题数，1–10")
+    placement: Placement | None = Field(
+        None, description="广告位置：aweme 抖音、aweme_feed 抖音加头条、universal 通投智选。手动时含抖音信息流"
+    )
+    district: AudienceDistrict | None = Field(None, description="用户定向地域：NONE 不限、REGION 行政区域")
+    city_codes: list[int] = Field(default_factory=list, max_length=200, description="城市编码。不限时不传或空数组")
+    gender: AudienceGender = Field(
+        AudienceGender.NONE, description="用户定向性别：none 不限、male 男、female 女。不传为不限"
+    )
+    age_bands: list[AgeBand] = Field(
+        default_factory=list,
+        max_length=5,
+        description="年龄段：18_23、24_30、31_40、41_49、50_plus。空数组表示不限，不另传不限标记",
+    )
+    project_budget: Money = Field(description="项目预算，单位元。必填，投放类型为设置预算")
+    ad_budget: Money | None = Field(None, description="广告预算，单位元。不拿项目预算代替")
+    product_library_id: int | None = Field(None, description="账户管理里的一条视频库或小说库")
+    library_kind: LibraryKind | None = Field(
+        None, description="商品库类型：video 视频库、novel 小说库。不选具体商品库行，可以不填"
+    )
+    product_select: ProductSelect | None = Field(
+        None, description="商品选择：this_series 本剧、other_series 非本剧、manual 手动选择。可以不填，不和商品库类型成对"
+    )
+    material_boost: bool = Field(False, description="素材一键起量。产品说明没有这一项，不传则为关")
+    promotion_operation: OperationStatus | None = Field(None, description="广告开关：ENABLE 或 DISABLE。不是项目开关")
+    douyin_account_id: int | None = Field(None, description="一个已启用的标准抖音号 id")
+    product_image_id: str | None = Field(None, max_length=64, description="产品主图 id，img- 前缀")
+    title_select_mode: TitleSelectMode | None = Field(
+        None, description="标题选择：manual 手动、auto 自动。写入标准列，不占用全域 title_select_mode"
+    )
+
+    @model_validator(mode="after")
+    def panels_match_charge(self) -> TemplateWrite:
+        """付费必须选出价面板，重复的面板直接拒。投放时间与时段一起查。"""
+        if len(self.bid_panels) != len(set(self.bid_panels)):
+            raise ValueError("出价面板重复")
+        if self.charge_mode == ChargeMode.IAP and not self.bid_panels:
+            raise ValueError("付费模板至少选一个出价面板")
+        self.schedule_time = _check_delivery_schedule(
+            self.schedule_type, self.schedule_start_date, self.schedule_end_date, self.schedule_time
+        )
+        self.product_image_id = _check_template_extras(
+            self.district,
+            list(self.city_codes),
+            self.product_image_id,
+        )
+        self.age_bands = _unique_age_bands(list(self.age_bands))
+        return self
+
+
+class TemplateUpdate(BaseModel):
+    """改模板。不收收费模式。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: NameText = Field(description="模板名称，1–128 字")
+    subject_id: int = Field(description="投放主体 id")
+    bid_panels: list[PanelText] = Field(default_factory=list, max_length=20, description="出价面板")
+    ads_per_account: int = Field(ge=1, le=100, description="每账户广告条数，1–100")
+    ocean_delivery_mode: OceanDeliveryMode = Field(description="巨量投放模式：MANUAL 手动、PROCEDURAL 自动")
+    bid_type: BidType = Field(description="竞价策略：CUSTOM 或 NO_BID")
+    schedule_type: ScheduleType = Field(description="投放时间：SCHEDULE_FROM_NOW 或 SCHEDULE_START_END")
+    schedule_start_date: date | None = Field(None, description="投放开始日期")
+    schedule_end_date: date | None = Field(None, description="投放结束日期")
+    schedule_time: str | None = Field(None, description="投放时段。空表示不限")
+    ad_source: AdSourceText = Field(description="广告来源")
+    product_name: ProductNameText = Field(description="产品名称，最多 20 字")
+    selling_points: list[SellingPointText] = Field(default_factory=list, max_length=10, description="产品卖点，每条 6–9 个字")
+    call_to_action_buttons: list[CallToActionText] = Field(default_factory=list, max_length=10, description="行动号召，每条 2–6 个字")
+    roi_goal: RoiGoal | None = Field(None, description="ROI 目标。不用 roi_coefficient")
+    videos_per_ad: int = Field(ge=1, le=30, description="每个广告视频数，1–30")
+    titles_per_ad: int = Field(ge=1, le=10, description="每个广告标题数，1–10")
+    placement: Placement | None = Field(None, description="广告位置：aweme、aweme_feed、universal")
+    district: AudienceDistrict | None = Field(None, description="用户定向地域：NONE 或 REGION")
+    city_codes: list[int] = Field(default_factory=list, max_length=200, description="城市编码。不限时为空")
+    gender: AudienceGender = Field(AudienceGender.NONE, description="用户定向性别：none、male、female。不传为不限")
+    age_bands: list[AgeBand] = Field(
+        default_factory=list,
+        max_length=5,
+        description="年龄段。空数组表示不限。不重复，不另传不限标记",
+    )
+    project_budget: Money = Field(description="项目预算，单位元。必填")
+    ad_budget: Money | None = Field(None, description="广告预算，单位元")
+    product_library_id: int | None = Field(None, description="账户管理里的一条视频库或小说库")
+    library_kind: LibraryKind | None = Field(
+        None, description="商品库类型：video 视频库、novel 小说库"
+    )
+    product_select: ProductSelect | None = Field(
+        None, description="this_series、other_series、manual。可以不填，不和商品库类型成对"
+    )
+    material_boost: bool = Field(False, description="素材一键起量。不传则为关")
+    promotion_operation: OperationStatus | None = Field(None, description="广告开关 ENABLE 或 DISABLE")
+    douyin_account_id: int | None = Field(None, description="一个已启用的标准抖音号 id")
+    product_image_id: str | None = Field(None, max_length=64, description="产品主图 id，img- 前缀")
+    title_select_mode: TitleSelectMode | None = Field(None, description="标题选择 manual 或 auto")
+
+    @model_validator(mode="after")
+    def panels_unique(self) -> TemplateUpdate:
+        """重复的面板直接拒。付费是否为空交给服务层看原收费模式。"""
+        if len(self.bid_panels) != len(set(self.bid_panels)):
+            raise ValueError("出价面板重复")
+        self.schedule_time = _check_delivery_schedule(
+            self.schedule_type, self.schedule_start_date, self.schedule_end_date, self.schedule_time
+        )
+        self.product_image_id = _check_template_extras(
+            self.district,
+            list(self.city_codes),
+            self.product_image_id,
+        )
+        self.age_bands = _unique_age_bands(list(self.age_bands))
+        return self
+
+
+class TemplateItem(BaseModel):
+    """一条模板。时间为北京时间，精确到秒。"""
+
+    id: str
+    name: str
+    charge_mode: str
+    subject_id: str
+    subject_name: str
+    bid_panels: list[str]
+    ads_per_account: int
+    ocean_delivery_mode: str | None
+    bid_type: str | None
+    schedule_type: str | None
+    schedule_start_date: str | None
+    schedule_end_date: str | None
+    schedule_time: str | None
+    ad_source: str | None
+    product_name: str | None
+    selling_points: list[str]
+    call_to_action_buttons: list[str]
+    roi_goal: str | None
+    videos_per_ad: int | None
+    titles_per_ad: int | None
+    placement: str | None
+    district: str | None
+    city_codes: list[int]
+    gender: str
+    age_bands: list[str]
+    project_budget: str | None
+    ad_budget: str | None
+    product_library_id: str | None
+    library_kind: str | None
+    product_select: str | None
+    material_boost: bool
+    promotion_operation: str | None
+    douyin_account_id: str | None
+    product_image_id: str | None
+    title_select_mode: str | None
+    created_at: str
+    updated_at: str
+
+
+class DraftQuery(BaseModel):
+    """草稿列表。只查当前投手自己的，收费模式必填。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    page: int = Field(1, ge=1, description="页码，从 1 起")
+    page_size: int = Field(20, ge=1, le=100, description="每页条数，最大 100")
+    charge_mode: ChargeMode = Field(description="IAA 免费、IAP 付费")
+    template_id: int | None = Field(None, description="模板 id")
+    subject_id: int | None = Field(None, description="模板上的投放主体 id")
+    series_id: int | None = Field(None, description="短剧 id")
+    douyin_account_id: int | None = Field(None, description="抖音号 id")
+    library_no: int | None = Field(None, description="商品库的巨量库 id")
+    placement: Placement | None = Field(None, description="版位")
+    optimize_goal: OptimizeGoal | None = Field(None, description="优化目标")
+    scheduled: bool | None = Field(None, description="true 只看已预约，false 只看未预约")
+
+
+class DraftWrite(BaseModel):
+    """保存草稿。抖音号只有一个；账户、视频、标题是列表。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    template_id: int = Field(description="模板 id。付费任务使用免费端原生模板")
+    charge_mode: ChargeMode | None = Field(
+        None, description="任务收费模式。付费任务传 IAP，模板仍须是免费端原生模板。不传则跟模板"
+    )
+    schedule_start: datetime | None = Field(None, description="预约执行开始。与结束同时空或同时有值")
+    schedule_end: datetime | None = Field(None, description="预约执行结束。到点且未过结束才提交")
+    advertiser_ids: list[int] = Field(
+        default_factory=list, max_length=100, description="巨量广告主 id。空则自动匹配当前投手的三个账户"
+    )
+    douyin_account_id: int | None = Field(
+        None, description="已分配给当前投手的标准抖音号。不传则确认提交用模板上的号"
+    )
+    series_id: int = Field(description="一部短剧的 manhua_series.id")
+    video_ids: list[int] = Field(
+        default_factory=list, max_length=200, description="视频素材 id。空则从这部剧的素材库代入"
+    )
+    video_order: str = Field("upload", pattern="^(upload|random)$", description="upload 上传顺序、random 随机")
+    title_ids: list[int] = Field(
+        default_factory=list, max_length=100, description="标题库 id。可与批量标题一起用"
+    )
+    batch_titles: list[BatchTitleText] = Field(
+        default_factory=list, max_length=100, description="批量换行粘贴的标题，每条 5–55 个字"
+    )
+    placement: Placement | None = Field(None, description="版位。不传则确认提交用模板上的广告位置")
+    project_budget: Money | None = Field(None, description="项目预算，单位元。不传则确认提交用模板")
+    ad_budget: Money | None = Field(None, description="广告预算，单位元。不传则用模板上的广告预算，不用项目预算")
+    optimize_goal: OptimizeGoal = Field(description="优化目标。免费只能是激活，付费只能是付费")
+    library_no: int | None = Field(None, description="商品库的巨量库 id。不传则用模板绑定的商品库")
+    promotion_link_id: int | None = Field(None, description="已有剧场推广链 id。与手填链接二选一")
+    album_url: AlbumUrlText | None = Field(None, description="手填推广链接。空则用已有链，再空则自动匹配 IAA")
+    product_book_name: str | None = Field(None, max_length=512, description="商品选择为非本剧时的剧名")
+    project_operation: OperationStatus = Field(description="项目开关：ENABLE 或 DISABLE")
+    promotion_operation: OperationStatus | None = Field(
+        None, description="广告开关。不传则确认提交用模板上的广告状态"
+    )
+
+    @field_validator("album_url")
+    @classmethod
+    def album_is_http(cls, value: str | None) -> str | None:
+        """手填推广链接只收 http 或 https。"""
+        if value is None:
+            return None
+        if not value.startswith(("http://", "https://")):
+            raise ValueError("推广链接须为 http 或 https")
+        return value
+
+    @model_validator(mode="after")
+    def check_lists_and_schedule(self) -> DraftWrite:
+        """预约成对，列表不重复。抖音号是单个整数，传数组会在类型上被拒。"""
+        _unique_ids(self.advertiser_ids, "账户")
+        _unique_ids(self.video_ids, "视频")
+        _unique_ids(self.title_ids, "标题")
+        if len(self.batch_titles) != len(set(self.batch_titles)):
+            raise ValueError("标题重复")
+        if self.schedule_start is not None:
+            self.schedule_start = _aware(self.schedule_start)
+        if self.schedule_end is not None:
+            self.schedule_end = _aware(self.schedule_end)
+        _pair(self.schedule_start, self.schedule_end, "预约执行", allow_equal=False)
+        return self
+
+
+class AccountItem(BaseModel):
+    """草稿里的一个广告账户。"""
+
+    advertiser_account_id: str
+    advertiser_id: int
+    name: str
+
+
+class VideoRef(BaseModel):
+    """草稿里的一条视频。"""
+
+    id: str
+    name: str
+
+
+class TitleRef(BaseModel):
+    """草稿里的一条标题。"""
+
+    id: str
+    title: str
+
+
+class DraftItem(BaseModel):
+    """一条草稿。主体和每账户广告条数从模板带出。"""
+
+    id: str
+    charge_mode: str
+    template_id: str
+    template_name: str
+    subject_id: str
+    subject_name: str
+    bid_panels: list[str]
+    ads_per_account: int
+    pitcher_user_id: str
+    schedule_start: str | None
+    schedule_end: str | None
+    douyin_account_id: str | None
+    aweme_id: str | None
+    douyin_name: str | None
+    series_id: str
+    book_name: str
+    series_short_name: str | None = None
+    link_name: str | None = None
+    promotion_link_id: str | None = None
+    accounts: list[AccountItem]
+    videos: list[VideoRef]
+    titles: list[TitleRef]
+    batch_titles: list[str] = Field(default_factory=list)
+    video_order: str = "upload"
+    placement: str | None
+    project_budget: str | None
+    ad_budget: str
+    optimize_goal: str
+    product_library_id: str | None
+    library_no: int | None
+    library_name: str | None
+    album_url: str | None
+    project_operation: str | None
+    promotion_operation: str | None
+    created_at: str
+    updated_at: str
+
+
+class RuleQuery(BaseModel):
+    """自动规则列表。只查当前投手自己的。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    page: int = Field(1, ge=1, description="页码，从 1 起")
+    page_size: int = Field(20, ge=1, le=100, description="每页条数，最大 100")
+    charge_mode: ChargeMode = Field(description="IAA 免费、IAP 付费")
+    name: str | None = Field(None, description="规则名称，模糊")
+    template_id: int | None = Field(None, description="模板 id")
+    series_id: int | None = Field(None, description="选中了这部短剧")
+    no_bid_only: bool | None = Field(None, description="是否只针对最大转化")
+    scheduled: bool | None = Field(None, description="true 只看已预约，false 只看立即执行")
+
+
+class RuleWrite(BaseModel):
+    """保存自动规则。短剧可多选。不传的筛选范围表示不限。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: NameText | None = Field(None, description="可空。服务端按类型写成 IAA端原生自动批量或短剧消耗自动批量加时间")
+    rule_kind: str = Field("publish", pattern="^(publish|cost)$", description="publish 按上架时间、cost 按短剧消耗")
+    template_id: int = Field(description="批量模板 id")
+    accounts_per_series: int = Field(3, ge=1, le=100, description="每部剧账户数，默认 3")
+    max_videos_per_series: int = Field(200, ge=1, le=500, description="每部剧最大视频数，默认 200")
+    schedule_start: datetime | None = Field(None, description="预约执行时间。空表示立即执行")
+    schedule_end: datetime | None = Field(
+        None, description="预约结束。过了结束时间不再执行，即使还没跑过"
+    )
+    cost_min: CostBound | None = Field(None, description="短剧消耗下限，单位元")
+    cost_max: CostBound | None = Field(None, description="短剧消耗上限，单位元")
+    roi_min: RoiBound | None = Field(None, description="短剧回收率下限")
+    roi_max: RoiBound | None = Field(None, description="短剧回收率上限")
+    publish_start: date | None = Field(None, description="短剧上架日期下限")
+    publish_end: date | None = Field(None, description="短剧上架日期上限")
+    no_bid_only: bool = Field(False, description="真则只针对最大转化")
+    series_ids: list[int] = Field(min_length=1, max_length=100, description="短剧 id，可多选")
+
+    @model_validator(mode="after")
+    def check_ranges(self) -> RuleWrite:
+        """消耗、回收、上架要成对。预约的结束必须晚于开始。短剧 id 不重复。"""
+        _unique_ids(self.series_ids, "短剧")
+        if self.schedule_start is not None:
+            self.schedule_start = _aware(self.schedule_start)
+        if self.schedule_end is not None:
+            self.schedule_end = _aware(self.schedule_end)
+        if self.schedule_start is not None and self.schedule_end is not None:
+            _pair(self.schedule_start, self.schedule_end, "预约执行", allow_equal=True)
+        _pair(self.cost_min, self.cost_max, "短剧消耗", allow_equal=True)
+        _pair(self.roi_min, self.roi_max, "短剧回收率", allow_equal=True)
+        _pair(self.publish_start, self.publish_end, "短剧上架时间", allow_equal=True)
+        return self
+
+
+class SeriesRef(BaseModel):
+    """规则里的一部短剧。"""
+
+    id: str
+    book_name: str
+
+
+class RuleItem(BaseModel):
+    """一条自动规则。剧场固定番茄漫剧。"""
+
+    id: str
+    name: str
+    rule_kind: str = "publish"
+    theater: str = "番茄漫剧"
+    charge_mode: str
+    template_id: str
+    template_name: str
+    ads_per_account: int
+    pitcher_user_id: str
+    accounts_per_series: int
+    max_videos_per_series: int
+    schedule_start: str | None
+    schedule_end: str | None
+    is_enabled: bool
+    ran_at: str | None
+    cost_min: str | None
+    cost_max: str | None
+    roi_min: str | None
+    roi_max: str | None
+    publish_start: str | None
+    publish_end: str | None
+    no_bid_only: bool
+    series: list[SeriesRef]
+    created_at: str
+    updated_at: str
+
+
+class RuleSwitchWrite(BaseModel):
+    """只改自动规则的开关。打开且没有预约时间时执行一次。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    is_enabled: bool = Field(description="true 开启、false 关闭")
+
+
+class DeletedItem(BaseModel):
+    """软删后的出参。"""
+
+    id: str
+    deleted: bool
+
+
+class SubmitAccount(BaseModel):
+    """一个账户上建出的项目和广告报文。"""
+
+    advertiser_id: int
+    project_id: int
+    product_id: int
+    image_id: str
+    project: dict[str, Any]
+    promotions: list[dict[str, Any]]
+
+
+class SubmitResult(BaseModel):
+    """确认提交的结果。报文在 data 里，不代表巨量已经收下。"""
+
+    id: str
+    aweme_id: str
+    accounts: list[SubmitAccount]
+
+
+class ProductSnapshotWrite(BaseModel):
+    """保存一份产品快照。标准模板可以把它抄到产品名称、主图、卖点和行动号召。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: NameText = Field(description="快照名称，1–128 字")
+    product_name: ProductNameText = Field(description="产品名称，最多 20 字")
+    product_image_id: str = Field(description="产品主图 id，img- 前缀")
+    selling_points: list[SellingPointText] = Field(default_factory=list, max_length=10, description="产品卖点，每条 6–9 个字")
+    call_to_action_buttons: list[CallToActionText] = Field(
+        default_factory=list, max_length=10, description="行动号召，每条 2–6 个字"
+    )
+
+    @field_validator("product_image_id")
+    @classmethod
+    def image_id_shape(cls, value: str) -> str:
+        """主图只收 img- 号。"""
+        image_id = value.strip()
+        if _IMAGE_ID.fullmatch(image_id) is None or len(image_id) > 64:
+            raise ValueError("产品主图须为 img- 开头的图片 id")
+        return image_id
+
+
+class ProductSnapshotQuery(BaseModel):
+    """产品快照列表。名称不传就是全部。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    page: int = Field(1, ge=1, description="页码，从 1 起")
+    page_size: int = Field(20, ge=1, le=100, description="每页条数，最大 100")
+    name: str | None = Field(None, description="快照名称，模糊")
+
+
+class ProductSnapshotItem(BaseModel):
+    """一条产品快照。"""
+
+    id: str
+    name: str
+    product_name: str
+    product_image_id: str
+    selling_points: list[str]
+    call_to_action_buttons: list[str]
+    created_at: str
+    updated_at: str
+
+
+class ProductSnapshotCopy(BaseModel):
+    """把一条快照抄到标准模板的产品字段上。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    snapshot_id: int = Field(ge=1, description="产品快照 id")

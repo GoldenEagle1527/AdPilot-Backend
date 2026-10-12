@@ -1,0 +1,166 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "标准投放草稿怎样保存",
+    "locale": "zh-CN",
+    "output": "架构导览/.archify/sequence-standard-draft-20260930-061256/standard-draft.html",
+    "quality_profile": "showcase",
+    "column_fit": "spread",
+    "viewBox": [
+      1080,
+      640
+    ],
+    "repository": {
+      "url": "https://github.com/GoldenEagle1527/AdPilot-Backend",
+      "provider": "github",
+      "revision": "6643359e825abd3e4d1fda4b626c90ef8f0e8dbe"
+    }
+  },
+  "participants": [
+    {
+      "id": "caller",
+      "type": "external",
+      "label": "投手",
+      "sublabel": "已登录并带菜单",
+      "sources": [
+        {
+          "path": "backend/app/modules/standard_delivery/controller.py",
+          "line": 179,
+          "end_line": 180,
+          "label": "不向巨量提交"
+        }
+      ]
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "草稿接口",
+      "sublabel": "先核对再整表保存",
+      "sources": [
+        {
+          "path": "backend/app/modules/standard_delivery/service.py",
+          "line": 469,
+          "end_line": 493,
+          "label": "新增草稿"
+        }
+      ]
+    },
+    {
+      "id": "refs",
+      "type": "database",
+      "label": "已有数据",
+      "sublabel": "模板号剧账户标题",
+      "sources": [
+        {
+          "path": "backend/app/modules/standard_delivery/service.py",
+          "line": 395,
+          "end_line": 442,
+          "label": "一次核完"
+        }
+      ]
+    },
+    {
+      "id": "draft",
+      "type": "database",
+      "label": "草稿表",
+      "sublabel": "只留本地字段",
+      "sources": [
+        {
+          "path": "backend/app/modules/standard_delivery/model.py",
+          "line": 170,
+          "end_line": 174,
+          "label": "不存提交体"
+        }
+      ]
+    }
+  ],
+  "messages": [
+    {
+      "id": "submit",
+      "from": "caller",
+      "to": "api",
+      "y": 180,
+      "label": "提交草稿",
+      "variant": "emphasis"
+    },
+    {
+      "id": "check",
+      "from": "api",
+      "to": "refs",
+      "y": 230,
+      "label": "核对现成数据",
+      "variant": "default"
+    },
+    {
+      "id": "ok",
+      "from": "refs",
+      "to": "api",
+      "y": 280,
+      "label": "全部对上",
+      "variant": "return"
+    },
+    {
+      "id": "save",
+      "from": "api",
+      "to": "draft",
+      "y": 340,
+      "label": "写入草稿和关联",
+      "variant": "emphasis"
+    },
+    {
+      "id": "back",
+      "from": "draft",
+      "to": "api",
+      "y": 390,
+      "label": "行已提交",
+      "variant": "return"
+    },
+    {
+      "id": "reply",
+      "from": "api",
+      "to": "caller",
+      "y": 450,
+      "label": "返回已保存草稿",
+      "variant": "return"
+    }
+  ],
+  "activations": [
+    {
+      "participant": "api",
+      "from": 180,
+      "to": 456,
+      "type": "backend"
+    },
+    {
+      "participant": "refs",
+      "from": 224,
+      "to": 286,
+      "type": "database"
+    },
+    {
+      "participant": "draft",
+      "from": 334,
+      "to": 396,
+      "type": "database"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "本地留下什么",
+      "items": [
+        "留下模板、抖音号、短剧、账户、视频、标题、商品库和预算。",
+        "多个账户共用这一个已启用的标准抖音号。"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "没有发给巨量",
+      "items": [
+        "不创建项目，也不写巨量提交体。",
+        "不存推广链、主图、卖点、行动号召和巨量素材号。"
+      ]
+    }
+  ]
+}

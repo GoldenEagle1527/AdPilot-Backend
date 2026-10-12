@@ -1,0 +1,151 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "账户模块记什么",
+    "locale": "zh-CN",
+    "output": "架构导览/.archify/architecture-account-20260930-061256/account.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/GoldenEagle1527/AdPilot-Backend",
+      "provider": "github",
+      "revision": "6643359e825abd3e4d1fda4b626c90ef8f0e8dbe"
+    }
+  },
+  "components": [
+    {
+      "id": "caller",
+      "type": "external",
+      "label": "调用方",
+      "sublabel": "挂在巨量前缀下面",
+      "pos": [
+        32,
+        230
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/modules/account/api.py",
+          "line": 1,
+          "end_line": 1,
+          "label": "接口说明"
+        },
+        {
+          "path": "backend/app/modules/oceanengine/controller.py",
+          "line": 254,
+          "end_line": 254,
+          "label": "挂到巨量路由"
+        }
+      ]
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "账户接口",
+      "sublabel": "广告主主体抖音号",
+      "pos": [
+        326,
+        230
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/modules/account/api.py",
+          "line": 122,
+          "end_line": 127,
+          "label": "手动同步"
+        }
+      ]
+    },
+    {
+      "id": "db",
+      "type": "database",
+      "label": "账户表",
+      "sublabel": "本地账户和组织授权",
+      "pos": [
+        620,
+        230
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/modules/account/model.py",
+          "line": 156,
+          "end_line": 159,
+          "label": "广告主表"
+        }
+      ]
+    },
+    {
+      "id": "ocean",
+      "type": "external",
+      "label": "巨量同步",
+      "sublabel": "假数据时不打外网",
+      "pos": [
+        326,
+        440
+      ],
+      "size": [
+        176,
+        74
+      ],
+      "sources": [
+        {
+          "path": "backend/app/modules/account/commands.py",
+          "line": 913,
+          "end_line": 923,
+          "label": "按开关同步"
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "go",
+      "from": "caller",
+      "to": "api",
+      "label": "账户请求",
+      "variant": "emphasis"
+    },
+    {
+      "id": "write",
+      "from": "api",
+      "to": "db",
+      "label": "读写账户"
+    },
+    {
+      "id": "sync",
+      "from": "api",
+      "to": "ocean",
+      "label": "关假数据才拉",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "这个模块做什么",
+      "items": [
+        "保存广告主、投放主体、抖音号和商品库。",
+        "改名、分配投手、解绑都写在本地。"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "它还不做什么",
+      "items": [
+        "假数据打开时，手动同步只数库里已有的广告主。",
+        "不创建标准投放草稿，也不提交端原生任务。"
+      ]
+    }
+  ]
+}
