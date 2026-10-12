@@ -8,7 +8,7 @@
 
 作者：
 状态：draft
-更新日期：2026-09-30
+更新日期：2026-10-12
 
 ## 请求
 
@@ -23,8 +23,12 @@
 | roi_coefficient | body | number | 是 | ROI 系数 |
 | aigc_dynamic_creative | body | boolean | 是 | AIGC 动态创意 |
 | title_select_mode | body | string | 是 | `manual` 或 `auto` |
+| district | body | string | 否 | 同 [create-template.md](create-template.md)。不传按不限，会覆盖原来的地域 |
+| city_codes | body | integer[] | 否 | 同新增。`REGION` 至少 1 个城市 |
+| gender | body | string | 否 | 同新增。不传按 `none`，会覆盖原来的性别 |
+| age_bands | body | string[] | 否 | 同新增。空数组表示年龄不限，会覆盖原来的年龄 |
 
-这是整表替换，不是补丁。多传字段返回 422。不收标准模板的 `gender`、`age_bands`。
+这是整表替换，不是补丁。多传字段返回 422。不收标准模板的出价面板、每账户广告条数。
 
 ## 响应
 
@@ -40,7 +44,7 @@
 | 400 | `主体不是全域投放` | 主体是标准投放 |
 | 400 | `主体收费模式与模板不一致` | 主体的 IAA/IAP 和本次提交不同 |
 | 409 | `模板名称已存在` | 别的未删除全域模板在同一变现模式下已用这个名称 |
-| 422 | `name: ...` | 缺必填、枚举不认识、越界、多传字段 |
+| 422 | `name: ...` | 缺必填、枚举不认识、越界、多传字段、年龄段重复、不限地域却带城市、行政区域未选城市 |
 
 ## 被谁调用
 
@@ -52,5 +56,6 @@
 
 | 日期 | 文档版本 | 破坏？ | 变更 | 作者 |
 | --- | --- | --- | --- | --- |
+| 2026-10-12 | 1 | 否 | 整表保存写入并返回 `gender`、`age_bands`、`district`、`city_codes` | |
 | 2026-10-09 | 1 | 否 | 文档：写明不收标准模板的 `gender`、`age_bands`，多传仍 422 | |
 | 2026-09-30 | 1 | 否 | 初稿 | |

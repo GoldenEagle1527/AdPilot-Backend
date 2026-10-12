@@ -76,6 +76,10 @@ def template_item(
         "product_name": row.product_name,
         "selling_points": list(row.selling_points or []),
         "call_to_action_buttons": list(row.call_to_action_buttons or []),
+        "district": row.district or "NONE",
+        "city_codes": [int(code) for code in (row.city_codes or [])],
+        "gender": row.gender or "none",
+        "age_bands": [str(band) for band in (row.age_bands or [])],
         "douyin_accounts": accounts,
         "created_at": beijing_iso(row.created_date),
         "updated_at": beijing_iso(row.updated_date),
@@ -107,16 +111,12 @@ def template_filters(query: TemplateQuery) -> list[ColumnElement[bool]]:
 
 
 def _clear_standard_only(row: DeliveryTemplate) -> None:
-    """清掉标准专用列。投放模式、排期和产品信息留给创建页。"""
+    """清掉版位、商品库和标准抖音号。用户定向留给创建页。"""
     row.bid_type = None
     row.roi_goal = None
     row.videos_per_ad = None
     row.titles_per_ad = None
     row.placement = None
-    row.district = None
-    row.city_codes = None
-    row.gender = None
-    row.age_bands = None
     row.product_library_id = None
     row.library_kind = None
     row.product_select = None
@@ -138,6 +138,10 @@ def _apply_uni_page(row: DeliveryTemplate, body: TemplateWrite) -> None:
     row.product_name = body.product_name
     row.selling_points = list(body.selling_points)
     row.call_to_action_buttons = list(body.call_to_action_buttons)
+    row.district = str(body.district)
+    row.city_codes = list(body.city_codes) or None
+    row.gender = body.gender.value
+    row.age_bands = [band.value for band in body.age_bands] or None
 
 
 def require_uni_subject(subject: DeliverySubject, charge_mode: str) -> None:

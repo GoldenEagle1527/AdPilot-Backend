@@ -327,7 +327,7 @@ class BodyTests(unittest.TestCase):
             draft_body(city=[110000])
 
     def test_uni_template_rejects_standard_submit_fields(self) -> None:
-        """全域模板入参多了标准提交列或标准专用列就 422。"""
+        """全域模板入参多了标准提交列或标准专用列就 422。性别、年龄、地域可以保存。"""
         with self.assertRaises(ValidationError):
             UniTemplateWrite(
                 name="全域甲",
@@ -372,28 +372,23 @@ class BodyTests(unittest.TestCase):
                 title_select_mode="manual",
                 product_image_id="img-cover",
             )
-        with self.assertRaises(ValidationError):
-            UniTemplateWrite(
-                name="全域甲",
-                subject_id=1,
-                charge_mode="IAA",
-                project_budget="10",
-                roi_coefficient="1.2",
-                aigc_dynamic_creative=False,
-                title_select_mode="manual",
-                gender="male",
-            )
-        with self.assertRaises(ValidationError):
-            UniTemplateWrite(
-                name="全域甲",
-                subject_id=1,
-                charge_mode="IAA",
-                project_budget="10",
-                roi_coefficient="1.2",
-                aigc_dynamic_creative=False,
-                title_select_mode="manual",
-                age_bands=["18_23"],
-            )
+        chosen = UniTemplateWrite(
+            name="全域甲",
+            subject_id=1,
+            charge_mode="IAA",
+            project_budget="10",
+            roi_coefficient="1.2",
+            aigc_dynamic_creative=False,
+            title_select_mode="manual",
+            gender="male",
+            age_bands=["18_23"],
+            district="REGION",
+            city_codes=[110000],
+        )
+        self.assertEqual(chosen.gender.value, "male")
+        self.assertEqual([band.value for band in chosen.age_bands], ["18_23"])
+        self.assertEqual(chosen.district.value, "REGION")
+        self.assertEqual(chosen.city_codes, [110000])
 
     def test_standard_template_rejects_uni_only_columns(self) -> None:
         """标准模板不收全域 ROI 系数和 AIGC。标题模式用自己的列。"""

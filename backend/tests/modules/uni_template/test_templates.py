@@ -245,7 +245,43 @@ class SaveTests(unittest.TestCase):
         self.assertEqual(row.delivery_mode, "uni")
         self.assertIsNone(row.ads_per_account)
         self.assertEqual(row.bid_panels, [])
+        self.assertEqual(row.gender, "none")
+        self.assertIsNone(row.age_bands)
+        self.assertEqual(row.district, "NONE")
+        self.assertIsNone(row.city_codes)
+        self.assertEqual(item["gender"], "none")
+        self.assertEqual(item["age_bands"], [])
+        self.assertEqual(item["district"], "NONE")
+        self.assertEqual(item["city_codes"], [])
         self.assertEqual(session.commits, 1)
+
+    def test_audience_is_stored_and_read_back(self) -> None:
+        """性别、年龄、行政区域城市写入后再查是同一组值。不限地域不能带城市。"""
+        session = FakeSession([[make_subject()], []])
+        item = asyncio.run(
+            create_template(
+                session,
+                body(
+                    gender="female",
+                    age_bands=["24_30", "31_40"],
+                    district="REGION",
+                    city_codes=[110000, 310000],
+                ),
+            )
+        )
+        row = session.added[0]
+        self.assertEqual(row.gender, "female")
+        self.assertEqual(row.age_bands, ["24_30", "31_40"])
+        self.assertEqual(row.district, "REGION")
+        self.assertEqual(row.city_codes, [110000, 310000])
+        self.assertEqual(item["gender"], "female")
+        self.assertEqual(item["age_bands"], ["24_30", "31_40"])
+        self.assertEqual(item["district"], "REGION")
+        self.assertEqual(item["city_codes"], [110000, 310000])
+        with self.assertRaises(ValidationError):
+            body(district="NONE", city_codes=[110000])
+        with self.assertRaises(ValidationError):
+            body(district="REGION", city_codes=[])
 
     def test_missing_subject_does_not_insert(self) -> None:
         """主体不存在 404，不写。"""
@@ -268,13 +304,44 @@ class SaveTests(unittest.TestCase):
         template = make_template()
         subject = make_subject()
         account = make_douyin()
-        session = FakeSession([[(template, subject)], [subject], [], [(template.id, account)]])
+        session = FakeSession(
+            [
+                [(template, subject)],
+                [subject],
+                [],
+                [(template.id, account)],
+                [(template, subject)],
+                [subject],
+                [],
+                [(template.id, account)],
+            ]
+        )
         item = asyncio.run(update_template(session, 11, body(title_select_mode="auto", project_budget="20"), 3))
         self.assertEqual(item["title_select_mode"], "auto")
         self.assertEqual(item["project_budget"], "20.00")
         self.assertEqual(item["douyin_accounts"], [{"id": "4", "aweme_id": "aweme-u", "name": "全域号"}])
         self.assertEqual(template.ads_per_account, None)
         self.assertEqual(session.commits, 1)
+        again = asyncio.run(
+            update_template(
+                session,
+                11,
+                body(
+                    gender="male",
+                    age_bands=["50_plus"],
+                    district="REGION",
+                    city_codes=[440100],
+                ),
+                3,
+            )
+        )
+        self.assertEqual(template.gender, "male")
+        self.assertEqual(template.age_bands, ["50_plus"])
+        self.assertEqual(template.district, "REGION")
+        self.assertEqual(template.city_codes, [440100])
+        self.assertEqual(again["gender"], "male")
+        self.assertEqual(again["age_bands"], ["50_plus"])
+        self.assertEqual(again["city_codes"], [440100])
 
     def test_delete_is_soft(self) -> None:
         """删除只打软删标记。"""
@@ -371,16 +438,18 @@ class HttpTests(unittest.TestCase):
         self.assertEqual(body_json["data"]["douyin_accounts"], [])
 
     def test_extra_field_is_422(self) -> None:
-        """多传字段拒绝。标准模板的性别和年龄也不收。"""
+        """多传字段拒绝。性别和年龄是本接口的字段，可以保存。"""
         client = http_client(FakeSession())
         payload = body().model_dump(mode="json")
         payload["ads_per_account"] = 2
         res = client.post(PREFIX, json=payload)
         self.assertEqual(res.status_code, 422)
         self.assertIn("ads_per_account", res.json()["message"])
-        gendered = body().model_dump(mode="json")
-        gendered["gender"] = "male"
-        gendered["age_bands"] = ["18_23", "24_30"]
-        rejected = client.post(PREFIX, json=gendered)
-        self.assertEqual(rejected.status_code, 422)
-        self.assertIn("gender", rejected.json()["message"])
+        session = FakeSession([[make_subject()], []])
+        gendered = http_client(session).post(
+            PREFIX,
+            json=body(gender="male", age_bands=["18_23", "24_30"]).model_dump(mode="json"),
+        )
+        self.assertEqual(gendered.status_code, 200)
+        self.assertEqual(gendered.json()["data"]["gender"], "male")
+        self.assertEqual(gendered.json()["data"]["age_bands"], ["18_23", "24_30"])

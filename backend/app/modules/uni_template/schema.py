@@ -1,4 +1,4 @@
-"""全域模板的入参和出参。多传字段一律 422。不收标准模板的 gender、age_bands。"""
+"""全域模板的入参和出参。多传字段一律 422。用户定向与标准模板共用性别、年龄、地域。"""
 
 from __future__ import annotations
 
@@ -6,10 +6,23 @@ from datetime import date
 from decimal import Decimal
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_validator
 
-from app.modules.standard_delivery.model import ChargeMode, OceanDeliveryMode, ScheduleType, TitleSelectMode
-from app.modules.standard_delivery.schema import CallToActionText, SellingPointText
+from app.modules.standard_delivery.model import (
+    AgeBand,
+    AudienceDistrict,
+    AudienceGender,
+    ChargeMode,
+    OceanDeliveryMode,
+    ScheduleType,
+    TitleSelectMode,
+)
+from app.modules.standard_delivery.schema import (
+    CallToActionText,
+    SellingPointText,
+    _check_template_extras,
+    _unique_age_bands,
+)
 
 NameText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=128)]
 Money = Annotated[Decimal, Field(gt=0, le=Decimal("99999999.99"), max_digits=10, decimal_places=2)]
@@ -49,6 +62,27 @@ class TemplateWrite(BaseModel):
     product_name: str | None = Field(None, max_length=20, description="产品名称")
     selling_points: list[SellingPointText] = Field(default_factory=list, description="产品卖点，6–9 个字")
     call_to_action_buttons: list[CallToActionText] = Field(default_factory=list, description="行动号召，2–6 个字")
+    district: AudienceDistrict = Field(
+        AudienceDistrict.NONE, description="用户定向地域：NONE 不限、REGION 按行政区域划分。必填，不传为不限"
+    )
+    city_codes: list[int] = Field(
+        default_factory=list, max_length=200, description="城市编码。地域不限时必须为空"
+    )
+    gender: AudienceGender = Field(
+        AudienceGender.NONE, description="用户定向性别：none 不限、male 男、female 女。不传为不限"
+    )
+    age_bands: list[AgeBand] = Field(
+        default_factory=list,
+        max_length=5,
+        description="年龄段：18_23、24_30、31_40、41_49、50_plus。空数组表示不限",
+    )
+
+    @model_validator(mode="after")
+    def check_audience(self) -> TemplateWrite:
+        """地域和城市成对。年龄段不重复。不限地域不能带城市。"""
+        _check_template_extras(self.district, list(self.city_codes), None)
+        self.age_bands = _unique_age_bands(list(self.age_bands))
+        return self
 
 
 class DouyinRef(BaseModel):
@@ -80,6 +114,10 @@ class TemplateItem(BaseModel):
     product_name: str | None = None
     selling_points: list[str] = Field(default_factory=list)
     call_to_action_buttons: list[str] = Field(default_factory=list)
+    district: str
+    city_codes: list[int]
+    gender: str
+    age_bands: list[str]
     douyin_accounts: list[DouyinRef]
     created_at: str
     updated_at: str

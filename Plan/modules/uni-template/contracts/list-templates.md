@@ -8,7 +8,7 @@
 
 作者：
 状态：draft
-更新日期：2026-09-30
+更新日期：2026-10-12
 
 ## 请求
 
@@ -36,6 +36,10 @@
 | roi_coefficient | string | ROI 系数，三位小数 |
 | aigc_dynamic_creative | boolean | AIGC 动态创意 |
 | title_select_mode | string | `manual` 手动、`auto` 自动 |
+| district | string | 用户定向地域：`NONE` 不限、`REGION` 按行政区域划分。旧行按 `NONE` 返回 |
+| city_codes | integer[] | 城市编码。不限时为 `[]` |
+| gender | string | 用户定向性别：`none` 不限、`male` 男、`female` 女。旧行按 `none` 返回 |
+| age_bands | string[] | `18_23`、`24_30`、`31_40`、`41_49`、`50_plus`。空数组表示年龄不限 |
 | douyin_accounts | object[] | 当前投手分配的全域号。每项 `id`、`aweme_id`、`name`。没有则 `[]` |
 | created_at | string | 创建时间 |
 | updated_at | string | 更新时间 |
@@ -58,4 +62,5 @@
 
 | 日期 | 文档版本 | 破坏？ | 变更 | 作者 |
 | --- | --- | --- | --- | --- |
+| 2026-10-12 | 1 | 否 | 列表项增加 `gender`、`age_bands`、`district`、`city_codes` | |
 | 2026-09-30 | 1 | 否 | 初稿 | |

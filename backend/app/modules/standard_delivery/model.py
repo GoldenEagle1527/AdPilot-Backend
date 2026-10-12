@@ -172,7 +172,7 @@ _STANDARD_EXTRAS = (
     "AND (age_bands IS NULL OR (cardinality(age_bands) <= 5 "
     "AND age_bands <@ ARRAY['18_23', '24_30', '31_40', '41_49', '50_plus']::varchar[]))"
 )
-# 全域创建页要留下投放模式、排期和产品信息。标准专用的出价、条数和定向仍必须为空。
+# 全域创建页要留下投放模式、排期和产品信息。标准专用的出价和条数仍必须为空。
 _UNI_PAGE = (
     "(ocean_delivery_mode IS NULL OR ocean_delivery_mode IN ('MANUAL', 'PROCEDURAL')) "
     "AND bid_type IS NULL "
@@ -192,11 +192,9 @@ _UNI_PAGE = (
     "AND titles_per_ad IS NULL "
     "AND ad_budget IS NULL"
 )
-# 全域行不写标准专用列。素材起量开关在全域上也留空。
+# 全域行不写版位、商品库和标准抖音号。用户定向与标准共用同一套列。
 _UNI_EXTRAS_EMPTY = (
     "placement IS NULL "
-    "AND district IS NULL "
-    "AND city_codes IS NULL "
     "AND product_library_id IS NULL "
     "AND library_kind IS NULL "
     "AND product_select IS NULL "
@@ -205,8 +203,12 @@ _UNI_EXTRAS_EMPTY = (
     "AND douyin_account_id IS NULL "
     "AND product_image_id IS NULL "
     "AND standard_title_select_mode IS NULL "
-    "AND gender IS NULL "
-    "AND age_bands IS NULL"
+    "AND (district IS NULL OR district IN ('NONE', 'REGION')) "
+    "AND (district IS DISTINCT FROM 'NONE' OR city_codes IS NULL OR cardinality(city_codes) = 0) "
+    "AND (district IS DISTINCT FROM 'REGION' OR (city_codes IS NOT NULL AND cardinality(city_codes) > 0)) "
+    "AND (gender IS NULL OR gender IN ('none', 'male', 'female')) "
+    "AND (age_bands IS NULL OR (cardinality(age_bands) <= 5 "
+    "AND age_bands <@ ARRAY['18_23', '24_30', '31_40', '41_49', '50_plus']::varchar[]))"
 )
 # 标准行不写全域专用列；全域行不写标准提交列，出价面板留空。
 _TEMPLATE_SHAPE = (
@@ -258,9 +260,10 @@ class DeliveryTemplate(BaseModel):
 
     标准行写出价面板、每账户广告条数、确认提交要用的巨量字段，以及版位、定向、性别、年龄、
     项目预算、商品策略、广告开关、一个标准抖音号、产品主图和标准标题选择。
-    全域行写项目预算、ROI 系数、AIGC 和 title_select_mode。标准接口只读写 delivery_mode=standard。
+    全域行写项目预算、ROI 系数、AIGC、title_select_mode，以及用户定向的性别、年龄、地域。
+    标准接口只读写 delivery_mode=standard。
     标准行的 ROI 用 roi_goal，不用 roi_coefficient。标准标题选择写 standard_title_select_mode。
-    全域行上的标准提交列和标准专用列保持为空。
+    全域行上的版位、商品库和标准抖音号保持为空。
     """
 
     __tablename__ = "delivery_template"
@@ -385,20 +388,20 @@ class DeliveryTemplate(BaseModel):
         comment="版位：aweme 抖音、aweme_feed 抖音加头条、universal 通投智选。手动版位含抖音信息流。仅标准模板",
     )
     district: Mapped[str | None] = mapped_column(
-        String(16), nullable=True, comment="用户定向地域：NONE 不限、REGION 行政区域。仅标准模板"
+        String(16), nullable=True, comment="用户定向地域：NONE 不限、REGION 行政区域。标准和全域模板共用"
     )
     city_codes: Mapped[list[int] | None] = mapped_column(
-        ARRAY(Integer), nullable=True, comment="行政区域城市编码。不限时为空。仅标准模板"
+        ARRAY(Integer), nullable=True, comment="行政区域城市编码。不限时为空。标准和全域模板共用"
     )
     gender: Mapped[str | None] = mapped_column(
         String(16),
         nullable=True,
-        comment="用户定向性别：none 不限、male 男、female 女。空按不限。仅标准模板",
+        comment="用户定向性别：none 不限、male 男、female 女。空按不限。标准和全域模板共用",
     )
     age_bands: Mapped[list[str] | None] = mapped_column(
         ARRAY(String(16)),
         nullable=True,
-        comment="用户定向年龄段。空表示不限。取值 18_23、24_30、31_40、41_49、50_plus。仅标准模板",
+        comment="用户定向年龄段。空表示不限。取值 18_23、24_30、31_40、41_49、50_plus。标准和全域模板共用",
     )
     product_library_id: Mapped[int | None] = mapped_column(
         Integer,
