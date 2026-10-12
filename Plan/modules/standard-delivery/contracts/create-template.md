@@ -1,14 +1,14 @@
 # 契约：create-template
 
 业务id：standard-delivery
-文档版本：5
+文档版本：6
 方法：POST
 路径：/api/v1/standard-delivery/templates
 作用：新增一条标准投放模板。写入确认提交要用的巨量字段。不向巨量提交。全域模板不收这些字段。
 
 作者：
 状态：draft
-更新日期：2026-10-09
+更新日期：2026-10-12
 
 ## 请求
 
@@ -31,9 +31,9 @@
 | selling_points | body | string[] | 否 | 产品卖点，最多 10 条，每条 1–20 字。不传为空数组 |
 | call_to_action_buttons | body | string[] | 否 | 行动号召，最多 10 条，每条 1–20 字。不传为空数组 |
 | roi_goal | body | number \| null | 否 | ROI 目标。标准模板不要传 `roi_coefficient` |
-| videos_per_ad | body | integer | 是 | 每个广告使用视频数，1–30。巨量手动投放单条广告最多用 10 个 |
+| videos_per_ad | body | integer | 是 | 每个广告使用视频数，1–30。手动、自动投放都按这个数切 |
 | titles_per_ad | body | integer | 是 | 每个广告使用标题数，1–10 |
-| placement | body | string \| null | 否 | `aweme` 抖音、`aweme_feed` 抖音加头条、`universal` 通投智选。手动时含抖音信息流 |
+| placement | body | string \| null | 否 | `aweme` 抖音、`aweme_feed` 抖音加头条、`universal` 通投智选。手动时含抖音信息流。不传时存 `aweme` |
 | district | body | string \| null | 否 | `NONE` 不限、`REGION` 行政区域。不限不能带 `city_codes` |
 | city_codes | body | integer[] | 否 | 城市编码。`REGION` 时至少 1 个，不重复。不传为空数组 |
 | gender | body | string | 否 | `none` 不限、`male` 男、`female` 女。不传为 `none` |
@@ -47,7 +47,7 @@
 | product_image_id | body | string \| null | 否 | `POST /api/v1/oceanengine/images` 返回的图片 id，`img-` 前缀 |
 | title_select_mode | body | string \| null | 否 | `manual` 或 `auto`。写入标准列 `standard_title_select_mode`，不占用全域列 |
 
-多传字段返回 422。不收 `roi_coefficient`、`aigc_dynamic_creative`、`asset_ids`。
+多传字段返回 422。不收 `roi_coefficient`、`aigc_dynamic_creative`、`asset_ids`，也不收 `optimize_goal`、`deep_optimize_goal`：优化目标按 `charge_mode` 写死，免费存 `AD_CONVERT_TYPE_ACTIVE`、不存深度优化目标；付费存 `AD_CONVERT_TYPE_PAY` 和 `AD_CONVERT_TYPE_PURCHASE_ROI`。深度优化方式不在入参里。
 
 示例：
 
@@ -100,6 +100,7 @@
 
 | 日期 | 文档版本 | 破坏？ | 变更 | 作者 |
 | --- | --- | --- | --- | --- |
+| 2026-10-12 | 6 | 否 | 优化目标按收费模式写死在模板上并出现在出参里，不收入参。不传 `placement` 时存 `aweme`。`videos_per_ad` 去掉手动 10 个的说明 | |
 | 2026-10-09 | 5 | 否 | 可保存 `gender`、`age_bands`。不传性别为 `none`，年龄空数组表示不限。重复年龄段 422 | |
 | 2026-10-09 | 4 | 是 | 不再接收 `product_library_id`。改为可选 `library_kind`（`video` / `novel`）。`product_select` 可单独填写，不再和商品库成对 | |
 | 2026-10-08 | 3 | 否 | 可保存广告位置、定向、项目预算、商品策略、素材起量开关、广告状态、抖音号、产品主图、标题选择模式。不传仍能保存旧字段 | |

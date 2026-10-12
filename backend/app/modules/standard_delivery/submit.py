@@ -35,10 +35,10 @@ from app.modules.standard_delivery.model import (
     Placement,
     ScheduleType,
 )
+from app.modules.standard_delivery.service import require_task_template
 
 _TITLE_MIN = 5
 _TITLE_MAX = 55
-_MANUAL_VIDEO_CAP = 10
 _IMAGE_MODE = {
     "vertical_video": "CREATIVE_IMAGE_MODE_VIDEO_VERTICAL",
     "horizontal_video": "CREATIVE_IMAGE_MODE_VIDEO",
@@ -178,16 +178,22 @@ def _delivery_setting(template: DeliveryTemplate, draft: DeliveryTaskDraft, budg
     return setting
 
 
-def _optimize_goal(draft: DeliveryTaskDraft) -> dict[str, Any]:
-    """免费只传激活。付费再加付费 ROI。不带 asset_ids。"""
-    goal: dict[str, Any] = {"external_action": draft.optimize_goal}
-    if draft.charge_mode == ChargeMode.IAP:
-        goal["deep_external_action"] = "AD_CONVERT_TYPE_PURCHASE_ROI"
+def _optimize_goal(draft: DeliveryTaskDraft, template: DeliveryTemplate) -> dict[str, Any]:
+    """以模板上写死的优化目标为准，不读草稿上的。免费只传激活，付费再加付费 ROI。不带 asset_ids。"""
+    require_task_template(draft.charge_mode, template.charge_mode)
+    if not template.optimize_goal:
+        raise ApiError(400, "模板还不能确认提交")
+    goal: dict[str, Any] = {"external_action": template.optimize_goal}
+    if template.deep_optimize_goal:
+        goal["deep_external_action"] = template.deep_optimize_goal
     return goal
 
 
 def _reject_unready(template: DeliveryTemplate, draft: DeliveryTaskDraft) -> None:
     """整单校验。不合格就不调用客户端。"""
+    require_task_template(draft.charge_mode, template.charge_mode)
+    if not template.optimize_goal:
+        raise ApiError(400, "模板还不能确认提交")
     if template.ocean_delivery_mode not in (OceanDeliveryMode.MANUAL, OceanDeliveryMode.PROCEDURAL):
         raise ApiError(400, "模板还不能确认提交")
     if template.videos_per_ad is None or template.titles_per_ad is None or template.ads_per_account is None:
@@ -198,8 +204,6 @@ def _reject_unready(template: DeliveryTemplate, draft: DeliveryTaskDraft) -> Non
         raise ApiError(400, "模板还不能确认提交")
     if not template.ad_source or not template.product_name:
         raise ApiError(400, "模板还不能确认提交")
-    if template.ocean_delivery_mode == OceanDeliveryMode.MANUAL and template.videos_per_ad > _MANUAL_VIDEO_CAP:
-        raise ApiError(400, "手动投放每个广告最多 10 个视频")
     if (
         template.ocean_delivery_mode == OceanDeliveryMode.PROCEDURAL
         and draft.charge_mode == ChargeMode.IAP
@@ -291,7 +295,7 @@ def _project_body(
         "operation": draft.project_operation,
         "delivery_range": _delivery_range(placement),
         "delivery_setting": _delivery_setting(template, draft, budget),
-        "optimize_goal": _optimize_goal(draft),
+        "optimize_goal": _optimize_goal(draft, template),
         "related_product": {
             "product_platform_id": int(library.library_no),
             "product_id": product_id,

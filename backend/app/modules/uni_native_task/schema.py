@@ -9,6 +9,7 @@ from typing import Annotated, Any
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 LinkText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2048)]
+TierName = Annotated[str, StringConstraints(strip_whitespace=True, max_length=128)]
 BatchTitle = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=512)]
 
 
@@ -36,21 +37,26 @@ class AccountPair(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    douyin_account_id: int = Field(description="全域抖音号 id，须已分给当前投手")
+    douyin_account_id: int = Field(
+        description="全域抖音号 id。须已分给当前投手；页面保存时还须已分配到本次模板"
+    )
     advertiser_id: int = Field(description="巨量广告主 id，即 advertiser_account.advertiser_id")
 
 
 class PromotionLinkWrite(BaseModel):
-    """一条推广链文本。不从剧场表带出。"""
+    """客户端传来的一条推广链。传了就按原文保存，不改成剧场里的链。"""
 
     model_config = ConfigDict(extra="forbid")
 
     charge_mode: str = Field(pattern="^(IAA|IAP)$", description="IAA 免费、IAP 付费")
     link_text: LinkText = Field(description="推广链文本")
+    recharge_template_name: TierName = Field(
+        default="", description="档位名。不传则为空，不要求与剧场一致"
+    )
 
 
 class TaskWrite(BaseModel):
-    """新建或整表保存。预算和 ROI 不传则抄模板。状态不收，固定为已保存未提交。"""
+    """新建或整表保存。预算和 ROI 不传则抄模板。状态不收。"""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -64,10 +70,14 @@ class TaskWrite(BaseModel):
     )
     accounts: list[AccountPair] = Field(min_length=1, max_length=50, description="抖音号与账户一一对应，至少一行")
     promotion_links: list[PromotionLinkWrite] = Field(
-        default_factory=list, max_length=50, description="IAA / IAP 推广链文本，可空"
+        default_factory=list,
+        max_length=50,
+        description="推广链。不传或空数组时带出这部剧启用的全部档位；传了非空数组则按原文保存",
     )
     video_ids: list[int] = Field(
-        default_factory=list, max_length=200, description="视频素材 id。素材表不存在时不能传"
+        default_factory=list,
+        max_length=200,
+        description="视频素材 id。不传时只带这部剧里投手归属是当前用户的未删除视频，不设条数上限",
     )
     title_ids: list[int] = Field(
         default_factory=list, max_length=100, description="自己标题库里的标题 id。标题库不存在时不能传"
@@ -101,6 +111,9 @@ class AccountItem(BaseModel):
     advertiser_account_id: str
     advertiser_id: int
     name: str
+    ocean_project_id: int | None = Field(
+        None, description="巨量项目 id。执行中和完成才返回；失败或未创建为 null"
+    )
 
 
 class PromotionLinkItem(BaseModel):
@@ -108,6 +121,7 @@ class PromotionLinkItem(BaseModel):
 
     charge_mode: str
     link_text: str
+    recharge_template_name: str = Field(default="", description="档位名。手填没传则为空")
 
 
 class VideoRef(BaseModel):
@@ -136,7 +150,12 @@ class TaskItem(BaseModel):
     series_id: str
     book_name: str
     series_short_name: str
+    theater_name: str
     accounts: list[AccountItem]
+    ocean_project_ids: list[int] = Field(
+        default_factory=list,
+        description="本任务各账户的巨量项目 id。执行中和完成按账户顺序；失败或未创建为空列表",
+    )
     promotion_links: list[PromotionLinkItem]
     videos: list[VideoRef]
     titles: list[TitleRef]

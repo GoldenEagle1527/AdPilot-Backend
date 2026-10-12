@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import unittest
 from datetime import date, datetime
+from unittest.mock import AsyncMock, patch
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -23,7 +24,13 @@ from app.modules.material_title.model import MaterialTitle
 from app.modules.material_video.model import MaterialVideo
 from app.modules.standard_delivery.model import DeliveryTemplate
 from app.modules.uni_native_task.controller import router
-from app.modules.uni_native_task.crud import own_titles_stmt, pitcher_videos_stmt, series_stmt
+from app.modules.uni_native_task.crud import (
+    _joined,
+    own_titles_stmt,
+    pitcher_series_videos_stmt,
+    pitcher_videos_stmt,
+    series_stmt,
+)
 from app.modules.uni_native_task.model import (
     UniNativeTask,
     UniNativeTaskAccount,
@@ -37,6 +44,7 @@ from app.modules.uni_native_task.service import (
     delete_task,
     get_task,
     list_tasks,
+    mark_failed_if_saved,
     series_short_name,
     task_filters,
     update_task,
@@ -314,6 +322,24 @@ class BodyTests(unittest.TestCase):
         self.assertIsNone(body.project_budget)
         self.assertIsNone(body.roi_coefficient)
         self.assertEqual(body.promotion_links[0].link_text, "https://iaa.example/a")
+        self.assertEqual(body.promotion_links[0].recharge_template_name, "")
+        named = write_body(
+            promotion_links=[
+                {
+                    "charge_mode": "IAP",
+                    "link_text": "https://iap.example/b",
+                    "recharge_template_name": " 中额 ",
+                }
+            ]
+        )
+        self.assertEqual(named.promotion_links[0].recharge_template_name, "中额")
+        self.assertEqual(named.promotion_links[0].charge_mode, "IAP")
+        with self.assertRaises(ValidationError):
+            write_body(
+                promotion_links=[
+                    {"charge_mode": "IAA", "link_text": "https://a.example", "recharge_template_name": "名" * 129}
+                ]
+            )
         self.assertEqual(body.batch_titles, ["临时标题"])
 
 
@@ -332,6 +358,9 @@ class FilterTests(unittest.TestCase):
         self.assertIn("2026-10-01", sql)
         self.assertIn("manhua_series.book_name", sql)
         self.assertIn("ILIKE", sql)
+        joined = str(_joined(True).compile(dialect=postgresql.dialect()))
+        self.assertIn("delivery_subject.theater_name", joined)
+        self.assertIn("delivery_subject.id = delivery_template.subject_id", joined)
 
     def test_series_video_and_title_queries_use_real_tables(self) -> None:
         """短剧只取主键和剧名。视频、标题打真实表，不另造一份。"""
@@ -345,6 +374,26 @@ class FilterTests(unittest.TestCase):
         self.assertIn("material_video_pitchers", videos)
         self.assertIn("material_titles", titles)
         self.assertIn("material_titles.uploader_id = 3", titles)
+        owned = str(
+            pitcher_series_videos_stmt(8, 3).compile(
+                dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}
+            )
+        )
+        self.assertIn("material_videos.series_id = 8", owned)
+        self.assertIn("material_videos.is_deleted = 0", owned)
+        self.assertIn("material_video_pitchers.user_id = 3", owned)
+        self.assertIn("material_videos.created_date", owned)
+        self.assertNotIn("uploader_id =", owned)
+        self.assertNotIn("ownership =", owned)
+        self.assertNotIn("material_video_shares", owned)
+        self.assertNotIn("LIMIT", owned)
+
+    def test_link_tier_migration_follows_the_project_column(self) -> None:
+        """档位名接在巨量项目 id 那条迁移后面。"""
+        text = (MIGRATION.parent / "20261012_04_native_task_link_tier.py").read_text(encoding="utf-8")
+        self.assertIn('down_revision: Union[str, None] = "20261012_03"', text)
+        self.assertIn("uni_native_task_link", text)
+        self.assertIn("recharge_template_name", text)
 
     def test_migration_revises_uni_template_and_skips_missing_catalogs(self) -> None:
         """迁移接在全域模板之后。不建素材表、标题库和剧场表。状态只有 saved。"""
@@ -357,6 +406,15 @@ class FilterTests(unittest.TestCase):
         self.assertNotIn('op.create_table(\n        "manhua_series"', text)
         self.assertNotIn("theater", text)
         self.assertNotIn("执行中", text)
+
+    def test_stale_saved_rows_become_failed_without_creating_projects(self) -> None:
+        """旧的 saved 行改成失败，不顺手去建项目。"""
+        text = (MIGRATION.parent / "20261012_03_native_task_project.py").read_text(encoding="utf-8")
+        self.assertIn('down_revision: Union[str, None] = "20261012_02"', text)
+        self.assertIn("ocean_project_id", text)
+        self.assertIn("尚未创建项目，请重新保存", text)
+        self.assertIn("status = 'failed'", text)
+        self.assertNotIn("create_project", text)
 
 
 class SaveTests(unittest.TestCase):
@@ -392,12 +450,15 @@ class SaveTests(unittest.TestCase):
         self.assertEqual(item["roi_coefficient"], "1.200")
         self.assertEqual(item["book_name"], "甲壳虫")
         self.assertEqual(item["series_short_name"], "甲壳")
+        self.assertEqual(item["theater_name"], "番茄")
         self.assertEqual(
             [(row["douyin_account_id"], row["advertiser_id"]) for row in item["accounts"]],
             [("4", 90001), ("6", 90002)],
         )
         self.assertEqual(item["promotion_links"][0]["link_text"], "https://iaa.example/a")
+        self.assertEqual(item["promotion_links"][0]["recharge_template_name"], "")
         self.assertEqual(item["promotion_links"][1]["charge_mode"], "IAP")
+        self.assertEqual(item["promotion_links"][1]["recharge_template_name"], "")
         self.assertEqual(item["videos"], [{"id": "15", "name": "甲视频"}])
         self.assertEqual(item["titles"], [{"id": "21", "title": "标题一"}])
         self.assertEqual(item["batch_titles"], ["临时标题"])
@@ -413,7 +474,92 @@ class SaveTests(unittest.TestCase):
         self.assertTrue(any(isinstance(row, UniNativeTaskVideo) and row.material_video_id == 15 for row in session.added))
         self.assertTrue(any(isinstance(row, UniNativeTaskBatchTitle) and row.title == "临时标题" for row in session.added))
         self.assertFalse(any(isinstance(row, MaterialTitle) for row in session.added))
+        self.assertEqual(item["ocean_project_ids"], [])
+        self.assertIsNone(item["accounts"][0]["ocean_project_id"])
+        self.assertNotIn("delivery_template_douyin", " ".join(str(statement) for statement in session.statements))
         self.assertEqual(session.commits, 1)
+
+    def test_client_tier_name_is_stored_as_sent(self) -> None:
+        """手填的档位名按原文留下。收费模式不按剧场重算。"""
+        template, subject, douyins, accounts, *_rest = self._ready()
+        session = FakeSession(
+            [
+                [(template, subject)],
+                tables("manhua_series", None, None),
+                [(8, "甲壳虫")],
+                douyins,
+                [4, 6],
+                accounts,
+            ]
+        )
+        item = asyncio.run(
+            create_task(
+                session,
+                write_body(
+                    video_ids=[],
+                    title_ids=[],
+                    batch_titles=[],
+                    promotion_links=[
+                        {
+                            "charge_mode": "IAP",
+                            "link_text": "https://hand.example/x",
+                            "recharge_template_name": "小额",
+                        }
+                    ],
+                ),
+                3,
+            )
+        )
+        self.assertEqual(
+            item["promotion_links"],
+            [
+                {
+                    "charge_mode": "IAP",
+                    "link_text": "https://hand.example/x",
+                    "recharge_template_name": "小额",
+                }
+            ],
+        )
+        stored = next(row for row in session.added if isinstance(row, UniNativeTaskLink))
+        self.assertEqual((stored.charge_mode, stored.recharge_template_name), ("IAP", "小额"))
+        self.assertNotIn("theater_promotion_links", " ".join(str(statement) for statement in session.statements))
+
+    def test_omitted_videos_are_only_the_pitchers(self) -> None:
+        """没传视频时，只带这部剧里投手归属是当前用户的未删除素材，不设条数上限。"""
+        template, subject, douyins, accounts, *_rest = self._ready()
+        later = make_video()
+        later.id = 16
+        later.name = "乙视频"
+        earlier = make_video()
+        session = FakeSession(
+            [
+                [(template, subject)],
+                tables("manhua_series", "material_videos", "material_titles"),
+                [(8, "甲壳虫")],
+                douyins,
+                [4, 6],
+                accounts,
+                [later, earlier],
+            ]
+        )
+        item = asyncio.run(create_task(session, write_body(video_ids=[], title_ids=[]), 3))
+        self.assertEqual(
+            item["videos"],
+            [{"id": "16", "name": "乙视频"}, {"id": "15", "name": "甲视频"}],
+        )
+        video_sql = next(
+            str(statement.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
+            for statement in session.statements
+            if "material_video_pitchers" in str(statement)
+        )
+        self.assertIn("material_video_pitchers.user_id = 3", video_sql)
+        self.assertIn("material_videos.series_id = 8", video_sql)
+        self.assertNotIn("uploader_id =", video_sql)
+        self.assertNotIn("ownership =", video_sql)
+        self.assertNotIn("material_video_shares", video_sql)
+        self.assertNotIn("LIMIT", video_sql)
+        saved_ids = [row.material_video_id for row in session.added if isinstance(row, UniNativeTaskVideo)]
+        self.assertEqual(saved_ids, [16, 15])
 
     def test_omitted_budget_is_copied_from_the_template(self) -> None:
         """两个金额都不传时，任务上就是模板的数。"""
@@ -584,6 +730,91 @@ class SaveTests(unittest.TestCase):
         self.assertEqual(caught.exception.status_code, 400)
         self.assertEqual(caught.exception.message, "账户不存在、未分配给当前投手或已失效")
 
+    def test_page_save_requires_douyin_assigned_to_the_template(self) -> None:
+        """页面保存要求号已经挂在这条模板上。没挂就 400，不落任务。"""
+        template, subject, douyins, accounts, *_rest = self._ready()
+        session = FakeSession(
+            [
+                [(template, subject)],
+                tables("manhua_series", None, None),
+                [(8, "甲壳虫")],
+                [douyins[0]],
+                [4],
+                [accounts[0]],
+                [],
+            ]
+        )
+        body = write_body(
+            video_ids=[],
+            title_ids=[],
+            batch_titles=[],
+            accounts=[{"douyin_account_id": 4, "advertiser_id": 90001}],
+        )
+        with self.assertRaises(ApiError) as caught:
+            asyncio.run(create_task(session, body, 3, require_template_assignment=True))
+        self.assertEqual(caught.exception.status_code, 400)
+        self.assertEqual(caught.exception.message, "抖音号未分配到这条模板")
+        self.assertEqual(session.commits, 0)
+        self.assertFalse(any(isinstance(row, UniNativeTask) for row in session.added))
+
+    def test_template_assignment_allows_the_pitchers_own_rows(self) -> None:
+        """挂在本次模板、且属于当前投手的号可以通过。服务本身仍只落到 saved。"""
+        template, subject, douyins, accounts, *_rest = self._ready()
+        session = FakeSession(
+            [
+                [(template, subject)],
+                tables("manhua_series", None, None),
+                [(8, "甲壳虫")],
+                [douyins[0]],
+                [4],
+                [accounts[0]],
+                [4],
+            ]
+        )
+        body = write_body(
+            video_ids=[],
+            title_ids=[],
+            batch_titles=[],
+            accounts=[{"douyin_account_id": 4, "advertiser_id": 90001}],
+        )
+        item = asyncio.run(create_task(session, body, 3, require_template_assignment=True))
+        self.assertEqual(item["status"], "saved")
+        self.assertIn("delivery_template_douyin", " ".join(str(statement) for statement in session.statements))
+        self.assertEqual(session.commits, 1)
+
+    def test_update_of_a_created_task_is_conflict(self) -> None:
+        """running、done、failed 不能再改，也不提交。"""
+        for status in ("running", "done", "failed"):
+            current = make_task()
+            current.status = status
+            session = FakeSession(
+                [tables("manhua_series", None, None), [(current, make_template(), "甲壳虫", "番茄")]]
+            )
+            with self.assertRaises(ApiError) as caught:
+                asyncio.run(update_task(session, 40, write_body(video_ids=[], title_ids=[], batch_titles=[]), 3))
+            self.assertEqual(caught.exception.status_code, 409)
+            self.assertEqual(caught.exception.message, "任务已创建，不能再修改")
+            self.assertEqual(current.status, status)
+            self.assertEqual(session.commits, 0)
+
+    def test_mark_failed_only_changes_saved_rows(self) -> None:
+        """提交前失败才把 saved 改成 failed。已经完成的行不动。"""
+        saved = make_task()
+        session = FakeSession(
+            [tables("manhua_series", None, None), [(saved, make_template(), "甲壳虫", "番茄")]]
+        )
+        asyncio.run(mark_failed_if_saved(session, 40, 3, "创建项目失败"))
+        self.assertEqual(saved.status, "failed")
+        self.assertEqual(saved.failure_reason, "创建项目失败")
+        self.assertEqual(session.commits, 1)
+        done = make_task()
+        done.status = "done"
+        quiet = FakeSession([tables("manhua_series", None, None), [(done, make_template(), "甲壳虫", "番茄")]])
+        asyncio.run(mark_failed_if_saved(quiet, 40, 3, "创建项目失败"))
+        self.assertEqual(done.status, "done")
+        self.assertIsNone(done.failure_reason)
+        self.assertEqual(quiet.commits, 0)
+
     def test_update_replaces_children_and_stays_saved(self) -> None:
         """整表更新换掉临时标题，状态仍是 saved，执行时间仍为空。"""
         template, subject, douyins, accounts, *_rest = self._ready()
@@ -591,7 +822,7 @@ class SaveTests(unittest.TestCase):
         session = FakeSession(
             [
                 tables("manhua_series", None, None),
-                [(current, template, "甲壳虫")],
+                [(current, template, "甲壳虫", "番茄")],
                 [(template, subject)],
                 [(8, "甲壳虫")],
                 [douyins[0]],
@@ -624,7 +855,7 @@ class SaveTests(unittest.TestCase):
     def test_delete_is_soft_and_hidden_from_others(self) -> None:
         """软删自己的任务。别人的 id 当不存在，不会被删。"""
         current = make_task()
-        session = FakeSession([tables("manhua_series", None, None), [(current, make_template(), "甲壳虫")]])
+        session = FakeSession([tables("manhua_series", None, None), [(current, make_template(), "甲壳虫", "番茄")]])
         item = asyncio.run(delete_task(session, 40, 3))
         self.assertEqual(item, {"id": "40", "deleted": True})
         self.assertEqual(current.is_deleted, 1)
@@ -642,13 +873,19 @@ class SaveTests(unittest.TestCase):
         template = make_template()
         account = UniNativeTaskAccount(task_id=40, douyin_account_id=4, advertiser_account_id=31, sort_order=0)
         account.id = 1
-        link = UniNativeTaskLink(task_id=40, charge_mode="IAA", link_text="https://iaa.example/a", sort_order=0)
+        link = UniNativeTaskLink(
+            task_id=40,
+            charge_mode="IAA",
+            link_text="https://iaa.example/a",
+            recharge_template_name="IAA",
+            sort_order=0,
+        )
         link.id = 2
         session = FakeSession(
             [
                 tables("manhua_series", None, None),
                 [1],
-                [(task, template, "甲壳虫")],
+                [(task, template, "甲壳虫", "番茄")],
                 [(account, make_douyin(), make_advertiser())],
                 [link],
                 [],
@@ -662,10 +899,49 @@ class SaveTests(unittest.TestCase):
         self.assertEqual(item["status"], "saved")
         self.assertIsNone(item["executed_at"])
         self.assertEqual(item["series_short_name"], "甲壳")
+        self.assertEqual(item["theater_name"], "番茄")
         self.assertEqual(item["accounts"][0]["aweme_id"], "aweme-u")
         self.assertEqual(item["promotion_links"][0]["link_text"], "https://iaa.example/a")
+        self.assertEqual(item["promotion_links"][0]["recharge_template_name"], "IAA")
         self.assertEqual(item["videos"], [])
         self.assertEqual(item["titles"], [])
+        self.assertEqual(item["ocean_project_ids"], [])
+        self.assertIsNone(item["accounts"][0]["ocean_project_id"])
+
+    def test_project_ids_are_visible_only_for_running_and_done(self) -> None:
+        """执行中和完成返回巨量项目 id。失败即使库里有编号，查看项目也是空列表。"""
+        template = make_template()
+        douyin = make_douyin()
+        advertiser = make_advertiser()
+
+        def page_for(status: str) -> dict[str, Any]:
+            task = make_task()
+            task.status = status
+            account = UniNativeTaskAccount(
+                task_id=40, douyin_account_id=4, advertiser_account_id=31, sort_order=0
+            )
+            account.id = 1
+            account.ocean_project_id = 8800000000000001
+            session = FakeSession(
+                [
+                    tables("manhua_series", None, None),
+                    [1],
+                    [(task, template, "甲壳虫", "番茄")],
+                    [(account, douyin, advertiser)],
+                    [],
+                    [],
+                ]
+            )
+            return asyncio.run(list_tasks(session, TaskQuery(series_name="甲"), 3))["list"][0]
+
+        done = page_for("done")
+        self.assertEqual(done["ocean_project_ids"], [8800000000000001])
+        self.assertEqual(done["accounts"][0]["ocean_project_id"], 8800000000000001)
+        running = page_for("running")
+        self.assertEqual(running["ocean_project_ids"], [8800000000000001])
+        failed = page_for("failed")
+        self.assertEqual(failed["ocean_project_ids"], [])
+        self.assertIsNone(failed["accounts"][0]["ocean_project_id"])
 
     def test_series_name_filter_is_empty_when_the_series_table_is_absent(self) -> None:
         """剧名筛选依赖短剧表。表不在就返回空页，不去查任务。"""
@@ -692,8 +968,45 @@ class HttpTests(unittest.TestCase):
         self.assertEqual(res.json()["code"], 401)
         self.assertEqual(res.json()["message"], "未带或 Token 无效")
 
+    def _done_item(self) -> dict[str, Any]:
+        """提交成功后交给前端的任务。假客户端同一次请求里就传完。"""
+        return {
+            "id": "40",
+            "template_id": "11",
+            "template_name": "全域甲",
+            "project_budget": "66.50",
+            "roi_coefficient": "1.200",
+            "pitcher_user_id": "3",
+            "series_id": "8",
+            "book_name": "甲壳虫",
+            "series_short_name": "甲壳",
+            "theater_name": "番茄",
+            "accounts": [
+                {
+                    "douyin_account_id": "4",
+                    "aweme_id": "aweme-u",
+                    "douyin_name": "全域号",
+                    "advertiser_account_id": "31",
+                    "advertiser_id": 90001,
+                    "name": "账户甲",
+                    "ocean_project_id": 8800000000000001,
+                }
+            ],
+            "ocean_project_ids": [8800000000000001],
+            "promotion_links": [],
+            "videos": [],
+            "titles": [],
+            "batch_titles": [],
+            "status": "done",
+            "failure_reason": None,
+            "materials_uploaded": True,
+            "executed_at": "2026-10-12T15:00:00+08:00",
+            "created_at": "2026-09-30T11:00:00+08:00",
+            "updated_at": "2026-10-12T15:00:00+08:00",
+        }
+
     def test_create_returns_the_envelope(self) -> None:
-        """新增走统一信封，成功是 HTTP 200。"""
+        """新增走统一信封。create_task 只落到 saved，控制器再提交一次，成功状态是 done。"""
         template, subject, douyins, accounts, video, title = SaveTests()._ready()
         session = FakeSession(
             [
@@ -703,19 +1016,114 @@ class HttpTests(unittest.TestCase):
                 douyins,
                 [4, 6],
                 accounts,
+                [4, 6],
                 [video],
                 [title],
             ]
         )
-        res = http_client(session).post(PREFIX, json=payload())
+        submit = AsyncMock()
+        loaded = AsyncMock(return_value=self._done_item())
+        with (
+            patch("app.modules.uni_native_task.controller.submit_task", new=submit),
+            patch("app.modules.uni_native_task.controller.get_task", new=loaded),
+        ):
+            res = http_client(session).post(PREFIX, json=payload())
         self.assertEqual(res.status_code, 200)
         body = res.json()
         self.assertEqual(body["code"], 200)
         self.assertEqual(body["message"], "成功")
-        self.assertEqual(body["data"]["status"], "saved")
-        self.assertEqual(body["data"]["series_short_name"], "甲壳")
-        self.assertIsNone(body["data"]["executed_at"])
+        self.assertEqual(body["data"]["status"], "done")
+        self.assertEqual(body["data"]["ocean_project_ids"], [8800000000000001])
+        submit.assert_awaited_once()
+        self.assertEqual(submit.await_args.args[1], 40)
+        stored = next(row for row in session.added if isinstance(row, UniNativeTask))
+        self.assertEqual(stored.status, "saved")
+        self.assertEqual(session.commits, 1)
+        self.assertIn("delivery_template_douyin", " ".join(str(statement) for statement in session.statements))
         self.assertFalse(any(isinstance(row, MaterialTitle) for row in session.added))
+
+    def test_create_rejects_douyin_missing_from_the_template(self) -> None:
+        """页面新建时，号没分配到这条模板就是 400，任务不落库。"""
+        template, subject, douyins, accounts, *_rest = SaveTests()._ready()
+        session = FakeSession(
+            [
+                [(template, subject)],
+                tables("manhua_series", None, None),
+                [(8, "甲壳虫")],
+                [douyins[0]],
+                [4],
+                [accounts[0]],
+                [],
+            ]
+        )
+        res = http_client(session).post(
+            PREFIX,
+            json=payload(
+                accounts=[{"douyin_account_id": 4, "advertiser_id": 90001}],
+                video_ids=[],
+                title_ids=[],
+                batch_titles=[],
+            ),
+        )
+        self.assertEqual(res.status_code, 400)
+        self.assertEqual(res.json()["code"], 400)
+        self.assertEqual(res.json()["message"], "抖音号未分配到这条模板")
+        self.assertEqual(session.commits, 0)
+
+    def test_create_failure_keeps_the_task_and_is_not_http_200(self) -> None:
+        """项目创建失败时任务留下且为 failed。响应仍是错误状态，不用 200 包一层失败。"""
+        template, subject, douyins, accounts, video, title = SaveTests()._ready()
+
+        class Session(FakeSession):
+            async def execute(self, statement: Any) -> FakeResult:
+                self.statements.append(statement)
+                if self.results:
+                    return FakeResult(self.results.pop(0))
+                sql = str(statement)
+                task = next(row for row in self.added if isinstance(row, UniNativeTask))
+                if "to_regclass" in sql:
+                    return FakeResult(tables("manhua_series", None, None))
+                return FakeResult([(task, template, "甲壳虫", "番茄")])
+
+        session = Session(
+            [
+                [(template, subject)],
+                tables("manhua_series", "material_videos", "material_titles"),
+                [(8, "甲壳虫")],
+                douyins,
+                [4, 6],
+                accounts,
+                [4, 6],
+                [video],
+                [title],
+            ]
+        )
+
+        async def _submit(*_args: Any, **_kwargs: Any) -> None:
+            raise ApiError(502, "创建项目失败")
+
+        with patch("app.modules.uni_native_task.controller.submit_task", new=_submit):
+            res = http_client(session).post(PREFIX, json=payload())
+        self.assertEqual(res.status_code, 502)
+        self.assertEqual(res.json()["code"], 502)
+        self.assertEqual(res.json()["message"], "创建项目失败")
+        stored = next(row for row in session.added if isinstance(row, UniNativeTask))
+        self.assertEqual(stored.status, "failed")
+        self.assertEqual(stored.failure_reason, "创建项目失败")
+
+    def test_put_of_a_finished_task_is_conflict(self) -> None:
+        """已经不是 saved 的任务，保存返回 409，不再建项目。"""
+        current = make_task()
+        current.status = "done"
+        session = FakeSession(
+            [tables("manhua_series", None, None), [(current, make_template(), "甲壳虫", "番茄")]]
+        )
+        res = http_client(session).put(f"{PREFIX}/40", json=payload())
+        self.assertEqual(res.status_code, 409)
+        self.assertEqual(res.json()["code"], 409)
+        self.assertEqual(res.json()["message"], "任务已创建，不能再修改")
+        self.assertEqual(current.status, "done")
+        self.assertEqual(session.commits, 0)
 
     def test_status_cannot_be_sent_by_the_client(self) -> None:
         """状态不收。客户端不能写成执行中或完成。"""
@@ -733,7 +1141,7 @@ class HttpTests(unittest.TestCase):
             [
                 tables("manhua_series", None, None),
                 [1],
-                [(task, make_template(), "甲壳虫")],
+                [(task, make_template(), "甲壳虫", "番茄")],
                 [],
                 [],
                 [],

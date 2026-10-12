@@ -254,6 +254,22 @@ GOAL_BY_CHARGE = {
     ChargeMode.IAP: OptimizeGoal.PAY,
 }
 
+PURCHASE_ROI = "AD_CONVERT_TYPE_PURCHASE_ROI"
+DEEP_GOAL_BY_CHARGE: dict[ChargeMode, str | None] = {
+    ChargeMode.IAA: None,
+    ChargeMode.IAP: PURCHASE_ROI,
+}
+
+# 标准模板的优化目标按收费模式写死。全域行这两列为空。旧行可以整对为空。
+TEMPLATE_GOAL_CHECK = (
+    "(optimize_goal IS NULL AND deep_optimize_goal IS NULL) OR ("
+    "delivery_mode = 'standard' AND ("
+    "(charge_mode = 'IAA' AND optimize_goal = 'AD_CONVERT_TYPE_ACTIVE' AND deep_optimize_goal IS NULL) "
+    "OR (charge_mode = 'IAP' AND optimize_goal = 'AD_CONVERT_TYPE_PAY' "
+    "AND deep_optimize_goal = 'AD_CONVERT_TYPE_PURCHASE_ROI')"
+    "))"
+)
+
 
 class DeliveryTemplate(BaseModel):
     """投放模板。标准与全域共用名称、主体、收费模式、时间和软删。
@@ -271,6 +287,7 @@ class DeliveryTemplate(BaseModel):
         CheckConstraint("charge_mode IN ('IAA', 'IAP')", name="ck_delivery_template_charge"),
         CheckConstraint("delivery_mode IN ('standard', 'uni')", name="ck_delivery_template_delivery_mode"),
         CheckConstraint(_TEMPLATE_SHAPE, name="ck_delivery_template_mode_shape"),
+        CheckConstraint(TEMPLATE_GOAL_CHECK, name="ck_delivery_template_goal"),
         Index(
             "uq_delivery_template_mode_charge_name_alive",
             "delivery_mode",
@@ -440,6 +457,16 @@ class DeliveryTemplate(BaseModel):
         String(16),
         nullable=True,
         comment="标准模板标题选择 manual 或 auto。不是全域列 title_select_mode",
+    )
+    optimize_goal: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+        comment="优化目标。按收费模式写死：免费激活、付费付费。不收入参。仅标准模板",
+    )
+    deep_optimize_goal: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+        comment="深度优化目标。付费写死付费 ROI，免费为空。不收入参。仅标准模板",
     )
 
 

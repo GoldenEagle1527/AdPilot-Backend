@@ -149,6 +149,9 @@ def _template(**kwargs: Any) -> DeliveryTemplate:
         titles_per_ad=kwargs.get("titles_per_ad", 1),
     )
     row.id = 11
+    charge = row.charge_mode
+    row.optimize_goal = "AD_CONVERT_TYPE_PAY" if charge == "IAP" else "AD_CONVERT_TYPE_ACTIVE"
+    row.deep_optimize_goal = "AD_CONVERT_TYPE_PURCHASE_ROI" if charge == "IAP" else None
     return row
 
 
@@ -317,28 +320,66 @@ class SubmitTests(unittest.TestCase):
         self.assertTrue(project["name"].startswith("甲壳NB"))
         self.assertEqual(session.commits, 1)
 
-    def test_manual_video_cap_rejects_the_whole_submit(self) -> None:
-        """手动投放每个广告超过 10 个视频，整单拒绝，不调用客户端。"""
+    def test_manual_ad_takes_more_than_ten_videos(self) -> None:
+        """手动投放按模板视频数切，每个广告可以超过 10 个视频。"""
+        _port, _session, _template_row, result = _run(
+            template=_template(videos_per_ad=30, titles_per_ad=1, ads_per_account=1),
+            accounts=[_account(90001, 31)],
+            videos=[_video(index) for index in range(1, 31)],
+            titles=[_title(21, "标题正好五字")],
+        )
+        promotions = result["accounts"][0]["promotions"]
+        self.assertEqual(len(promotions), 1)
+        self.assertEqual(len(promotions[0]["promotion_materials"]["video_material_list"]), 30)
+
+    def test_free_goal_comes_from_the_template(self) -> None:
+        """免费只传模板上的激活，不传深度目标。草稿上的优化目标不参与。"""
+        template = _template()
+        template.optimize_goal = "AD_CONVERT_TYPE_ACTIVE"
+        template.deep_optimize_goal = None
+        draft = _draft()
+        draft.optimize_goal = "AD_CONVERT_TYPE_PAY"
+        _port, _session, _template_row, result = _run(template=template, draft=draft)
+        goal = result["accounts"][0]["project"]["optimize_goal"]
+        self.assertEqual(goal, {"external_action": "AD_CONVERT_TYPE_ACTIVE"})
+
+    def test_paid_task_on_free_template_is_rejected(self) -> None:
+        """付费任务挂免费模板时拒绝，不再改用付费目标。"""
+        template = _template()
+        template.optimize_goal = "AD_CONVERT_TYPE_ACTIVE"
+        template.deep_optimize_goal = None
         port = Port()
         install_ocean_client(port)
         with self.assertRaises(ApiError) as caught:
             asyncio.run(
                 submit_loaded(
                     Sess(_subject(), _library()),
-                    _draft(),
-                    _template(videos_per_ad=11),
+                    _draft(charge_mode="IAP", optimize_goal="AD_CONVERT_TYPE_PAY"),
+                    template,
                     _subject(),
                     _douyin(),
                     SeriesBrief(8, "甲壳虫"),
                     _library(),
                     [_account(90001, 31)],
-                    [_video(index) for index in range(1, 12)],
+                    [_video(1)],
                     [_title(21, "标题正好五字")],
                 )
             )
         self.assertEqual(caught.exception.status_code, 400)
-        self.assertEqual(caught.exception.message, "手动投放每个广告最多 10 个视频")
+        self.assertEqual(caught.exception.message, "付费投放任务须使用付费端原生模板")
         self.assertEqual(port.projects, [])
+
+    def test_paid_task_on_paid_template_uses_template_goals(self) -> None:
+        """付费任务挂付费模板时，项目优化目标来自付费模板，不读草稿。"""
+        template = _template(charge_mode="IAP")
+        template.optimize_goal = "AD_CONVERT_TYPE_PAY"
+        template.deep_optimize_goal = "AD_CONVERT_TYPE_PURCHASE_ROI"
+        draft = _draft(charge_mode="IAP", optimize_goal="AD_CONVERT_TYPE_ACTIVE")
+        _port, _session, _template_row, result = _run(template=template, draft=draft)
+        goal = result["accounts"][0]["project"]["optimize_goal"]
+        self.assertEqual(goal["external_action"], template.optimize_goal)
+        self.assertEqual(goal["deep_external_action"], template.deep_optimize_goal)
+        self.assertNotEqual(goal["external_action"], draft.optimize_goal)
 
     def test_bad_title_length_rejects_before_any_client_call(self) -> None:
         """切进广告的标题不在 5–55 字，整单失败，不截断、不跳过。"""

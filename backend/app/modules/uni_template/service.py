@@ -125,6 +125,8 @@ def _clear_standard_only(row: DeliveryTemplate) -> None:
     row.douyin_account_id = None
     row.product_image_id = None
     row.standard_title_select_mode = None
+    row.optimize_goal = None
+    row.deep_optimize_goal = None
 
 
 def _apply_uni_page(row: DeliveryTemplate, body: TemplateWrite) -> None:

@@ -208,7 +208,7 @@ class TemplateWrite(BaseModel):
     videos_per_ad: int = Field(ge=1, le=30, description="每个广告使用视频数，1–30")
     titles_per_ad: int = Field(ge=1, le=10, description="每个广告使用标题数，1–10")
     placement: Placement | None = Field(
-        None, description="广告位置：aweme 抖音、aweme_feed 抖音加头条、universal 通投智选。手动时含抖音信息流"
+        None, description="广告位置：aweme 抖音、aweme_feed 抖音加头条、universal 通投智选。手动时含抖音信息流。不传为 aweme"
     )
     district: AudienceDistrict | None = Field(None, description="用户定向地域：NONE 不限、REGION 行政区域")
     city_codes: list[int] = Field(default_factory=list, max_length=200, description="城市编码。不限时不传或空数组")
@@ -278,7 +278,7 @@ class TemplateUpdate(BaseModel):
     roi_goal: RoiGoal | None = Field(None, description="ROI 目标。不用 roi_coefficient")
     videos_per_ad: int = Field(ge=1, le=30, description="每个广告视频数，1–30")
     titles_per_ad: int = Field(ge=1, le=10, description="每个广告标题数，1–10")
-    placement: Placement | None = Field(None, description="广告位置：aweme、aweme_feed、universal")
+    placement: Placement | None = Field(None, description="广告位置：aweme、aweme_feed、universal。不传为 aweme")
     district: AudienceDistrict | None = Field(None, description="用户定向地域：NONE 或 REGION")
     city_codes: list[int] = Field(default_factory=list, max_length=200, description="城市编码。不限时为空")
     gender: AudienceGender = Field(AudienceGender.NONE, description="用户定向性别：none、male、female。不传为不限")
@@ -357,6 +357,8 @@ class TemplateItem(BaseModel):
     douyin_account_id: str | None
     product_image_id: str | None
     title_select_mode: str | None
+    optimize_goal: str | None
+    deep_optimize_goal: str | None
     created_at: str
     updated_at: str
 
@@ -384,9 +386,9 @@ class DraftWrite(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    template_id: int = Field(description="模板 id。付费任务使用免费端原生模板")
+    template_id: int = Field(description="模板 id。免费任务须用免费端原生模板，付费任务须用付费端原生模板")
     charge_mode: ChargeMode | None = Field(
-        None, description="任务收费模式。付费任务传 IAP，模板仍须是免费端原生模板。不传则跟模板"
+        None, description="任务收费模式。不传按免费。须与模板收费模式相同"
     )
     schedule_start: datetime | None = Field(None, description="预约执行开始。与结束同时空或同时有值")
     schedule_end: datetime | None = Field(None, description="预约执行结束。到点且未过结束才提交")

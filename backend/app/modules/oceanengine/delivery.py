@@ -31,6 +31,7 @@ _PROJECT_TEMPLATE_KEYS = (
     "related_product",
     "audience",
     "micro_promotion_type",
+    "aigc_dynamic_creative_switch",
 )
 _PROMOTION_BATCH = 10
 

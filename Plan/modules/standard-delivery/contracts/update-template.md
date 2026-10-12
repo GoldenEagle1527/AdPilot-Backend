@@ -1,14 +1,14 @@
 # 契约：update-template
 
 业务id：standard-delivery
-文档版本：5
+文档版本：6
 方法：PUT
 路径：/api/v1/standard-delivery/templates/{template_id}
 作用：整表保存标准模板。收费模式不可改。标准提交字段与新增相同。
 
 作者：
 状态：draft
-更新日期：2026-10-09
+更新日期：2026-10-12
 
 ## 请求
 
@@ -47,7 +47,7 @@
 | product_image_id | body | string \| null | 否 | 同新增 |
 | title_select_mode | body | string \| null | 否 | 同新增。写入标准列，不占用全域 `title_select_mode` |
 
-不收 `charge_mode`、`product_library_id`、`roi_coefficient`、`aigc_dynamic_creative`、`asset_ids`。多传返回 422。只传 `product_select`、不传商品库行，不再返回「商品库和商品选择须同时填写」。
+不收 `charge_mode`、`product_library_id`、`roi_coefficient`、`aigc_dynamic_creative`、`asset_ids`、`optimize_goal`、`deep_optimize_goal`。多传返回 422。保存时按原收费模式重写优化目标，规则同新增。不传 `placement` 时存 `aweme`。只传 `product_select`、不传商品库行，不再返回「商品库和商品选择须同时填写」。
 
 ## 响应
 
@@ -73,6 +73,7 @@
 
 | 日期 | 文档版本 | 破坏？ | 变更 | 作者 |
 | --- | --- | --- | --- | --- |
+| 2026-10-12 | 6 | 否 | 保存时按原收费模式写死优化目标。不传 `placement` 时存 `aweme` | |
 | 2026-10-09 | 5 | 否 | 可保存 `gender`、`age_bands`。规则与新增相同 | |
 | 2026-10-09 | 4 | 是 | 不再接收 `product_library_id`。可只保存 `library_kind` 或 `product_select`，两者都不要求成对 | |
 | 2026-10-08 | 3 | 否 | 可保存广告位置、定向、项目预算、商品策略、素材起量、广告状态、抖音号、主图、标题选择模式 | |

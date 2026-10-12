@@ -1,4 +1,7 @@
-"""端原生投放任务的本地保存。不上传素材，也不调用巨量。"""
+"""端原生投放任务的本地保存。本文件不上传素材，也不调用巨量。
+
+页面上的保存由控制器在落库后再走提交。机器人调用 create_task 时不要求抖音号已挂到模板。
+"""
 
 from __future__ import annotations
 
@@ -18,7 +21,7 @@ from app.modules.material_title.model import MaterialTitle
 from app.modules.material_video.model import MaterialVideo
 from app.modules.standard_delivery.model import DeliveryTemplate
 from app.modules.system_admin.domain.scope import DataScope, owner_match
-from app.modules.theater.lookup import enabled_link
+from app.modules.theater.lookup import enabled_series_links, link_charge_mode
 from app.modules.uni_native_task.crud import (
     SeriesBrief,
     TaskHead,
@@ -30,6 +33,7 @@ from app.modules.uni_native_task.crud import (
     owned_advertisers,
     own_titles,
     page_tasks,
+    pitcher_series_videos,
     pitcher_videos,
     present_tables,
     replace_children,
@@ -44,6 +48,7 @@ from app.modules.uni_native_task.model import (
 )
 from app.modules.uni_native_task.schema import TaskQuery, TaskWrite
 from app.modules.uni_template.crud import douyin_by_ids, get_uni_template_row, pitcher_owned_ids
+from app.modules.uni_template.model import DeliveryTemplateDouyin
 
 T = TypeVar("T")
 
@@ -82,8 +87,10 @@ def _order(rows: list[T], wanted: list[int], key) -> list[T]:
     return [found[item] for item in wanted]
 
 
-def _account_dict(douyin: DouyinAccount, advertiser: AdvertiserAccount) -> dict[str, Any]:
-    """把一对抖音号和账户收成出参。"""
+def _account_dict(
+    douyin: DouyinAccount, advertiser: AdvertiserAccount, ocean_project_id: int | None = None
+) -> dict[str, Any]:
+    """把一对抖音号和账户收成出参。巨量项目 id 先原样带上，再按任务状态决定是否露出。"""
     return {
         "douyin_account_id": str(douyin.id),
         "aweme_id": douyin.aweme_id,
@@ -91,25 +98,46 @@ def _account_dict(douyin: DouyinAccount, advertiser: AdvertiserAccount) -> dict[
         "advertiser_account_id": str(advertiser.id),
         "advertiser_id": int(advertiser.advertiser_id),
         "name": advertiser.local_name or advertiser.name,
+        "ocean_project_id": None if ocean_project_id is None else int(ocean_project_id),
     }
 
 
-def _link_dict(charge_mode: str, link_text: str) -> dict[str, str]:
-    """把一条推广链收成出参。"""
-    return {"charge_mode": charge_mode, "link_text": link_text}
+def _link_dict(charge_mode: str, link_text: str, recharge_template_name: str = "") -> dict[str, str]:
+    """把一条推广链收成出参。档位名没有则为空串。"""
+    return {
+        "charge_mode": charge_mode,
+        "link_text": link_text,
+        "recharge_template_name": recharge_template_name,
+    }
+
+
+def _stored_tier(link: UniNativeTaskLink) -> str:
+    """库里的档位名。旧行或没填就是空串。"""
+    value = getattr(link, "recharge_template_name", "")
+    return "" if value is None else str(value)
 
 
 def task_item(
     row: UniNativeTask,
     template: DeliveryTemplate,
     book_name: str,
+    theater_name: str,
     accounts: list[dict[str, Any]],
     links: list[dict[str, str]],
     videos: list[MaterialVideo],
     titles: list[MaterialTitle],
     batch_titles: list[str],
 ) -> dict[str, Any]:
-    """把任务收成出参。状态保持已保存未提交。"""
+    """把任务收成出参。只有执行中和完成才返回巨量项目 id，失败时列表为空。"""
+    show_projects = row.status in (NativeTaskStatus.RUNNING, NativeTaskStatus.DONE)
+    visible_accounts: list[dict[str, Any]] = []
+    project_ids: list[int] = []
+    for item in accounts:
+        raw = item.get("ocean_project_id")
+        shown = int(raw) if show_projects and raw is not None else None
+        visible_accounts.append({**item, "ocean_project_id": shown})
+        if shown is not None:
+            project_ids.append(shown)
     return {
         "id": str(row.id),
         "template_id": str(template.id),
@@ -120,7 +148,9 @@ def task_item(
         "series_id": str(row.series_id),
         "book_name": book_name,
         "series_short_name": series_short_name(book_name),
-        "accounts": accounts,
+        "theater_name": theater_name,
+        "accounts": visible_accounts,
+        "ocean_project_ids": project_ids,
         "promotion_links": links,
         "videos": [{"id": str(video.id), "name": video.name} for video in videos],
         "titles": [{"id": str(title.id), "title": title.title} for title in titles],
@@ -163,10 +193,35 @@ def _amounts(template: DeliveryTemplate, body: TaskWrite) -> tuple[Decimal, Deci
     return budget, roi
 
 
+async def _template_douyin_ids(
+    session: AsyncSession, template_id: int, user_id: int, douyin_ids: list[int]
+) -> set[int]:
+    """这条模板上，当前投手已经挂上的抖音号。"""
+    if not douyin_ids:
+        return set()
+    result = await session.execute(
+        select(DeliveryTemplateDouyin.douyin_account_id).where(
+            DeliveryTemplateDouyin.template_id == template_id,
+            DeliveryTemplateDouyin.user_id == user_id,
+            DeliveryTemplateDouyin.douyin_account_id.in_(douyin_ids),
+            DeliveryTemplateDouyin.is_deleted == 0,
+        )
+    )
+    return set(result.scalars().all())
+
+
 async def _douyin_pairs(
-    session: AsyncSession, body: TaskWrite, user_id: int
+    session: AsyncSession,
+    body: TaskWrite,
+    user_id: int,
+    *,
+    template_id: int,
+    require_template_assignment: bool = False,
 ) -> list[tuple[DouyinAccount, AdvertiserAccount]]:
-    """每个抖音号配一个当前投手的账户。号必须是已分配的全域号。"""
+    """每个抖音号配一个当前投手的账户。号必须是已分配的全域号。
+
+    require_template_assignment 只给页面上的新建和保存。机器人和 record_failed_task 不走这里的强制校验。
+    """
     douyin_ids = [item.douyin_account_id for item in body.accounts]
     found = {row.id: row for row in await douyin_by_ids(session, douyin_ids)}
     if any(item not in found for item in douyin_ids):
@@ -184,6 +239,10 @@ async def _douyin_pairs(
     )
     if not advertisers:
         raise ApiError(400, "账户不存在、未分配给当前投手或已失效")
+    if require_template_assignment:
+        assigned = await _template_douyin_ids(session, template_id, user_id, douyin_ids)
+        if any(item not in assigned for item in douyin_ids):
+            raise ApiError(400, "抖音号未分配到这条模板")
     return [
         (found[item.douyin_account_id], advertiser)
         for item, advertiser in zip(body.accounts, advertisers, strict=True)
@@ -227,7 +286,12 @@ async def _titles(
 
 
 async def _refs(
-    session: AsyncSession, body: TaskWrite, user_id: int, present: set[str] | None = None
+    session: AsyncSession,
+    body: TaskWrite,
+    user_id: int,
+    present: set[str] | None = None,
+    *,
+    require_template_assignment: bool = False,
 ) -> tuple[
     DeliveryTemplate,
     SeriesBrief,
@@ -236,12 +300,13 @@ async def _refs(
     list[MaterialTitle],
     Decimal,
     Decimal,
+    str,
 ]:
-    """核模板、短剧、账户、视频和标题。剧场表不参与。"""
+    """核模板、短剧、账户、视频和标题。剧场名取模板上的投放主体。"""
     found = await get_uni_template_row(session, body.template_id)
     if found is None:
         raise ApiError(404, "模板不存在")
-    template, _subject = found
+    template, subject = found
     if present is None:
         present = await present_tables(session)
     if "manhua_series" not in present:
@@ -249,20 +314,24 @@ async def _refs(
     series = await get_series(session, body.series_id)
     if series is None:
         raise ApiError(404, "短剧不存在")
-    pairs = await _douyin_pairs(session, body, user_id)
+    pairs = await _douyin_pairs(
+        session,
+        body,
+        user_id,
+        template_id=int(template.id),
+        require_template_assignment=require_template_assignment,
+    )
     videos = await _videos(session, body, series.id, user_id, present)
     titles = await _titles(session, body, user_id, present)
-    if not body.video_ids and not videos and "material_videos" in present:
-        from app.modules.standard_delivery.match import series_videos
-
-        videos = await series_videos(session, series.id, user_id, limit=200, order="upload")
+    if not body.video_ids and "material_videos" in present:
+        videos = await pitcher_series_videos(session, int(series.id), user_id)
     if not body.title_ids and not titles and template.title_select_mode == "auto" and "material_titles" in present:
         from app.modules.standard_delivery.match import library_titles
 
         category = "paid" if template.charge_mode == "IAP" else "common"
         titles = await library_titles(session, user_id, limit=10, category=category)
     budget, roi = _amounts(template, body)
-    return template, series, pairs, videos, titles, budget, roi
+    return template, series, pairs, videos, titles, budget, roi, str(subject.theater_name)
 
 
 def _fill(
@@ -283,35 +352,21 @@ def _fill(
     row.executed_at = None
 
 
-async def iaa_promotion_url(session: AsyncSession, series_id: int) -> str | None:
-    """向三方剧场要这部剧一条启用的 IAA 链接。没有则空。"""
-    link = await enabled_link(session, series_id, "IAA")
-    if link is None or not link.promotion_url:
-        return None
-    return str(link.promotion_url)
-
-
-async def iap_promotion_url(session: AsyncSession, series_id: int) -> str | None:
-    """向三方剧场要这部剧一条启用的 IAP 链接。没有则空。"""
-    link = await enabled_link(session, series_id, "IAP")
-    if link is None or not link.promotion_url:
-        return None
-    return str(link.promotion_url)
-
-
 async def resolve_links(
     session: AsyncSession, body: TaskWrite, series_id: int
-) -> list[tuple[str, str]]:
-    """客户端传了链接就按原文保存。没传时带出这部剧的 IAA 和 IAP。"""
+) -> list[tuple[str, str, str]]:
+    """客户端传了链接就按原文保存。没传时带出这部剧启用的全部推广链。"""
     if body.promotion_links:
-        return [(item.charge_mode, item.link_text) for item in body.promotion_links]
-    found: list[tuple[str, str]] = []
-    iaa = await iaa_promotion_url(session, series_id)
-    if iaa:
-        found.append(("IAA", iaa))
-    iap = await iap_promotion_url(session, series_id)
-    if iap:
-        found.append(("IAP", iap))
+        return [
+            (item.charge_mode, item.link_text, item.recharge_template_name) for item in body.promotion_links
+        ]
+    found: list[tuple[str, str, str]] = []
+    for link in await enabled_series_links(session, series_id):
+        name = str(link.recharge_template_name or "")
+        url = str(link.promotion_url or "").strip()
+        if not url:
+            continue
+        found.append((link_charge_mode(name, int(link.media_config_type or 0)), url, name))
     return found
 
 
@@ -344,27 +399,37 @@ def _saved_item(
     template: DeliveryTemplate,
     series: SeriesBrief,
     pairs: list[tuple[DouyinAccount, AdvertiserAccount]],
-    links: list[tuple[str, str]],
+    links: list[tuple[str, str, str]],
     videos: list[MaterialVideo],
     titles: list[MaterialTitle],
     batch_titles: list[str],
+    theater_name: str,
 ) -> dict[str, Any]:
     """用刚校验过的对象拼出参，不再回表。"""
     return task_item(
         row,
         template,
         series.book_name,
+        theater_name,
         [_account_dict(douyin, advertiser) for douyin, advertiser in pairs],
-        [_link_dict(charge_mode, link_text) for charge_mode, link_text in links],
+        [_link_dict(charge_mode, link_text, tier_name) for charge_mode, link_text, tier_name in links],
         videos,
         titles,
         list(batch_titles),
     )
 
 
-async def create_task(session: AsyncSession, body: TaskWrite, user_id: int) -> dict[str, Any]:
-    """新增一条已保存未提交的任务。"""
-    template, series, pairs, videos, titles, budget, roi = await _refs(session, body, user_id)
+async def create_task(
+    session: AsyncSession,
+    body: TaskWrite,
+    user_id: int,
+    *,
+    require_template_assignment: bool = False,
+) -> dict[str, Any]:
+    """新增一条已保存未提交的任务。不在这里建项目，避免和随后的提交各建一套。"""
+    template, series, pairs, videos, titles, budget, roi, theater_name = await _refs(
+        session, body, user_id, require_template_assignment=require_template_assignment
+    )
     row = UniNativeTask(
         template_id=template.id,
         pitcher_user_id=user_id,
@@ -389,19 +454,84 @@ async def create_task(session: AsyncSession, body: TaskWrite, user_id: int) -> d
     await ensure_one_plan(session, int(series.id), [int(douyin.id) for douyin, _account in pairs], int(row.id))
     await session.commit()
     await session.refresh(row)
-    return _saved_item(row, template, series, pairs, links, videos, titles, list(body.batch_titles))
+    return _saved_item(
+        row, template, series, pairs, links, videos, titles, list(body.batch_titles), theater_name
+    )
+
+
+async def record_failed_task(
+    session: AsyncSession,
+    *,
+    template: DeliveryTemplate,
+    series_id: int,
+    user_id: int,
+    pairs: list[tuple[DouyinAccount, AdvertiserAccount]],
+    links: list[tuple[str, str, str]],
+    reason: str,
+) -> UniNativeTask:
+    """直接落一条失败任务，不带视频，也不自动带出视频。不提交、不调客户端。"""
+    budget = template.project_budget
+    roi = template.roi_coefficient
+    if budget is None:
+        raise ApiError(400, "模板缺少项目预算")
+    if roi is None:
+        raise ApiError(400, "模板缺少 ROI 系数")
+    row = UniNativeTask(
+        template_id=template.id,
+        pitcher_user_id=user_id,
+        series_id=series_id,
+        project_budget=budget,
+        roi_coefficient=roi,
+        status=NativeTaskStatus.FAILED,
+        failure_reason=reason,
+        materials_uploaded=False,
+        executed_at=None,
+    )
+    session.add(row)
+    await session.flush()
+    await replace_children(session, row.id, pairs, links, [], [], [])
+    await session.commit()
+    return row
+
+
+async def mark_failed_if_saved(session: AsyncSession, task_id: int, user_id: int, reason: str) -> None:
+    """页面保存已经落库，但提交在改状态前失败时，把 saved 改成 failed。已经不是 saved 就不动。"""
+    present = await present_tables(session)
+    found = await get_task_row(session, task_id, user_id, series_present="manhua_series" in present)
+    if found is None:
+        return
+    task, *_rest = found
+    if task.status != NativeTaskStatus.SAVED:
+        return
+    task.status = NativeTaskStatus.FAILED
+    task.failure_reason = reason
+    task.materials_uploaded = False
+    await session.commit()
 
 
 async def update_task(
-    session: AsyncSession, task_id: int, body: TaskWrite, user_id: int
+    session: AsyncSession,
+    task_id: int,
+    body: TaskWrite,
+    user_id: int,
+    *,
+    require_template_assignment: bool = False,
 ) -> dict[str, Any]:
-    """整表保存自己的任务。账户、推广链、视频和标题按本次提交替换。"""
+    """整表保存自己仍是 saved 的任务。已经创建过项目的不再改，也不在这里建项目。"""
     present = await present_tables(session)
     found = await get_task_row(session, task_id, user_id, series_present="manhua_series" in present)
     if found is None:
         raise ApiError(404, "投放任务不存在")
     current, *_rest = found
-    template, series, pairs, videos, titles, budget, roi = await _refs(session, body, user_id, present)
+    if current.status != NativeTaskStatus.SAVED:
+        raise ApiError(409, "任务已创建，不能再修改")
+    template, series, pairs, videos, titles, budget, roi, theater_name = await _refs(
+        session,
+        body,
+        user_id,
+        present,
+        require_template_assignment=require_template_assignment,
+    )
     _fill(current, template, series, budget, roi, user_id)
     current.updated_date = beijing_now()
     links = await resolve_links(session, body, series.id)
@@ -419,7 +549,9 @@ async def update_task(
     )
     await session.commit()
     await session.refresh(current)
-    return _saved_item(current, template, series, pairs, links, videos, titles, list(body.batch_titles))
+    return _saved_item(
+        current, template, series, pairs, links, videos, titles, list(body.batch_titles), theater_name
+    )
 
 
 async def delete_task(session: AsyncSession, task_id: int, user_id: int) -> dict[str, Any]:
@@ -437,7 +569,7 @@ async def delete_task(session: AsyncSession, task_id: int, user_id: int) -> dict
 async def _children(
     session: AsyncSession, task_ids: list[int], present: set[str]
 ) -> tuple[
-    dict[int, list[tuple[DouyinAccount, AdvertiserAccount]]],
+    dict[int, list[tuple[UniNativeTaskAccount, DouyinAccount, AdvertiserAccount]]],
     dict[int, list[UniNativeTaskLink]],
     dict[int, list[MaterialVideo]],
     dict[int, list[MaterialTitle]],
@@ -462,20 +594,24 @@ async def _children(
 
 def _page_item(
     head: TaskHead,
-    accounts: dict[int, list[tuple[DouyinAccount, AdvertiserAccount]]],
+    accounts: dict[int, list[tuple[UniNativeTaskAccount, DouyinAccount, AdvertiserAccount]]],
     links: dict[int, list[UniNativeTaskLink]],
     videos: dict[int, list[MaterialVideo]],
     titles: dict[int, list[MaterialTitle]],
     batches: dict[int, list[str]],
 ) -> dict[str, Any]:
     """把列表行和关联收成一条出参。"""
-    row, template, book_name = head
+    row, template, book_name, theater_name = head
     return task_item(
         row,
         template,
         book_name,
-        [_account_dict(douyin, advertiser) for douyin, advertiser in accounts.get(row.id, [])],
-        [_link_dict(link.charge_mode, link.link_text) for link in links.get(row.id, [])],
+        theater_name,
+        [
+            _account_dict(douyin, advertiser, account.ocean_project_id)
+            for account, douyin, advertiser in accounts.get(row.id, [])
+        ],
+        [_link_dict(link.charge_mode, link.link_text, _stored_tier(link)) for link in links.get(row.id, [])],
         videos.get(row.id, []),
         titles.get(row.id, []),
         batches.get(row.id, []),
@@ -500,7 +636,7 @@ async def list_tasks(
     )
     if not rows:
         return page_data([], total, params)
-    task_ids = [row.id for row, _template, _book in rows]
+    task_ids = [row.id for row, _template, _book, _theater in rows]
     accounts, links, videos, titles, batches = await _children(session, task_ids, present)
     items = [_page_item(head, accounts, links, videos, titles, batches) for head in rows]
     return page_data(items, total, params)

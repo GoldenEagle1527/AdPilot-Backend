@@ -35,7 +35,12 @@ from app.modules.uni_native_task.crud import (
     titles_by_tasks,
     videos_by_tasks,
 )
-from app.modules.uni_native_task.model import NativeTaskStatus, UniNativeTask, UniNativeTaskLink
+from app.modules.uni_native_task.model import (
+    NativeTaskStatus,
+    UniNativeTask,
+    UniNativeTaskAccount,
+    UniNativeTaskLink,
+)
 from app.modules.uni_template.crud import get_uni_template_row
 
 _TITLE_MIN = 5
@@ -90,10 +95,48 @@ async def pitcher_library(session: AsyncSession, user_id: int) -> ProductLibrary
     return library
 
 
+def _delivery_setting(task: UniNativeTask, template: DeliveryTemplate) -> dict[str, Any]:
+    """日预算、ROI 和模板上的排期。时段不限时不传 schedule_time。"""
+    setting: dict[str, Any] = {
+        "budget_mode": "BUDGET_MODE_DAY",
+        "budget": _num(task.project_budget),
+        "roi_goal": _num(task.roi_coefficient),
+    }
+    if template.schedule_type:
+        setting["schedule_type"] = template.schedule_type
+    if template.schedule_type == "SCHEDULE_START_END":
+        setting["start_time"] = template.schedule_start_date.isoformat()
+        setting["end_time"] = template.schedule_end_date.isoformat()
+    if template.schedule_time:
+        setting["schedule_time"] = template.schedule_time
+    return setting
+
+
+def _product_info(template: DeliveryTemplate, image_id: str) -> dict[str, Any]:
+    """产品名称只用模板上的，没填就不带 titles。"""
+    info: dict[str, Any] = {"image_ids": [image_id]}
+    product_name = (template.product_name or "").strip()
+    if product_name:
+        info["titles"] = [product_name]
+    info["selling_points"] = list(template.selling_points or [])
+    return info
+
+
 def _reject_titles(titles: list[str]) -> None:
     """有一条标题长度不对就整单拒绝。"""
     if any(not _TITLE_MIN <= len(title) <= _TITLE_MAX for title in titles):
         raise ApiError(400, "标题长度须为 5–55 个字")
+
+
+def _loaded_pair(
+    pair: tuple[Any, ...],
+) -> tuple[UniNativeTaskAccount | None, DouyinAccount, AdvertiserAccount]:
+    """账户行在场时带上，好把巨量项目 id 写回去。直接调用可以只给抖音号和广告账户。"""
+    if isinstance(pair[0], UniNativeTaskAccount):
+        link_row, douyin, advertiser = pair
+        return link_row, douyin, advertiser
+    douyin, advertiser = pair
+    return None, douyin, advertiser
 
 
 async def submit_loaded(
@@ -102,7 +145,7 @@ async def submit_loaded(
     template: DeliveryTemplate,
     subject: DeliverySubject,
     book_name: str,
-    pairs: list[tuple[DouyinAccount, AdvertiserAccount]],
+    pairs: list[tuple[Any, ...]],
     links: list[UniNativeTaskLink],
     videos: list[MaterialVideo],
     titles: list[MaterialTitle],
@@ -112,6 +155,7 @@ async def submit_loaded(
     """每个账户一行一个项目、一条广告。不改模板的 delivery_mode。
 
     标题不合格时保持 saved。通过后先标 running，假客户端返回后再标 done。
+    拿到巨量项目 id 后写回账户行，和任务状态同一次提交。失败前建出来的编号也留下。
     """
     chosen = [title.title for title in titles] + list(batch_titles)
     _reject_titles(chosen)
@@ -124,8 +168,13 @@ async def submit_loaded(
     name = _project_name(book_name)
     built: list[dict[str, Any]] = []
     link_rows = [{"charge_mode": link.charge_mode, "link_text": link.link_text} for link in links]
+    shown_links: list[dict[str, str]] = []
+    for item, link in zip(link_rows, links, strict=True):
+        tier = getattr(link, "recharge_template_name", "")
+        shown_links.append({**item, "recharge_template_name": "" if tier is None else str(tier)})
     try:
-        for douyin, account in pairs:
+        for pair in pairs:
+            link_row, douyin, account = _loaded_pair(pair)
             advertiser_id = int(account.advertiser_id)
             product = await upload_product(
                 session,
@@ -145,11 +194,7 @@ async def submit_loaded(
                 "delivery_mode": mode,
                 "promotion_links": link_rows,
                 "delivery_range": {"inventory_catalog": "UNIVERSAL_SMART"},
-                "delivery_setting": {
-                    "budget_mode": "BUDGET_MODE_DAY",
-                    "budget": _num(task.project_budget),
-                    "roi_goal": _num(task.roi_coefficient),
-                },
+                "delivery_setting": _delivery_setting(task, template),
                 "related_product": {
                     "product_platform_id": int(library.library_no),
                     "product_id": int(product["product_id"]),
@@ -158,6 +203,7 @@ async def submit_loaded(
                 "audience": {"district": "NONE"},
                 "micro_promotion_type": "AWEME",
                 "native_setting": {"aweme_id": douyin.aweme_id},
+                "aigc_dynamic_creative_switch": "ON" if template.aigc_dynamic_creative else "OFF",
             }
             created = await create_project(
                 session,
@@ -176,11 +222,15 @@ async def submit_loaded(
                         "audience": project["audience"],
                         "micro_promotion_type": project["micro_promotion_type"],
                         "native_setting": project["native_setting"],
+                        "aigc_dynamic_creative_switch": project["aigc_dynamic_creative_switch"],
                         "promotion_links": link_rows,
                     },
                 ),
             )
             project_id = int(created["project_id"])
+            if link_row is not None:
+                link_row.ocean_project_id = project_id
+                await session.flush()
             for video in videos:
                 urls = list(getattr(video, "file_urls", None) or [])
                 video_url = urls[0] if urls else f"https://mock.example/videos/{int(video.id)}"
@@ -193,7 +243,8 @@ async def submit_loaded(
                 "promotion_materials": {
                     "video_material_list": [_video_material(video) for video in videos],
                     "title_material_list": [{"title": title} for title in chosen],
-                    "product_info": {"image_ids": [str(image["image_id"])]},
+                    "product_info": _product_info(template, str(image["image_id"])),
+                    "call_to_action_buttons": list(template.call_to_action_buttons or []),
                     "playlet_series_url_list": [item["link_text"] for item in link_rows],
                 },
             }
@@ -236,20 +287,22 @@ async def submit_loaded(
         "failure_reason": task.failure_reason,
         "executed_at": None if task.executed_at is None else beijing_iso(task.executed_at),
         "materials_uploaded": bool(task.materials_uploaded),
-        "promotion_links": link_rows,
+        "promotion_links": shown_links,
         "accounts": built,
     }
 
 
 async def submit_task(session: AsyncSession, task_id: int, user_id: int) -> dict[str, Any]:
-    """只提交当前投手自己的任务。素材表不在就当没有素材，不标成已上传。"""
+    """只提交当前投手自己、且仍是 saved 的任务。已经在跑、完成或失败的不再建项目。"""
     present = await present_tables(session)
     if "manhua_series" not in present:
         raise ApiError(400, "短剧库不存在")
     found = await get_task_row(session, task_id, user_id, series_present=True)
     if found is None:
         raise ApiError(404, "投放任务不存在")
-    task, template, book_name = found
+    task, template, book_name, _theater_name = found
+    if task.status != NativeTaskStatus.SAVED:
+        raise ApiError(409, "任务已提交，不能重复创建项目")
     owned = await get_uni_template_row(session, task.template_id)
     if owned is None:
         raise ApiError(404, "模板不存在")

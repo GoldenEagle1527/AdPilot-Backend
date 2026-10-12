@@ -145,7 +145,6 @@ async def execute_native_rule(session: AsyncSession, rule: StandardNativeRobotRu
                 ),
                 user_id,
                 allowed,
-                free_template=False,
             )
             await submit_draft(session, int(saved["id"]), user_id, allowed)
         except ApiError:

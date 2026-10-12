@@ -1,14 +1,14 @@
 # 契约：list-templates
 
 业务id：standard-delivery
-文档版本：5
+文档版本：6
 方法：GET
 路径：/api/v1/standard-delivery/templates
 作用：按收费模式分页列出投放模板。免费、付费分两次查。
 
 作者：
 状态：draft
-更新日期：2026-10-09
+更新日期：2026-10-12
 
 ## 请求
 
@@ -47,7 +47,7 @@
 | roi_goal | string \| null | ROI 目标，三位小数。标准模板不用 `roi_coefficient` |
 | videos_per_ad | integer \| null | 每个广告视频数，1–30 |
 | titles_per_ad | integer \| null | 每个广告标题数，1–10 |
-| placement | string \| null | 广告位置：`aweme` 抖音、`aweme_feed` 抖音加头条、`universal` 通投智选。手动时含抖音信息流 |
+| placement | string \| null | 广告位置：`aweme` 抖音、`aweme_feed` 抖音加头条、`universal` 通投智选。手动时含抖音信息流。保存时没传为 `aweme` |
 | district | string \| null | 用户定向：`NONE` 不限、`REGION` 行政区域 |
 | city_codes | integer[] | 城市编码。不限时为 `[]` |
 | gender | string | 用户定向性别：`none` 不限、`male` 男、`female` 女。旧行按 `none` 返回 |
@@ -60,6 +60,8 @@
 | douyin_account_id | string \| null | 一个标准抖音号 id。不是全域按投手分配的那张表 |
 | product_image_id | string \| null | 产品主图 id，`img-` 前缀 |
 | title_select_mode | string \| null | 标题选择 `manual` 或 `auto`。存在 `standard_title_select_mode`，不占用全域列 |
+| optimize_goal | string \| null | 优化目标，按收费模式写死：免费 `AD_CONVERT_TYPE_ACTIVE`，付费 `AD_CONVERT_TYPE_PAY`。只读 |
+| deep_optimize_goal | string \| null | 深度优化目标：付费 `AD_CONVERT_TYPE_PURCHASE_ROI`，免费为 `null`。只读。没有深度优化方式字段 |
 | created_at | string | 创建时间 |
 | updated_at | string | 更新时间 |
 
@@ -81,6 +83,7 @@
 
 | 日期 | 文档版本 | 破坏？ | 变更 | 作者 |
 | --- | --- | --- | --- | --- |
+| 2026-10-12 | 6 | 否 | 列表项增加只读 `optimize_goal`、`deep_optimize_goal`。保存时没传广告位置的为 `aweme` | |
 | 2026-10-09 | 5 | 否 | 列表项增加 `gender`、`age_bands`。不传性别按 `none`，年龄空数组表示不限 | |
 | 2026-10-09 | 4 | 是 | 列表项去掉 `product_library_id`，改为 `library_kind`。`product_select` 仍在 | |
 | 2026-10-08 | 3 | 否 | 列表项增加广告位置、定向、项目预算、商品策略、素材起量开关、广告状态、抖音号、产品主图、标题选择模式。旧行可以为空 | |

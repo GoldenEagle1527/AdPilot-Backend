@@ -59,11 +59,13 @@ from app.modules.standard_delivery.match import (
     series_videos,
 )
 from app.modules.standard_delivery.model import (
+    DEEP_GOAL_BY_CHARGE,
     GOAL_BY_CHARGE,
     ChargeMode,
     DeliveryAutoRule,
     DeliveryTaskDraft,
     DeliveryTemplate,
+    Placement,
     TemplateMode,
 )
 from app.modules.standard_delivery.schema import (
@@ -190,6 +192,8 @@ def template_item(row: DeliveryTemplate, subject_name: str) -> dict[str, Any]:
         "douyin_account_id": None if row.douyin_account_id is None else str(row.douyin_account_id),
         "product_image_id": row.product_image_id,
         "title_select_mode": row.standard_title_select_mode,
+        "optimize_goal": row.optimize_goal,
+        "deep_optimize_goal": row.deep_optimize_goal,
         "created_at": beijing_iso(row.created_date),
         "updated_at": beijing_iso(row.updated_date),
     }
@@ -212,7 +216,7 @@ def _apply_standard_template(row: DeliveryTemplate, body: TemplateWrite | Templa
     row.titles_per_ad = body.titles_per_ad
     row.project_budget = body.project_budget
     row.ad_budget = body.ad_budget
-    row.placement = None if body.placement is None else str(body.placement)
+    row.placement = str(Placement.AWEME if body.placement is None else body.placement)
     row.district = None if body.district is None else str(body.district)
     row.city_codes = list(body.city_codes) or None
     row.gender = body.gender.value
@@ -228,6 +232,14 @@ def _apply_standard_template(row: DeliveryTemplate, body: TemplateWrite | Templa
     row.roi_coefficient = None
     row.aigc_dynamic_creative = None
     row.title_select_mode = None
+    _fix_goals(row)
+
+
+def _fix_goals(row: DeliveryTemplate) -> None:
+    """优化目标只按收费模式写死，不读入参。"""
+    charge = ChargeMode(row.charge_mode)
+    row.optimize_goal = str(GOAL_BY_CHARGE[charge])
+    row.deep_optimize_goal = DEEP_GOAL_BY_CHARGE[charge]
 
 
 def template_filters(query: TemplateQuery) -> list[ColumnElement[bool]]:
@@ -505,6 +517,15 @@ def _require_goal(charge_mode: str, optimize_goal: str) -> None:
         raise ApiError(400, "优化目标与模板收费模式不一致")
 
 
+def require_task_template(task_charge: str, template_charge: str) -> None:
+    """免费任务只挂免费模板，付费任务只挂付费模板。"""
+    if template_charge == task_charge:
+        return
+    if task_charge == ChargeMode.IAP:
+        raise ApiError(400, "付费投放任务须使用付费端原生模板")
+    raise ApiError(400, "免费投放任务须使用免费端原生模板")
+
+
 async def _library_for_user(session: AsyncSession, library_no: int, user_id: int) -> ProductLibrary:
     """商品库须存在。标准库还要分给当前投手，兜底库全员可用。"""
     library = await get_library_by_no(session, library_no)
@@ -522,8 +543,6 @@ async def _draft_refs(
     body: DraftWrite,
     user_id: int,
     allowed: set[str],
-    *,
-    free_template: bool = True,
 ) -> tuple[
     DeliveryTemplate,
     DeliverySubject,
@@ -534,15 +553,14 @@ async def _draft_refs(
     list[MaterialTitle],
     ProductLibrary | None,
 ]:
-    """核模板、抖音号、账户、视频、标题和推广链。付费任务使用免费模板。"""
+    """核模板、抖音号、账户、视频、标题和推广链。模板收费模式必须和任务相同。"""
     found = await get_template_row(session, body.template_id)
     if found is None:
         raise ApiError(404, "模板不存在")
     template, subject = found
     task_charge = str(body.charge_mode or ChargeMode.IAA)
     _require_mode(task_charge, allowed)
-    if free_template and template.charge_mode != ChargeMode.IAA:
-        raise ApiError(400, "投放任务须使用免费端原生模板")
+    require_task_template(task_charge, template.charge_mode)
     _require_goal(task_charge, body.optimize_goal)
     douyin: DouyinAccount | None = None
     if body.douyin_account_id is not None:
@@ -659,12 +677,10 @@ async def create_draft(
     body: DraftWrite,
     user_id: int,
     allowed: set[str],
-    *,
-    free_template: bool = True,
 ) -> dict[str, Any]:
-    """新增一条草稿。多个账户共用同一个抖音号。投放任务默认只用免费模板。"""
+    """新增一条草稿。多个账户共用同一个抖音号。模板收费模式必须和任务相同。"""
     template, subject, douyin, series, accounts, videos, titles, library = await _draft_refs(
-        session, body, user_id, allowed, free_template=free_template
+        session, body, user_id, allowed
     )
     row = DeliveryTaskDraft(
         template_id=template.id,
