@@ -23,7 +23,7 @@ from app.modules.standard_delivery.match import (
 from app.modules.standard_delivery.model import GOAL_BY_CHARGE, DeliveryTemplate, OperationStatus
 from app.modules.standard_delivery.schema import DraftWrite
 from app.modules.standard_robot.model import StandardNativeRobotRule
-from app.modules.theater.model import TheaterApp, TheaterPromotionLink
+from app.modules.theater.lookup import series_on_platform
 
 logger = logging.getLogger("adpilot")
 
@@ -73,29 +73,8 @@ async def _targets(session: AsyncSession, rule: StandardNativeRobotRule, now: da
     """按规则类型找出要建任务的短剧。推广链规则带回链接。"""
     clock = as_beijing(now)
     if rule.rule_kind == "promotion_link":
-        rows = (
-            await session.execute(
-                select(ManhuaSeries, TheaterPromotionLink.promotion_url)
-                .join(TheaterPromotionLink, TheaterPromotionLink.series_id == ManhuaSeries.id)
-                .join(TheaterApp, TheaterApp.id == TheaterPromotionLink.theater_app_id)
-                .where(
-                    TheaterApp.platform_id == rule.platform_id,
-                    TheaterApp.is_deleted == 0,
-                    TheaterPromotionLink.is_deleted == 0,
-                    TheaterPromotionLink.is_enabled.is_(True),
-                    ManhuaSeries.is_deleted == 0,
-                )
-                .order_by(ManhuaSeries.id)
-            )
-        ).all()
-        picked: list[tuple[ManhuaSeries, str | None]] = []
-        seen: set[int] = set()
-        for series, url in rows:
-            if int(series.id) in seen or not str(url or "").strip():
-                continue
-            seen.add(int(series.id))
-            picked.append((series, str(url)))
-        return picked
+        rows = await series_on_platform(session, int(rule.platform_id), iaa_only=False)
+        return [(series, url) for series, url in rows]
     series_rows = list(
         await session.scalars(select(ManhuaSeries).where(ManhuaSeries.is_deleted == 0).order_by(ManhuaSeries.id))
     )

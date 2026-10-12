@@ -1,4 +1,8 @@
-"""常读假客户端。只在 oceanengine.mock 为真时由 changdu_factory 选用。业务模块不要 import。"""
+"""三方剧场自己的推广链样本。
+
+采集到点后从这里按 book_id 取付费、免费各一条，再写入推广链表。
+样本可以是假数据。这里不发番茄、常读或巨量 HTTP。
+"""
 
 from __future__ import annotations
 
@@ -6,7 +10,7 @@ from typing import Any
 
 
 def _item(promotion_id: int, media_config_type: int) -> dict[str, Any]:
-    """一条本地推广链。付费墙 2 是付费，3 是免费。"""
+    """一条剧场样本。付费墙 2 是付费，3 是免费。"""
     return {
         "promotion_info": {
             "promotion_id": promotion_id,
@@ -24,10 +28,7 @@ def _item(promotion_id: int, media_config_type: int) -> dict[str, Any]:
     }
 
 
-class FakeChangduClient:
-    """按 book_id 返回付费、免费各一条。不发 HTTP。"""
-
-    async def list_promotions(self, book_id: int, *, ts: int | None = None) -> list[dict[str, Any]]:
-        """推广链 id 由 book_id 推出来，同一本书每次一样。"""
-        base = int(book_id) * 10
-        return [_item(base + 2, 2), _item(base + 3, 3)]
+def promotions_for_book(book_id: int) -> list[dict[str, Any]]:
+    """按 book_id 给出付费、免费各一条。同一本书每次一样。"""
+    base = int(book_id) * 10
+    return [_item(base + 2, 2), _item(base + 3, 3)]

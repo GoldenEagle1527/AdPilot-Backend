@@ -597,7 +597,8 @@ class SaveTests(unittest.TestCase):
                 [douyins[0]],
                 [4],
                 [accounts[0]],
-                [(None,)],
+                [],
+                [],
             ]
         )
         body = write_body(

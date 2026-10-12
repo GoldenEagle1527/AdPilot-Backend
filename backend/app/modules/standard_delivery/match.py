@@ -18,6 +18,7 @@ from app.modules.material_video.model import MaterialVideo
 from app.modules.material_video.schema import VideoQuery
 from app.modules.material_video.service import video_filters
 from app.modules.standard_delivery.crud import get_library_by_id
+from app.modules.theater.lookup import enabled_link, require_link
 from app.modules.theater.model import TheaterPromotionLink
 
 _TITLE_MIN = 5
@@ -88,30 +89,15 @@ async def library_titles(
 
 
 async def iaa_link_for_series(session: AsyncSession, series_id: int) -> TheaterPromotionLink | None:
-    """这部剧一条启用的 IAA 推广链。"""
-    row = await session.scalar(
-        select(TheaterPromotionLink)
-        .where(
-            TheaterPromotionLink.series_id == series_id,
-            TheaterPromotionLink.is_deleted == 0,
-            TheaterPromotionLink.is_enabled.is_(True),
-            (TheaterPromotionLink.recharge_template_name == "IAA")
-            | (TheaterPromotionLink.media_config_type == 3),
-        )
-        .order_by(TheaterPromotionLink.id.desc())
-        .limit(1)
-    )
-    return row
+    """这部剧一条启用的 IAA 推广链。问三方剧场，不在这里写样本。"""
+    return await enabled_link(session, series_id, "IAA")
 
 
 async def promotion_link_by_id(
     session: AsyncSession, link_id: int, series_id: int
 ) -> TheaterPromotionLink:
     """已投放的推广链必须属于这部剧。"""
-    row = await session.get(TheaterPromotionLink, link_id)
-    if row is None or row.is_deleted or int(row.series_id) != series_id:
-        raise ApiError(400, "推广链不存在或不属于这部剧")
-    return row
+    return await require_link(session, link_id, series_id)
 
 
 async def other_series_name(session: AsyncSession, series_id: int) -> str:

@@ -6,7 +6,7 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any, TypeVar
 
-from sqlalchemy import ColumnElement, or_, select, text
+from sqlalchemy import ColumnElement, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.envelope import ApiError
@@ -18,7 +18,7 @@ from app.modules.material_title.model import MaterialTitle
 from app.modules.material_video.model import MaterialVideo
 from app.modules.standard_delivery.model import DeliveryTemplate
 from app.modules.system_admin.domain.scope import DataScope, owner_match
-from app.modules.theater.model import TheaterPromotionLink
+from app.modules.theater.lookup import enabled_link
 from app.modules.uni_native_task.crud import (
     SeriesBrief,
     TaskHead,
@@ -46,7 +46,6 @@ from app.modules.uni_native_task.schema import TaskQuery, TaskWrite
 from app.modules.uni_template.crud import douyin_by_ids, get_uni_template_row, pitcher_owned_ids
 
 T = TypeVar("T")
-_PROMOTION_LINK_TABLE = text("SELECT to_regclass('public.theater_promotion_links')")
 
 
 def series_short_name(book_name: str) -> str:
@@ -285,55 +284,19 @@ def _fill(
 
 
 async def iaa_promotion_url(session: AsyncSession, series_id: int) -> str | None:
-    """剧场推广链表在库里时，取这部剧一条启用的 IAA 链接。表不在就空。"""
-    found = (await session.execute(_PROMOTION_LINK_TABLE)).one()
-    if found[0] is None:
+    """向三方剧场要这部剧一条启用的 IAA 链接。没有则空。"""
+    link = await enabled_link(session, series_id, "IAA")
+    if link is None or not link.promotion_url:
         return None
-    row = (
-        await session.execute(
-            select(TheaterPromotionLink.promotion_url)
-            .where(
-                TheaterPromotionLink.series_id == series_id,
-                TheaterPromotionLink.is_deleted == 0,
-                TheaterPromotionLink.is_enabled.is_(True),
-                or_(
-                    TheaterPromotionLink.recharge_template_name == "IAA",
-                    TheaterPromotionLink.media_config_type == 3,
-                ),
-            )
-            .order_by(TheaterPromotionLink.id.desc())
-            .limit(1)
-        )
-    ).one_or_none()
-    if row is None or not row[0]:
-        return None
-    return str(row[0])
+    return str(link.promotion_url)
 
 
 async def iap_promotion_url(session: AsyncSession, series_id: int) -> str | None:
-    """这部剧一条启用的 IAP 链接。"""
-    found = (await session.execute(_PROMOTION_LINK_TABLE)).one_or_none()
-    if found is None or found[0] is None:
+    """向三方剧场要这部剧一条启用的 IAP 链接。没有则空。"""
+    link = await enabled_link(session, series_id, "IAP")
+    if link is None or not link.promotion_url:
         return None
-    row = (
-        await session.execute(
-            select(TheaterPromotionLink.promotion_url)
-            .where(
-                TheaterPromotionLink.series_id == series_id,
-                TheaterPromotionLink.is_deleted == 0,
-                TheaterPromotionLink.is_enabled.is_(True),
-                or_(
-                    TheaterPromotionLink.recharge_template_name == "IAP",
-                    TheaterPromotionLink.media_config_type == 2,
-                ),
-            )
-            .order_by(TheaterPromotionLink.id.desc())
-            .limit(1)
-        )
-    ).one_or_none()
-    if row is None or not row[0]:
-        return None
-    return str(row[0])
+    return str(link.promotion_url)
 
 
 async def resolve_links(

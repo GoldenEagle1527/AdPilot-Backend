@@ -57,13 +57,21 @@ def _title(text: str = "标题正好五字") -> MaterialTitle:
 
 class LinkFillTests(unittest.TestCase):
     def test_omitted_links_use_the_series_iaa_url(self) -> None:
-        """客户端不传链接时，用这部剧的 IAA 推广链。表不在就保持空。"""
-        filled = FakeSession(
-            [[("theater_promotion_links",)], [("https://iaa.example/from-theater",)], [(None,)]]
+        """客户端不传链接时，向三方剧场要这部剧的 IAA。剧场没有链就保持空。"""
+        from app.modules.theater.model import TheaterPromotionLink
+
+        link = TheaterPromotionLink(
+            series_id=8,
+            promotion_url="https://iaa.example/from-theater",
+            recharge_template_name="IAA",
+            media_config_type=3,
         )
+        link.id = 9
+        link.is_deleted = 0
+        filled = FakeSession([[link], []])
         links = asyncio.run(resolve_links(filled, write_body(promotion_links=[]), 8))
         self.assertEqual(links, [("IAA", "https://iaa.example/from-theater")])
-        absent = FakeSession([[(None,)], [(None,)]])
+        absent = FakeSession([[], []])
         self.assertEqual(asyncio.run(resolve_links(absent, write_body(promotion_links=[]), 8)), [])
 
     def test_client_links_are_kept_and_skip_the_theater_table(self) -> None:

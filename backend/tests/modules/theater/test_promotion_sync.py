@@ -6,6 +6,7 @@ import asyncio
 import unittest
 from contextlib import asynccontextmanager
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -120,13 +121,14 @@ class FetchOneTests(unittest.TestCase):
             inserted.extend(links)
             return len(links)
 
-        client = MagicMock()
-        client.return_value.list_promotions = AsyncMock(side_effect=error, return_value=items or [])
+        loader = MagicMock(return_value=[] if items is None else items)
+        if error is not None:
+            loader.side_effect = error
         notify = MagicMock()
         notify.return_value.promotion_failed = AsyncMock()
         with (
             patch.object(promotion_tasks, "get_task_with_series", AsyncMock(return_value=(task, series))),
-            patch.object(promotion_tasks, "promotion_client", client),
+            patch.object(promotion_tasks, "promotions_for_book", loader),
             patch.object(promotion_tasks, "ChangduNotify", notify),
             patch.object(promotion_tasks, "insert_missing_links", insert),
         ):
@@ -174,6 +176,24 @@ class FetchOneTests(unittest.TestCase):
         self.assertEqual((task.status, task.reason, task.retry_count), ("failed", "timeout", 5))
         self.assertIsNotNone(task.finished_at)
         notified.assert_awaited_once_with("甲剧", 88, "timeout")
+
+
+class TheaterSourceTests(unittest.TestCase):
+    def test_collect_asks_the_theater_module(self) -> None:
+        """采集向剧场样本要链，不再挂一套假常读客户端。"""
+        from app.modules.theater.source import promotions_for_book
+
+        root = Path(__file__).resolve().parents[3]
+        task = (root / "app" / "tasks" / "promotion_tasks.py").read_text(encoding="utf-8")
+        self.assertIn("promotions_for_book", task)
+        self.assertNotIn("FakeChangduClient", task)
+        self.assertNotIn("ChangduClient", task)
+        self.assertNotIn("httpx", task)
+        self.assertFalse((root / "app" / "clients" / "fake_changdu.py").exists())
+        self.assertFalse((root / "app" / "clients" / "changdu_factory.py").exists())
+        rows = promotions_for_book(88)
+        self.assertEqual([item["media_config"]["media_config_type"] for item in rows], [2, 3])
+        self.assertTrue(str(rows[0]["promotion_info"]["promotion_url"]).startswith("https://mock.local/"))
 
 
 class MappingTests(unittest.TestCase):

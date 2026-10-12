@@ -58,14 +58,19 @@ async def lifespan(_app: FastAPI):
 
 
 async def _due_rules_loop() -> None:
-    """约每分钟看一次到点的标准自动规则和漫剧机器人规则。"""
+    """约每分钟看一次到点的投放规则，并让三方剧场采集到点的推广链。"""
     from app.modules.delivery_runner.loop import run_due_rules
+    from app.tasks.promotion_tasks import create_due_tasks, run_due
 
     while True:
         try:
             async for session in get_session():
                 await run_due_rules(session)
                 break
+            created = await create_due_tasks()
+            ran = await run_due()
+            if created or ran:
+                logger.info("三方剧场推广链采集 新建任务=%s 执行=%s", created, ran)
         except asyncio.CancelledError:
             raise
         except Exception:

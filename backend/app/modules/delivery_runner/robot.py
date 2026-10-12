@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta
 
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.envelope import ApiError
@@ -16,7 +16,7 @@ from app.modules.material_video.model import MaterialVideo
 from app.modules.material_video.schema import VideoQuery
 from app.modules.material_video.service import video_filters
 from app.modules.standard_delivery.model import DeliveryTemplate
-from app.modules.theater.model import TheaterApp, TheaterPromotionLink
+from app.modules.theater.lookup import series_on_platform
 from app.modules.uni_native_auto_run.model import RunStatus
 from app.modules.uni_native_auto_run.service import RunFailure, record_run
 from app.modules.uni_native_task.schema import AccountPair, PromotionLinkWrite, TaskWrite
@@ -117,33 +117,7 @@ async def _promotion_series(
     session: AsyncSession, platform_id: int
 ) -> list[tuple[ManhuaSeries, str]]:
     """平台下启用的 IAA 推广链。链接文本稍后只写入任务，不写入标准专辑链接。"""
-    rows = (
-        await session.execute(
-            select(ManhuaSeries, TheaterPromotionLink.promotion_url)
-            .join(TheaterPromotionLink, TheaterPromotionLink.series_id == ManhuaSeries.id)
-            .join(TheaterApp, TheaterApp.id == TheaterPromotionLink.theater_app_id)
-            .where(
-                TheaterApp.platform_id == platform_id,
-                TheaterApp.is_deleted == 0,
-                TheaterPromotionLink.is_deleted == 0,
-                TheaterPromotionLink.is_enabled.is_(True),
-                ManhuaSeries.is_deleted == 0,
-                or_(
-                    TheaterPromotionLink.recharge_template_name == "IAA",
-                    TheaterPromotionLink.media_config_type == 3,
-                ),
-            )
-            .order_by(ManhuaSeries.id, TheaterPromotionLink.id.desc())
-        )
-    ).all()
-    picked: list[tuple[ManhuaSeries, str]] = []
-    seen: set[int] = set()
-    for series, url in rows:
-        if int(series.id) in seen or not str(url or "").strip():
-            continue
-        seen.add(int(series.id))
-        picked.append((series, str(url)))
-    return picked
+    return await series_on_platform(session, platform_id, iaa_only=True)
 
 
 async def _drama_series(

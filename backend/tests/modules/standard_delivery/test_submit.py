@@ -584,7 +584,17 @@ class LibraryResolveTests(unittest.TestCase):
 class IsolationTests(unittest.TestCase):
     def test_handlers_do_not_embed_fake_rows(self) -> None:
         """请求处理和投放服务不写假行、假号，也不引用测试目录。"""
-        banned = ("fake_catalog", "9101", "9102", "7000000000000001", "local-", "api.oceanengine.com")
+        banned = (
+            "fake_catalog",
+            "fake_changdu",
+            "FakeChangduClient",
+            "changdu_factory",
+            "9101",
+            "9102",
+            "7000000000000001",
+            "local-",
+            "api.oceanengine.com",
+        )
         roots = [
             BACKEND / "app" / "modules" / "standard_delivery",
             BACKEND / "app" / "modules" / "uni_native_task",
