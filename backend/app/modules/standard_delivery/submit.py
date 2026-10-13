@@ -17,8 +17,15 @@ from app.modules.account.commands import choose_library
 from app.modules.account.model import AdvertiserAccount, DeliverySubject, DouyinAccount, ProductLibrary
 from app.modules.material_title.model import MaterialTitle
 from app.modules.material_video.model import MaterialVideo
-from app.modules.oceanengine.delivery import create_project, create_promotion, upload_image, upload_product
-from app.modules.oceanengine.schema import ProductCreate, ProjectCreate, PromotionCreate
+from app.modules.oceanengine.delivery import (
+    create_project,
+    create_promotion,
+    split_project_budget,
+    upload_image,
+    upload_product,
+    upload_video,
+)
+from app.modules.oceanengine.schema import ProductCreate, ProjectCreate, PromotionCreate, VideoCreate
 from app.modules.standard_delivery.crud import (
     SeriesBrief,
     account_rows_by_draft,
@@ -161,7 +168,7 @@ def _stored_image_id(template: DeliveryTemplate) -> str | None:
 
 
 def _delivery_setting(template: DeliveryTemplate, draft: DeliveryTaskDraft, budget: Decimal) -> dict[str, Any]:
-    """项目排期和日预算。手动投放不把 ROI 放在项目上。"""
+    """项目排期和日预算。创建页填了项目 ROI 系数就写在项目上。"""
     setting: dict[str, Any] = {
         "schedule_type": template.schedule_type,
         "bid_type": template.bid_type,
@@ -173,13 +180,8 @@ def _delivery_setting(template: DeliveryTemplate, draft: DeliveryTaskDraft, budg
         setting["end_time"] = template.schedule_end_date.isoformat()
     if template.schedule_time:
         setting["schedule_time"] = template.schedule_time
-    if (
-        template.ocean_delivery_mode == OceanDeliveryMode.PROCEDURAL
-        and draft.charge_mode == ChargeMode.IAP
-        and template.roi_goal is not None
-    ):
+    if template.roi_goal is not None:
         setting["roi_goal"] = _num(template.roi_goal)
-        setting["deep_bid_type"] = "ROI_COEFFICIENT"
     return setting
 
 
@@ -227,10 +229,10 @@ def _reject_titles(titles: list[MaterialTitle]) -> None:
         raise ApiError(400, "标题长度须为 5–55 个字")
 
 
-def _video_material(video: MaterialVideo) -> dict[str, Any]:
-    """素材库主键。没有巨量视频号时不补。"""
+def _video_material(video: MaterialVideo, ocean_video_id: str) -> dict[str, Any]:
+    """广告报文用上传返回的巨量 video_id，不用素材库自增 id。"""
     return {
-        "material_id": int(video.id),
+        "video_id": ocean_video_id,
         "image_mode": _IMAGE_MODE.get(video.material_type, "CREATIVE_IMAGE_MODE_VIDEO_VERTICAL"),
     }
 
@@ -248,6 +250,7 @@ def _promotion_body(
     videos: list[MaterialVideo],
     titles: list[MaterialTitle],
     book_name: str,
+    ocean_video_ids: dict[int, str],
 ) -> dict[str, Any]:
     """一条广告的报文。专辑链接是草稿上已解析的推广链。"""
     body: dict[str, Any] = {
@@ -261,7 +264,9 @@ def _promotion_body(
         "native_setting": {"aweme_id": douyin.aweme_id},
         "promotion_materials": {
             "playlet_series_url_list": [draft.album_url],
-            "video_material_list": [_video_material(video) for video in videos],
+            "video_material_list": [
+                _video_material(video, ocean_video_ids[int(video.id)]) for video in videos
+            ],
             "title_material_list": [{"title": title.title} for title in titles],
             "product_info": {
                 "titles": [book_name],
@@ -271,8 +276,6 @@ def _promotion_body(
             "call_to_action_buttons": list(template.call_to_action_buttons or []),
         },
     }
-    if template.ocean_delivery_mode == OceanDeliveryMode.MANUAL and template.roi_goal is not None:
-        body["roi_goal"] = _num(template.roi_goal)
     return body
 
 
@@ -396,7 +399,8 @@ async def submit_loaded(
         [None] * len(accounts) if account_rows is None else list(account_rows)
     )
     built: list[dict[str, Any]] = []
-    for account, promotions, account_row in zip(accounts, slices, rows, strict=True):
+    shares = split_project_budget(budget, len(accounts))
+    for account, promotions, account_row, share in zip(accounts, slices, rows, shares, strict=True):
         advertiser_id = int(account.advertiser_id)
         chosen = library if libraries is None else libraries[advertiser_id]
         product = await upload_product(
@@ -412,6 +416,9 @@ async def submit_loaded(
             image_id = str(image["image_id"])
         else:
             image_id = stored_image
+        ocean_video_ids = await _upload_library_videos(
+            session, advertiser_id, [video for chunk_videos, _titles in promotions for video in chunk_videos]
+        )
         for panel, suffix in zip(panels, suffixes, strict=True):
             project_name = f"{name}-{suffix}" if suffix else name
             project = _project_body(
@@ -423,7 +430,7 @@ async def submit_loaded(
                 library=chosen,
                 product_id=int(product["product_id"]),
                 placement=placement,
-                budget=budget,
+                budget=share,
                 audience=audience,
             )
             created = await create_project(
@@ -465,6 +472,7 @@ async def submit_loaded(
                         videos=chunk_videos,
                         titles=chunk_titles,
                         book_name=book_name,
+                        ocean_video_ids=ocean_video_ids,
                     )
                 )
             if account_row is not None and len(panels) == 1:
@@ -492,6 +500,27 @@ async def submit_loaded(
     draft.submitted_at = beijing_now()
     await session.commit()
     return {"id": str(draft.id), "aweme_id": douyin.aweme_id, "accounts": built}
+
+
+async def _upload_library_videos(
+    session: AsyncSession, advertiser_id: int, videos: list[MaterialVideo]
+) -> dict[int, str]:
+    """每个账户把用到的素材库视频传给巨量。返回素材库 id 到巨量 video_id。"""
+    seen: set[int] = set()
+    ocean_ids: dict[int, str] = {}
+    for video in videos:
+        video_id = int(video.id)
+        if video_id in seen:
+            continue
+        seen.add(video_id)
+        urls = [str(url).strip() for url in (video.file_urls or []) if str(url).strip()]
+        video_url = urls[0] if urls else f"https://mock.example/videos/{video_id}"
+        uploaded = await upload_video(
+            session,
+            VideoCreate(advertiser_id=advertiser_id, video_url=video_url, library_video_id=video_id),
+        )
+        ocean_ids[video_id] = str(uploaded["video_id"])
+    return ocean_ids
 
 
 def _project_panels(draft: DeliveryTaskDraft, template: DeliveryTemplate) -> list[str]:
@@ -561,6 +590,7 @@ async def _create_one_promotion(
     videos: list[MaterialVideo],
     titles: list[MaterialTitle],
     book_name: str,
+    ocean_video_ids: dict[int, str],
 ) -> dict[str, Any]:
     """组广告报文并调用创建广告客户端。"""
     body = _promotion_body(
@@ -575,6 +605,7 @@ async def _create_one_promotion(
         videos=videos,
         titles=titles,
         book_name=book_name,
+        ocean_video_ids=ocean_video_ids,
     )
     created = await create_promotion(
         session,
@@ -582,6 +613,8 @@ async def _create_one_promotion(
             advertiser_id=advertiser_id,
             name=name,
             opt_status=operation if operation in ("ENABLE", "DISABLE") else "ENABLE",
+            series_id=int(draft.series_id),
+            douyin_account_id=int(douyin.id),
             payload=body,
         ),
     )

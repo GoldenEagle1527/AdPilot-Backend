@@ -108,13 +108,15 @@ class VideoCreate(BaseModel):
 
     advertiser_id: int
     video_url: str = Field(min_length=1)
+    library_video_id: int | None = Field(None, description="素材库视频 id。有值时把返回的 material_id 写回该视频")
 
 
 class VideoItem(VideoCreate):
-    """已登记的视频。"""
+    """已登记的视频。material_id 是头条素材 id，也是创意 id。"""
 
     video_id: str
     status: str
+    material_id: int | None = None
 
 
 class ProductCreate(BaseModel):
@@ -183,4 +185,6 @@ class PromotionCreate(BaseModel):
     advertiser_id: int
     name: str = Field(min_length=1, max_length=255)
     opt_status: Literal["ENABLE", "DISABLE"]
+    series_id: int | None = None
+    douyin_account_id: int | None = None
     payload: dict[str, Any]

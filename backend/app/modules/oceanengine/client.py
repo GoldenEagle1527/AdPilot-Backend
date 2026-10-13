@@ -20,7 +20,11 @@ def _app_id_value(app_id: str) -> int | str:
 
 
 class OceanEngineError(RuntimeError):
-    """巨量引擎 OpenAPI 调用失败。"""
+    """巨量引擎 OpenAPI 调用失败。ocean_message 是业务返回里的 message。"""
+
+    def __init__(self, message: str, *, ocean_message: str | None = None) -> None:
+        super().__init__(message)
+        self.ocean_message = ocean_message
 
 
 class OceanEnginePort(Protocol):
@@ -66,6 +70,10 @@ class OceanEnginePort(Protocol):
 
     async def fund_get(self, access_token: str, advertiser_id: int) -> dict[str, Any]: ...
 
+    async def account_fund_get(
+        self, access_token: str, account_ids: list[int]
+    ) -> dict[str, Any]: ...
+
     async def advertiser_public_info(
         self, access_token: str, advertiser_ids: list[int]
     ) -> dict[str, Any]: ...
@@ -88,6 +96,26 @@ class OceanEnginePort(Protocol):
 
     async def update_promotion_status(
         self, access_token: str, body: dict[str, Any]
+    ) -> dict[str, Any]: ...
+
+    async def update_project_status(
+        self, access_token: str, body: dict[str, Any]
+    ) -> dict[str, Any]: ...
+
+    async def delete_projects(
+        self, access_token: str, body: dict[str, Any]
+    ) -> dict[str, Any]: ...
+
+    async def delete_promotions(
+        self, access_token: str, body: dict[str, Any]
+    ) -> dict[str, Any]: ...
+
+    async def update_project_budget(
+        self, access_token: str, body: dict[str, Any]
+    ) -> dict[str, Any]: ...
+
+    async def list_promotion_reject_reasons(
+        self, access_token: str, advertiser_id: int, promotion_ids: list[int]
     ) -> dict[str, Any]: ...
 
     async def upload_product(self, access_token: str, body: dict[str, Any]) -> dict[str, Any]: ...
@@ -252,6 +280,20 @@ class OceanEngineClient:
             params={"advertiser_id": advertiser_id},
         )
 
+    async def account_fund_get(
+        self, access_token: str, account_ids: list[int]
+    ) -> dict[str, Any]:
+        """批量查询账户余额。account_type 固定 AD，一次最多 50 个。"""
+        return await self._request(
+            "GET",
+            f"{self._settings.api_base}/open_api/v3.0/account/fund/get/",
+            headers={"Access-Token": access_token},
+            params={
+                "account_ids": json.dumps(account_ids),
+                "account_type": "AD",
+            },
+        )
+
     async def advertiser_public_info(
         self, access_token: str, advertiser_ids: list[int]
     ) -> dict[str, Any]:
@@ -337,6 +379,64 @@ class OceanEngineClient:
             json_body=body,
         )
 
+    async def update_project_status(
+        self, access_token: str, body: dict[str, Any]
+    ) -> dict[str, Any]:
+        """更新项目启停。data 内含 project_id 与 opt_status，一次最多 10 条。"""
+        return await self._request(
+            "POST",
+            f"{self._settings.api_base}/open_api/v3.0/project/status/update/",
+            headers={"Access-Token": access_token},
+            json_body=body,
+        )
+
+    async def delete_projects(
+        self, access_token: str, body: dict[str, Any]
+    ) -> dict[str, Any]:
+        """删除项目。project_ids 一次最多 10 个。"""
+        return await self._request(
+            "POST",
+            f"{self._settings.api_base}/open_api/v3.0/project/delete/",
+            headers={"Access-Token": access_token},
+            json_body=body,
+        )
+
+    async def delete_promotions(
+        self, access_token: str, body: dict[str, Any]
+    ) -> dict[str, Any]:
+        """删除广告。promotion_ids 一次最多 10 个。"""
+        return await self._request(
+            "POST",
+            f"{self._settings.api_base}/open_api/v3.0/promotion/delete/",
+            headers={"Access-Token": access_token},
+            json_body=body,
+        )
+
+    async def update_project_budget(
+        self, access_token: str, body: dict[str, Any]
+    ) -> dict[str, Any]:
+        """更新项目目标预算。类型用项目上已有的 budget_mode，一次最多 10 条。"""
+        return await self._request(
+            "POST",
+            f"{self._settings.api_base}/open_api/v3.0/project/budget/update/",
+            headers={"Access-Token": access_token},
+            json_body=body,
+        )
+
+    async def list_promotion_reject_reasons(
+        self, access_token: str, advertiser_id: int, promotion_ids: list[int]
+    ) -> dict[str, Any]:
+        """批量获取广告审核建议。promotion_ids 一次最多 10 个。"""
+        return await self._request(
+            "GET",
+            f"{self._settings.api_base}/open_api/v3.0/promotion/reject_reason/get/",
+            headers={"Access-Token": access_token},
+            params={
+                "advertiser_id": advertiser_id,
+                "promotion_ids": json.dumps(promotion_ids),
+            },
+        )
+
     async def upload_product(self, access_token: str, body: dict[str, Any]) -> dict[str, Any]:
         """商品库上传。开放平台 path 未定，拒绝请求，不打开放平台。"""
         raise ApiError(503, "商品库上传接口未定")
@@ -377,5 +477,6 @@ def _parse(response: httpx.Response) -> dict[str, Any]:
     if not isinstance(body, dict) or body.get("code") != 0:
         code = body.get("code") if isinstance(body, dict) else None
         message = body.get("message") if isinstance(body, dict) else None
-        raise OceanEngineError(f"巨量引擎业务失败：code={code} {message}")
+        text = None if message is None else str(message)
+        raise OceanEngineError(f"巨量引擎业务失败：code={code} {text}", ocean_message=text)
     return body

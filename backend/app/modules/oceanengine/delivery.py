@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import uuid
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.envelope import ApiError
+from app.modules.oceanengine.client import OceanEngineError
 from app.modules.account.model import (
     DeliverySubject,
     OeProduct,
@@ -17,6 +19,7 @@ from app.modules.account.model import (
     OeVideo,
     ProductLibrary,
 )
+from app.modules.material_video.model import MaterialVideo
 from app.modules.oceanengine.runtime import _access_token, get_ocean_client
 from app.modules.oceanengine.schema import (
     ProductCreate,
@@ -26,6 +29,7 @@ from app.modules.oceanengine.schema import (
     VideoCreate,
 )
 
+_CENT = Decimal("0.01")
 _PROJECT_TEMPLATE_KEYS = (
     "optimize_goal",
     "related_product",
@@ -36,15 +40,27 @@ _PROJECT_TEMPLATE_KEYS = (
 _PROMOTION_BATCH = 10
 
 
-async def create_project(session: AsyncSession, body: ProjectCreate) -> dict[str, Any]:
-    """创建项目。项目 id 来自客户端。"""
-    saved = body.model_dump()
-    subject_fk = await _subject_row_id(session, body.subject_id)
-    client = get_ocean_client()
-    remote_body = _project_remote_body(body) if client.requires_stored_token else saved
-    remote = await client.create_project(await _access_token(session), remote_body)
-    raw_payload = remote
-    project_id = int((remote.get("data") or {}).get("project_id") or 0) or None
+def split_project_budget(total: Decimal, count: int) -> list[Decimal]:
+    """把创建页上的项目总预算按账户拆开。前几个四舍五入到分，最后一个补齐差额。"""
+    if count < 1:
+        return []
+    amount = Decimal(total)
+    if count == 1:
+        return [amount.quantize(_CENT, rounding=ROUND_HALF_UP)]
+    share = (amount / Decimal(count)).quantize(_CENT, rounding=ROUND_HALF_UP)
+    last = (amount - share * (count - 1)).quantize(_CENT, rounding=ROUND_HALF_UP)
+    return [share] * (count - 1) + [last]
+
+
+def _project_row(
+    body: ProjectCreate,
+    subject_id: int | None,
+    raw_payload: dict[str, Any] | None,
+    *,
+    create_message: str | None = None,
+    ocean_project_id: int | None = None,
+) -> OeProject:
+    """落一条项目。创建失败时记下巨量返回的 message，项目 id 仍由库里的序列补。"""
     row = OeProject(
         advertiser_id=body.advertiser_id,
         name=body.name,
@@ -52,16 +68,71 @@ async def create_project(session: AsyncSession, body: ProjectCreate) -> dict[str
         marketing_goal=body.marketing_goal,
         ad_type=body.ad_type,
         delivery_mode=body.delivery_mode,
-        subject_id=subject_fk,
+        subject_id=subject_id,
         template=body.template,
         raw_payload=raw_payload,
+        create_message=create_message,
     )
-    if project_id is not None:
-        row.ocean_project_id = project_id
+    if ocean_project_id is not None:
+        row.ocean_project_id = ocean_project_id
+    return row
+
+
+async def create_project(session: AsyncSession, body: ProjectCreate) -> dict[str, Any]:
+    """创建项目。项目 id 来自客户端。"""
+    saved = body.model_dump()
+    subject_fk = await _subject_row_id(session, body.subject_id)
+    client = get_ocean_client()
+    remote_body = _project_remote_body(body) if client.requires_stored_token else saved
+    try:
+        remote = await client.create_project(await _access_token(session), remote_body)
+    except OceanEngineError as exc:
+        message = exc.ocean_message or str(exc)
+        session.add(_project_row(body, subject_fk, {"message": message}, create_message=message))
+        await session.flush()
+        raise ApiError(502, message) from exc
+    project_id = int((remote.get("data") or {}).get("project_id") or 0) or None
+    row = _project_row(body, subject_fk, remote, ocean_project_id=project_id)
     session.add(row)
     await session.flush()
     await session.refresh(row)
     return {**saved, "project_id": int(row.ocean_project_id)}
+
+
+def _payload_links(payload: dict[str, Any]) -> list[str]:
+    """创建广告报文里的完整推广链接。"""
+    materials = payload.get("promotion_materials")
+    raw = materials.get("playlet_series_url_list") if isinstance(materials, dict) else None
+    if raw is None:
+        raw = payload.get("playlet_series_url_list")
+    if not isinstance(raw, list):
+        return []
+    return [str(item).strip() for item in raw if str(item).strip()]
+
+
+def _payload_budget(payload: dict[str, Any]) -> Decimal | None:
+    """创建广告报文里的预算。不是正数就不记。"""
+    raw = payload.get("budget")
+    if raw is None or isinstance(raw, bool):
+        return None
+    try:
+        amount = Decimal(str(raw))
+    except InvalidOperation:
+        return None
+    if amount <= 0:
+        return None
+    return amount.quantize(Decimal("0.01"))
+
+
+def _payload_project_id(payload: dict[str, Any]) -> int | None:
+    """创建广告的报文里带了项目 id 就记下，用来判断父项目是否暂停。"""
+    raw = payload.get("project_id")
+    if raw is None:
+        return None
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
 
 
 async def create_promotion(session: AsyncSession, body: PromotionCreate) -> dict[str, Any]:
@@ -77,8 +148,13 @@ async def create_promotion(session: AsyncSession, body: PromotionCreate) -> dict
     row = OePromotion(
         advertiser_id=body.advertiser_id,
         promotion_id=promotion_id,
+        ocean_project_id=_payload_project_id(body.payload),
+        promotion_links=_payload_links(body.payload) or None,
+        series_id=body.series_id,
+        douyin_account_id=body.douyin_account_id,
         opt_status=body.opt_status,
         name=body.name,
+        budget=_payload_budget(body.payload),
         raw_payload=remote,
     )
     session.add(row)
@@ -86,13 +162,35 @@ async def create_promotion(session: AsyncSession, body: PromotionCreate) -> dict
     return {"promotion_id": promotion_id, "opt_status": body.opt_status, "name": body.name}
 
 
+def creative_material_id(remote: dict[str, Any]) -> int | None:
+    """上传视频返回的 material_id。这就是头条素材 id，也是创意 id。"""
+    data = remote.get("data") if isinstance(remote, dict) else None
+    if not isinstance(data, dict):
+        return None
+    raw = data.get("material_id")
+    if raw is None or isinstance(raw, bool):
+        return None
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return None
+    if value <= 0:
+        return None
+    return value
+
+
 async def upload_video(session: AsyncSession, body: VideoCreate) -> dict[str, Any]:
-    """登记视频。视频 id 来自客户端。"""
+    """登记视频。视频 id 来自客户端。素材库视频把返回的 material_id 记到该行。"""
     saved = body.model_dump()
     client = get_ocean_client()
     remote = await client.upload_video(await _access_token(session), saved)
     raw_payload = remote
     video_id = str((remote.get("data") or {}).get("video_id") or "")
+    material_id = creative_material_id(remote)
+    if body.library_video_id is not None and material_id is not None:
+        library_video = await session.get(MaterialVideo, body.library_video_id)
+        if isinstance(library_video, MaterialVideo) and library_video.is_deleted == 0:
+            library_video.ocean_material_id = material_id
     row = OeVideo(
         advertiser_id=body.advertiser_id,
         video_url=body.video_url,
@@ -105,7 +203,7 @@ async def upload_video(session: AsyncSession, body: VideoCreate) -> dict[str, An
     await session.refresh(row)
     if not video_id:
         video_id = str(row.ocean_video_id)
-    return {**saved, "video_id": video_id, "status": "完成"}
+    return {**saved, "video_id": video_id, "material_id": material_id, "status": "完成"}
 
 
 async def upload_product(session: AsyncSession, body: ProductCreate) -> dict[str, Any]:

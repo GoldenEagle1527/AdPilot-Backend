@@ -23,6 +23,7 @@ from app.modules.material_video.model import MaterialVideo
 from app.modules.oceanengine.runtime import install_ocean_client
 from app.modules.standard_delivery.controller import router
 from app.modules.standard_delivery.crud import SeriesBrief
+from app.modules.oceanengine.delivery import split_project_budget
 from app.modules.standard_delivery.model import (
     DeliveryTaskAccount,
     DeliveryTaskDraft,
@@ -75,7 +76,7 @@ class Port:
         return {"data": {"promotion_id": 9100000000000000 + len(self.promotions)}}
 
     async def upload_video(self, _token: str, body: dict[str, Any]) -> dict[str, Any]:
-        """提交不该走到这里。"""
+        """回一个巨量视频号，供广告报文使用。"""
         self.videos += 1
         return {"data": {"video_id": "unused"}}
 
@@ -277,6 +278,27 @@ def _account_row(advertiser_account_id: int, sort_order: int) -> DeliveryTaskAcc
     return row
 
 
+class BudgetSplitTests(unittest.TestCase):
+    """3.5.3：总预算按账户拆开，除不尽时最后一个补齐。"""
+
+    def test_even_split_and_remainder_on_the_last_account(self) -> None:
+        self.assertEqual(
+            split_project_budget(Decimal("10000"), 2),
+            [Decimal("5000.00"), Decimal("5000.00")],
+        )
+        self.assertEqual(
+            split_project_budget(Decimal("10"), 3),
+            [Decimal("3.33"), Decimal("3.33"), Decimal("3.34")],
+        )
+
+    def test_submit_writes_half_budget_on_each_project(self) -> None:
+        draft = _draft()
+        draft.project_budget = Decimal("10000")
+        _port, _session, _template_row, result = _run(draft=draft)
+        budgets = [item["project"]["delivery_setting"]["budget"] for item in result["accounts"]]
+        self.assertEqual(budgets, [5000.0, 5000.0])
+
+
 class SliceTests(unittest.TestCase):
     def test_chunks_follow_saved_order_and_stop(self) -> None:
         """按顺序切。不够一整块就停，不把列表再转一圈。"""
@@ -307,13 +329,14 @@ class SubmitTests(unittest.TestCase):
         self.assertEqual(first["image_id"], "img-from-client-1")
         self.assertNotIn("image_file", port.images[0])
         self.assertEqual(port.images[0]["upload_type"], "UPLOAD_BY_FILE")
-        self.assertEqual(port.videos, 0)
-        self.assertFalse(any(isinstance(row, OeVideo) for row in session.added))
+        self.assertGreater(port.videos, 0)
+        self.assertTrue(any(isinstance(row, OeVideo) for row in session.added))
         project = first["project"]
         self.assertEqual(project["delivery_mode"], "MANUAL")
         self.assertEqual(project["audience"], {"district": "NONE"})
         self.assertNotIn("city", project["audience"])
-        self.assertNotIn("roi_goal", project["delivery_setting"])
+        self.assertEqual(project["delivery_setting"]["roi_goal"], 1.5)
+        self.assertNotIn("deep_bid_type", project["delivery_setting"])
         self.assertNotIn("roi_coefficient", project)
         self.assertEqual(project["delivery_range"]["inventory_type"], ["INVENTORY_AWEME_FEED", "INVENTORY_FEED"])
         self.assertEqual(project["related_product"]["product_id"], 4242)
@@ -325,12 +348,14 @@ class SubmitTests(unittest.TestCase):
         self.assertEqual(promo["project_id"], first["project_id"])
         materials = promo["promotion_materials"]
         self.assertEqual(materials["playlet_series_url_list"], ["https://album.example/only"])
-        self.assertEqual(materials["video_material_list"][0]["material_id"], 1)
-        self.assertNotIn("video_id", materials["video_material_list"][0])
+        self.assertEqual(materials["video_material_list"][0]["video_id"], "unused")
+        self.assertNotIn("material_id", materials["video_material_list"][0])
         self.assertEqual(materials["video_material_list"][0]["image_mode"], "CREATIVE_IMAGE_MODE_VIDEO_VERTICAL")
         self.assertEqual(materials["title_material_list"], [{"title": "标题正好五字"}])
-        self.assertEqual(promo["roi_goal"], 1.5)
-        self.assertEqual(first["promotions"][1]["promotion_materials"]["video_material_list"][0]["material_id"], 3)
+        self.assertNotIn("roi_goal", promo)
+        self.assertEqual(
+            first["promotions"][1]["promotion_materials"]["video_material_list"][0]["video_id"], "unused"
+        )
         horizontal = first["promotions"][1]["promotion_materials"]["video_material_list"]
         self.assertEqual(horizontal[1]["image_mode"], "CREATIVE_IMAGE_MODE_VIDEO")
         self.assertTrue(project["name"].startswith("甲壳NB"))
@@ -523,7 +548,7 @@ class SubmitTests(unittest.TestCase):
         self.assertEqual(template.delivery_mode, "standard")
         self.assertEqual(project["delivery_mode"], "PROCEDURAL")
         self.assertEqual(project["delivery_setting"]["roi_goal"], 2.5)
-        self.assertEqual(project["delivery_setting"]["deep_bid_type"], "ROI_COEFFICIENT")
+        self.assertNotIn("deep_bid_type", project["delivery_setting"])
         self.assertEqual(project["optimize_goal"]["deep_external_action"], "AD_CONVERT_TYPE_PURCHASE_ROI")
         self.assertNotIn("roi_goal", result["accounts"][0]["promotions"][0])
         self.assertNotIn("roi_coefficient", project)
@@ -557,7 +582,8 @@ class SubmitTests(unittest.TestCase):
         project = result["accounts"][0]["project"]
         promo = result["accounts"][0]["promotions"][0]
         self.assertEqual(project["delivery_range"], {"inventory_catalog": "MANUAL", "inventory_type": ["INVENTORY_AWEME_FEED"]})
-        self.assertEqual(project["delivery_setting"]["budget"], 88.0)
+        self.assertEqual(project["delivery_setting"]["budget"], 44.0)
+        self.assertEqual(result["accounts"][1]["project"]["delivery_setting"]["budget"], 44.0)
         self.assertEqual(project["audience"], {"district": "REGION", "city": [110000, 310000]})
         self.assertEqual(result["accounts"][0]["image_id"], "img-stored-1")
         self.assertEqual(promo["operation"], "ENABLE")
@@ -576,7 +602,8 @@ class SubmitTests(unittest.TestCase):
         _port, _session, _template_row, result = _run(template=template)
         project = result["accounts"][0]["project"]
         self.assertEqual(project["delivery_range"]["inventory_type"], ["INVENTORY_AWEME_FEED", "INVENTORY_FEED"])
-        self.assertEqual(project["delivery_setting"]["budget"], 100.0)
+        self.assertEqual(project["delivery_setting"]["budget"], 50.0)
+        self.assertEqual(result["accounts"][1]["project"]["delivery_setting"]["budget"], 50.0)
         self.assertEqual(result["accounts"][0]["promotions"][0]["operation"], "DISABLE")
         self.assertEqual(project["audience"], {"district": "NONE"})
         self.assertNotIn("city", project["audience"])

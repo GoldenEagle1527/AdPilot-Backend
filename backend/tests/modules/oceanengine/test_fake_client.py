@@ -53,6 +53,7 @@ class FakeClientTests(unittest.IsolatedAsyncioTestCase):
         video_id = body["data"]["video_id"]
         self.assertTrue(video_id.startswith("local-"))
         self.assertEqual(len(video_id), len("local-") + 32)
+        self.assertGreater(int(body["data"]["material_id"]), 0)
 
     async def test_product_ids_follow_the_database_sequence(self) -> None:
         from app.core.db import dispose_engine

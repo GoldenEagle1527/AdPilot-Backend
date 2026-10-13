@@ -24,6 +24,7 @@ from sqlalchemy import (
     desc,
     text,
 )
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -522,6 +523,7 @@ class OeProject(BaseModel):
             desc("created_date"),
             postgresql_where=text("is_deleted = 0"),
         ),
+        CheckConstraint("opt_status IN ('ENABLE', 'DISABLE')", name="ck_oe_project_opt_status"),
         {"comment": "巨量项目。template 列表不选出。ocean_project_id 由序列从 7000000000000001 起发。"},
     )
 
@@ -544,8 +546,18 @@ class OeProject(BaseModel):
     subject_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("delivery_subject.id", ondelete="RESTRICT"), nullable=True, comment="投放主体"
     )
+    opt_status: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        default="ENABLE",
+        server_default=text("'ENABLE'"),
+        comment="ENABLE 开启、DISABLE 暂停",
+    )
     template: Mapped[dict | None] = mapped_column(JSONB, nullable=True, comment="模板，列表不选出")
     raw_payload: Mapped[dict | None] = mapped_column(JSONB, nullable=True, comment="最近一次巨量原文，列表不返回")
+    create_message: Mapped[str | None] = mapped_column(
+        Text, nullable=True, comment="创建项目当时巨量返回的 message。成功为空，有值表示创建失败"
+    )
 
 
 class OeVideo(BaseModel):
@@ -623,8 +635,23 @@ class OePromotion(BaseModel):
 
     advertiser_id: Mapped[int] = mapped_column(BigInteger, nullable=False, comment="巨量广告主 id")
     promotion_id: Mapped[int] = mapped_column(BigInteger, nullable=False, comment="巨量广告 id")
+    ocean_project_id: Mapped[int | None] = mapped_column(
+        BigInteger, nullable=True, comment="所属巨量项目 id，对应 oe_project.ocean_project_id"
+    )
+    promotion_links: Mapped[list[str] | None] = mapped_column(
+        ARRAY(String(2048)), nullable=True, comment="创建广告时带上的完整推广链接"
+    )
+    series_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("manhua_series.id", ondelete="RESTRICT"),
+        nullable=True,
+        comment="短剧，外键 manhua_series.id。名称和短剧 id 从剧库取",
+    )
     opt_status: Mapped[str] = mapped_column(String(16), nullable=False, comment="ENABLE 或 DISABLE")
     name: Mapped[str | None] = mapped_column(String(255), nullable=True, comment="广告名，占用提示用")
+    budget: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 2), nullable=True, comment="广告预算，单位元。创建时从报文 budget 抄下"
+    )
     douyin_account_id: Mapped[int | None] = mapped_column(
         Integer,
         ForeignKey("douyin_account.id", ondelete="RESTRICT"),

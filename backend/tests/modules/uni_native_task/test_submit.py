@@ -213,10 +213,11 @@ class SubmitTests(unittest.TestCase):
         self.assertEqual(project["audience"], {"district": "NONE"})
         self.assertEqual(project["native_setting"]["aweme_id"], "aweme-a")
         self.assertEqual(project["delivery_setting"]["roi_goal"], 1.2)
+        self.assertEqual(project["delivery_setting"]["budget"], 33.0)
+        self.assertEqual(result["accounts"][1]["project"]["delivery_setting"]["budget"], 33.0)
         promo = json.dumps(result["accounts"][0]["promotions"], ensure_ascii=False)
         self.assertIn("https://iaa.example/from-theater", promo)
-        self.assertNotIn("video_id", promo)
-        self.assertIn("15", promo)
+        self.assertIn("unused", promo)
         self.assertNotEqual(result["status"], "完成")
 
     def _submit(self, template: Any) -> tuple[Port, dict[str, Any]]:

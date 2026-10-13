@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 from typing import Any
 
@@ -13,10 +14,26 @@ _COMPANY = (
     "番茄漫剧~普通-我花-我家-低调-岁月-苏子-我替-我不-萌宝-重生-杭州瑶添IAA-常规-48-king-免费#2"
 )
 _SEQUENCES = frozenset({OE_PROJECT_ID_SEQ, OE_PRODUCT_ID_SEQ})
+_material_seq = 7600000000000000000
 
 
 def _envelope(data: dict[str, Any]) -> dict[str, Any]:
     return {"code": 0, "message": "OK", "data": data}
+
+
+def _filter_ids(body: dict[str, Any] | None) -> list[int]:
+    """项目列表的 filtering.ids。没有或解析失败则空。"""
+    if not body:
+        return []
+    raw = body.get("filtering")
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except ValueError:
+            return []
+    if not isinstance(raw, dict):
+        return []
+    return [int(item) for item in raw.get("ids") or []]
 
 
 async def _next_sequence(name: str) -> int:
@@ -147,6 +164,18 @@ class FakeOceanEngineClient:
         """查询广告主可用余额，单位元。"""
         return _envelope({"valid_balance": 100.5, "advertiser_id": advertiser_id})
 
+    async def account_fund_get(
+        self, access_token: str, account_ids: list[int]
+    ) -> dict[str, Any]:
+        """批量余额。account_type=AD。每个账户可用余额 100.5 元。"""
+        return _envelope(
+            {
+                "list": [
+                    {"account_id": account_id, "valid_balance": 100.5} for account_id in account_ids
+                ]
+            }
+        )
+
     async def advertiser_public_info(
         self, access_token: str, advertiser_ids: list[int]
     ) -> dict[str, Any]:
@@ -188,12 +217,21 @@ class FakeOceanEngineClient:
         return _envelope({"promotion_id": promotion_id + 100000})
 
     async def list_projects(self, access_token: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
-        """假项目列表。识别 NB 时再并上本地 oe_project。"""
-        return _envelope({"list": []})
+        """假项目列表。按 filtering.ids 回 roi_goal，没有 id 时列表是空的。"""
+        return _envelope(
+            {
+                "list": [
+                    {"project_id": item, "delivery_setting": {"roi_goal": 1.25}}
+                    for item in _filter_ids(body)
+                ]
+            }
+        )
 
     async def upload_video(self, access_token: str, body: dict[str, Any]) -> dict[str, Any]:
-        """视频 id 为 local- 加十六进制 uuid。"""
-        return _envelope({"video_id": f"local-{uuid.uuid4().hex}"})
+        """视频 id 为 local- 加十六进制 uuid。material_id 是头条素材 id。"""
+        global _material_seq
+        _material_seq += 1
+        return _envelope({"video_id": f"local-{uuid.uuid4().hex}", "material_id": _material_seq})
 
     async def custom_report(
         self, access_token: str, params: dict[str, Any] | None = None
@@ -221,6 +259,36 @@ class FakeOceanEngineClient:
     ) -> dict[str, Any]:
         """不返回失败项，调用方按本批全部成功处理。"""
         return _envelope({})
+
+    async def update_project_status(
+        self, access_token: str, body: dict[str, Any]
+    ) -> dict[str, Any]:
+        """不返回失败项，调用方按本批全部成功处理。"""
+        return _envelope({})
+
+    async def delete_projects(
+        self, access_token: str, body: dict[str, Any]
+    ) -> dict[str, Any]:
+        """把请求里的项目 id 放进成功列表。"""
+        return _envelope({"project_ids": list(body.get("project_ids") or [])})
+
+    async def delete_promotions(
+        self, access_token: str, body: dict[str, Any]
+    ) -> dict[str, Any]:
+        """把请求里的广告 id 放进成功列表。"""
+        return _envelope({"promotion_ids": list(body.get("promotion_ids") or [])})
+
+    async def update_project_budget(
+        self, access_token: str, body: dict[str, Any]
+    ) -> dict[str, Any]:
+        """不返回失败项，调用方按本批全部成功处理。"""
+        return _envelope({})
+
+    async def list_promotion_reject_reasons(
+        self, access_token: str, advertiser_id: int, promotion_ids: list[int]
+    ) -> dict[str, Any]:
+        """没有审核失败。"""
+        return _envelope({"list": []})
 
     async def upload_product(self, access_token: str, body: dict[str, Any]) -> dict[str, Any]:
         """商品 id 取 oe_product 序列，从 9001 起。不返回 503。"""
