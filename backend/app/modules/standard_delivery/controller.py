@@ -38,6 +38,8 @@ from app.modules.standard_delivery.product_snapshot import (
     list_snapshots,
 )
 from app.modules.standard_delivery.submit import submit_draft
+from app.modules.city_tier.schema import CityTierList
+from app.modules.city_tier.service import list_city_tiers
 from app.modules.standard_delivery.service import (
     create_draft,
     create_rule,
@@ -117,6 +119,13 @@ async def _require_node(session: AsyncSession, principal: dict[str, Any], menu_i
 def _user_id(principal: dict[str, Any]) -> int:
     """登录主体上的用户 id。"""
     return int(principal["id"])
+
+
+@router.get("/city-tiers", response_model=Envelope[CityTierList], summary="查询城市分级")
+async def get_city_tiers(session: SessionDep, principal: PrincipalDep) -> dict[str, Any]:
+    """发展划分用的城市分级。免费和付费模板共用，有任一模板菜单即可。"""
+    await _allowed(session, principal, TEMPLATE_MENU)
+    return success(await list_city_tiers(session))
 
 
 @router.get("/templates", response_model=Envelope[PageData[TemplateItem]], summary="分页查询投放模板")

@@ -6,7 +6,7 @@ from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, text
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import BaseModel
@@ -138,17 +138,27 @@ class UniNativeTaskAccount(BaseModel):
         comment="广告主行。请求里用巨量广告主 id",
     )
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, comment="请求里的顺序，从 0 起")
+    ocean_project_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        nullable=True,
+        comment="巨量项目 id。一行账户一个项目。未创建为空。不是本表自增主键",
+    )
+    ocean_promotion_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        nullable=True,
+        comment="巨量广告 id。一个项目一条广告。未创建为空",
+    )
 
 
 class UniNativeTaskLink(BaseModel):
-    """客户端传来的推广链文本。不查剧场表，也不写剧场行。"""
+    """任务上的推广链文本和档位名。不写剧场行，也没有剧场外键。"""
 
     __tablename__ = "uni_native_task_link"
     __table_args__ = (
         CheckConstraint("charge_mode IN ('IAA', 'IAP')", name="ck_uni_native_task_link_charge"),
         CheckConstraint("char_length(link_text) >= 1", name="ck_uni_native_task_link_text"),
         Index("ix_uni_native_task_link_task", "task_id", "sort_order"),
-        {"comment": "IAA 或 IAP 推广链文本。没有剧场外键。"},
+        {"comment": "IAA 或 IAP 推广链文本和档位名。没有剧场外键。"},
     )
 
     task_id: Mapped[int] = mapped_column(
@@ -159,6 +169,13 @@ class UniNativeTaskLink(BaseModel):
     )
     charge_mode: Mapped[str] = mapped_column(String(8), nullable=False, comment="IAA 免费、IAP 付费")
     link_text: Mapped[str] = mapped_column(String(2048), nullable=False, comment="客户端传入的推广链文本")
+    recharge_template_name: Mapped[str] = mapped_column(
+        String(128),
+        nullable=False,
+        default="",
+        server_default="",
+        comment="档位名，即剧场 recharge_template_name。手填不传则为空",
+    )
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, comment="请求里的顺序，从 0 起")
 
 

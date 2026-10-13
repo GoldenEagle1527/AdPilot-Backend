@@ -15,8 +15,9 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
+from app.core.envelope import ApiError
 from app.core.times import BEIJING, beijing_now
-from app.modules.account.model import AdvertiserAccount, OeMaterialReport, OeToken
+from app.modules.account.model import AdvertiserAccount, OeApp, OeMaterialReport, OeToken
 from app.modules.oceanengine.client import OceanEngineClient, OceanEngineError
 
 logger = logging.getLogger(__name__)
@@ -130,6 +131,34 @@ def row_from_report(raw: dict[str, Any], advertiser_id: int, synced_at: datetime
         "created_date": synced_at,
         "updated_date": synced_at,
     }
+
+
+async def run_hourly_material_report(session: AsyncSession) -> int:
+    """关闭 mock 时每小时调用。先续期，再拉近 30 天。mock 时不打开放平台。"""
+    if get_settings().oceanengine.mock:
+        logger.info("素材报表跳过：mock")
+        return 0
+    await _refresh_report_tokens(session)
+    return await pull_material_report_30d(session)
+
+
+async def _refresh_report_tokens(session: AsyncSession) -> None:
+    """报表任务自己续期。过期令牌不续的话，这一小时会整轮跳过。"""
+    from app.modules.oceanengine.runtime import _access_token
+
+    app_ids = (
+        await session.scalars(select(OeToken.oe_app_id).where(OeToken.is_deleted == 0))
+    ).all()
+    if not app_ids:
+        return
+    apps = (
+        await session.scalars(select(OeApp).where(OeApp.id.in_(app_ids), OeApp.is_deleted == 0))
+    ).all()
+    for app in apps:
+        try:
+            await _access_token(session, app)
+        except ApiError:
+            logger.info("素材报表令牌不可用 app_id=%s", app.app_id)
 
 
 async def pull_material_report_30d(session: AsyncSession) -> int:

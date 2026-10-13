@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql import Select
 
 from app.core.envelope import ApiError
 from app.modules.material.model import ManhuaSeries
 from app.modules.theater.model import TheaterApp, TheaterPromotionLink
 
 _CHARGE = {"IAA": ("IAA", 3), "IAP": ("IAP", 2)}
+_TIER_ORDER = ("IAA", "中额", "小额", "超小额", "超超小额")
 
 
 async def enabled_link(session: AsyncSession, series_id: int, charge: str) -> TheaterPromotionLink | None:
@@ -31,6 +33,43 @@ async def enabled_link(session: AsyncSession, series_id: int, charge: str) -> Th
     )
     rows = result.scalars().all()
     return rows[0] if rows else None
+
+
+def link_charge_mode(name: str, media_config_type: int) -> str:
+    """档位名是 IAA，或付费墙类型是免费，记 IAA。中额等以及其余付费记 IAP。"""
+    if name == "IAA" or int(media_config_type) == _CHARGE["IAA"][1]:
+        return "IAA"
+    return "IAP"
+
+
+def _tier_rank(name: str) -> int:
+    """已知档位按固定顺序，其余名字排在后面。"""
+    try:
+        return _TIER_ORDER.index(name)
+    except ValueError:
+        return len(_TIER_ORDER)
+
+
+def enabled_series_links_stmt(series_id: int) -> Select[tuple[TheaterPromotionLink]]:
+    """这部剧启用且未删除、链接正文不是空串的推广链。"""
+    return select(TheaterPromotionLink).where(
+        TheaterPromotionLink.series_id == series_id,
+        TheaterPromotionLink.is_deleted == 0,
+        TheaterPromotionLink.is_enabled.is_(True),
+        TheaterPromotionLink.promotion_url != "",
+    )
+
+
+async def enabled_series_links(session: AsyncSession, series_id: int) -> list[TheaterPromotionLink]:
+    """全部带出。同一档位多条都留。顺序是 IAA、中额、小额、超小额、超超小额，其余在后。"""
+    result = await session.execute(enabled_series_links_stmt(series_id))
+    rows = [
+        row
+        for row in result.scalars().all()
+        if not row.is_deleted and row.is_enabled and str(row.promotion_url or "").strip()
+    ]
+    rows.sort(key=lambda row: (_tier_rank(str(row.recharge_template_name or "")), int(row.id or 0)))
+    return rows
 
 
 async def require_link(session: AsyncSession, link_id: int, series_id: int) -> TheaterPromotionLink:

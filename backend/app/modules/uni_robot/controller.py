@@ -15,6 +15,8 @@ from app.modules.system_admin import require_menu
 from app.modules.uni_robot.port import UniRobotCatalog
 from app.modules.uni_template.catalog import DatabaseUniRobotCatalog
 from app.modules.uni_robot.schema import (
+    AllRuleItem,
+    AllRuleQuery,
     DramaDeleted,
     DramaRuleItem,
     DramaRuleQuery,
@@ -35,6 +37,7 @@ from app.modules.uni_robot.service import (
     delete_link_rule,
     drama_item,
     link_item,
+    list_all_rules,
     list_drama_rules,
     list_link_rules,
     read_drama_rule,
@@ -63,6 +66,19 @@ def get_catalog(session: SessionDep) -> UniRobotCatalog:
 
 
 CatalogDep = Annotated[UniRobotCatalog, Depends(get_catalog)]
+
+
+@router.get(
+    "/rules",
+    response_model=Envelope[PageData[AllRuleItem]],
+    summary="分页查询全部漫剧机器人",
+)
+async def get_rules(
+    session: SessionDep,
+    query: Annotated[AllRuleQuery, Query()],
+) -> dict[str, Any]:
+    """剧条件和推广链在同一列表里，按排序从小到大。"""
+    return success(await list_all_rules(session, query))
 
 
 @router.get(

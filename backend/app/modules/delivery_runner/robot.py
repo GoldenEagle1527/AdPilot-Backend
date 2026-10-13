@@ -25,6 +25,7 @@ from app.modules.uni_robot.model import RuleKind, UniRobotRule
 logger = logging.getLogger("adpilot")
 
 _VIDEO_CAP = 800
+_NO_VIDEO = "这部剧没有视频素材"
 _inflight: set[int] = set()
 
 
@@ -40,7 +41,9 @@ def uni_task_body(
     """组一条端原生任务。推广链只进 link_text，并且收费模式是 IAA。没有专辑链接字段。"""
     links: list[PromotionLinkWrite] = []
     if promotion_url:
-        links.append(PromotionLinkWrite(charge_mode="IAA", link_text=promotion_url))
+        links.append(
+            PromotionLinkWrite(charge_mode="IAA", link_text=promotion_url, recharge_template_name="")
+        )
     return TaskWrite(
         template_id=template_id,
         series_id=series_id,
@@ -165,6 +168,31 @@ async def _snapshots(session: AsyncSession) -> list[tuple]:
     return [(Decimal(cost), Decimal(roi)) for cost, roi in rows.all()]
 
 
+async def _record_no_video(
+    session: AsyncSession,
+    *,
+    template: DeliveryTemplate,
+    series_id: int,
+    user_id: int,
+    douyin: DouyinAccount,
+    account: AdvertiserAccount,
+    promotion_url: str | None,
+) -> str:
+    """没视频也留一条失败任务，不提交。返回写进任务和执行记录的同一句原因。"""
+    from app.modules.uni_native_task.service import record_failed_task
+
+    await record_failed_task(
+        session,
+        template=template,
+        series_id=series_id,
+        user_id=user_id,
+        pairs=[(douyin, account)],
+        links=[("IAA", promotion_url, "")] if promotion_url else [],
+        reason=_NO_VIDEO,
+    )
+    return _NO_VIDEO
+
+
 async def execute_robot_rule(session: AsyncSession, rule: UniRobotRule, now: datetime) -> None:
     """创建端原生任务并走现有假客户端提交，再用 record_run 记下结果。"""
     from app.modules.uni_native_task.service import create_task
@@ -232,7 +260,16 @@ async def execute_robot_rule(session: AsyncSession, rule: UniRobotRule, now: dat
                 session, int(series.id), user_id, int(rule.max_videos_per_series)
             )
             if not videos:
-                failures.append(RunFailure(series_name=series.book_name, reason="这部剧没有视频素材"))
+                reason = await _record_no_video(
+                    session,
+                    template=template,
+                    series_id=int(series.id),
+                    user_id=int(owner_id),
+                    douyin=douyin,
+                    account=account,
+                    promotion_url=url,
+                )
+                failures.append(RunFailure(series_name=series.book_name, reason=reason))
                 continue
             try:
                 body = uni_task_body(
@@ -243,6 +280,7 @@ async def execute_robot_rule(session: AsyncSession, rule: UniRobotRule, now: dat
                     promotion_url=url,
                     video_ids=videos,
                 )
+                # 页面保存才要求抖音号已挂到模板。机器人自己选号，不走这道校验，也只提交一次。
                 saved = await create_task(session, body, user_id)
                 await submit_task(session, int(saved["id"]), user_id)
             except ApiError as exc:

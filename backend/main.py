@@ -21,6 +21,7 @@ from app.modules.material_title import router as material_title_router
 from app.modules.material_video import router as material_video_router
 from app.modules.oceanengine import router as oceanengine_router
 from app.modules.ocean_ads import router as ocean_ads_router
+from app.modules.report import router as report_router
 from app.modules.standard_delivery import router as standard_delivery_router
 from app.modules.standard_robot import router as standard_robot_router
 from app.modules.system_admin import router as system_admin_router
@@ -32,11 +33,12 @@ from app.modules.uni_template import router as uni_template_router
 
 logger = logging.getLogger("adpilot")
 _RULE_INTERVAL_SECONDS = 60
+_MATERIAL_REPORT_INTERVAL_SECONDS = 3600
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    """启动时接库和 Redis。mock 时选定假客户端并写一次巨量种子。约每分钟跑到点规则。"""
+    """启动时接库和 Redis。mock 时选定假客户端并写一次巨量种子。约每分钟跑到点规则。关闭 mock 时每小时拉素材报表。"""
     settings = get_settings()
     init_engine(settings)
     init_redis(settings)
@@ -44,16 +46,28 @@ async def lifespan(_app: FastAPI):
 
     install_ocean_client_for_settings(settings)
     if settings.oceanengine.mock:
-        await _seed_oceanengine()
+        try:
+            await _seed_oceanengine()
+        except Exception:
+            logger.exception("巨量种子写入失败，服务继续启动")
+    await _rebuild_report_days()
     ticker = asyncio.create_task(_due_rules_loop())
+    material_ticker = None
+    if not settings.oceanengine.mock:
+        material_ticker = asyncio.create_task(_material_report_loop())
     try:
         yield
     finally:
         ticker.cancel()
-        try:
-            await ticker
-        except asyncio.CancelledError:
-            pass
+        if material_ticker is not None:
+            material_ticker.cancel()
+        for task in (ticker, material_ticker):
+            if task is None:
+                continue
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
         await close_redis()
         await dispose_engine()
 
@@ -79,6 +93,41 @@ async def _due_rules_loop() -> None:
         await asyncio.sleep(_RULE_INTERVAL_SECONDS)
 
 
+async def _rebuild_report_days() -> None:
+    """用库里已有的小时快照刷近 8 天日表。不打巨量。mock 和正式启动都跑一次。"""
+    from app.core.times import beijing_now
+    from app.modules.oceanengine.delivery_report import pull_days
+    from app.modules.report.refresh import rebuild_serving
+
+    async for session in get_session():
+        try:
+            written = await rebuild_serving(session, pull_days(beijing_now()))
+            logger.info("报表日表启动刷新 %s 行", written)
+        except Exception:
+            logger.exception("报表日表启动刷新失败")
+        break
+
+
+async def _material_report_loop() -> None:
+    """关闭 mock 时启动。先拉一次，之后每小时拉近 30 天素材报表和近 8 天投放报表小时快照。"""
+    from app.modules.oceanengine.delivery_report import run_hourly_delivery_report
+    from app.modules.oceanengine.material_report import run_hourly_material_report
+
+    while True:
+        try:
+            async for session in get_session():
+                written = await run_hourly_material_report(session)
+                logger.info("素材报表本小时写入 %s 行", written)
+                written = await run_hourly_delivery_report(session)
+                logger.info("投放报表本小时写入 %s 行", written)
+                break
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("素材报表本小时失败")
+        await asyncio.sleep(_MATERIAL_REPORT_INTERVAL_SECONDS)
+
+
 async def _seed_oceanengine() -> None:
     """幂等写入巨量种子。平台表为空时再写入番茄和鸥溪。只在启动且 mock 时调用。"""
     from app.modules.account.seed import ensure_oceanengine_seed
@@ -87,6 +136,9 @@ async def _seed_oceanengine() -> None:
     async for session in get_session():
         await ensure_oceanengine_seed(session)
         await ensure_theater_platforms(session)
+        from app.modules.report.mock_seed import ensure_report_mock
+
+        await ensure_report_mock(session)
         await session.commit()
         break
 
@@ -120,6 +172,7 @@ def create_app() -> FastAPI:
     app.include_router(uni_native_auto_run_router)
     app.include_router(standard_delivery_router)
     app.include_router(standard_robot_router)
+    app.include_router(report_router)
     return app
 
 

@@ -26,6 +26,7 @@ from app.modules.uni_robot.crud import (
 from app.modules.uni_robot.model import RuleKind, UniRobotRule
 from app.modules.uni_robot.port import UniRobotCatalog
 from app.modules.uni_robot.schema import (
+    AllRuleQuery,
     DramaRuleQuery,
     DramaRuleWrite,
     DramaScheduleWrite,
@@ -58,8 +59,13 @@ async def create_link_rule(
         template_id=template_id,
         platform_id=platform_id,
         max_videos_per_series=body.max_videos_per_series,
+        schedule_kind=body.schedule_kind,
         schedule_hour=body.schedule_hour,
         schedule_minute=body.schedule_minute,
+        schedule_end_hour=body.schedule_end_hour,
+        schedule_end_minute=body.schedule_end_minute,
+        cycle_minutes=body.cycle_minutes,
+        sort_order=body.sort_order,
         is_enabled=body.is_enabled,
         stat_span=None,
         cost_min=None,
@@ -87,8 +93,10 @@ async def create_drama_rule(
         template_id=template_id,
         platform_id=platform_id,
         max_videos_per_series=body.max_videos_per_series,
+        schedule_kind="daily",
         schedule_hour=body.schedule_hour,
         schedule_minute=body.schedule_minute,
+        sort_order=body.sort_order,
         is_enabled=body.is_enabled,
         stat_span=body.stat_span,
         cost_min=body.cost_min,
@@ -122,8 +130,13 @@ def link_item(row: UniRobotRule) -> dict[str, Any]:
         "template_id": str(row.template_id),
         "platform_id": str(row.platform_id),
         "max_videos_per_series": row.max_videos_per_series,
+        "schedule_kind": row.schedule_kind or "daily",
         "schedule_hour": row.schedule_hour,
         "schedule_minute": row.schedule_minute,
+        "schedule_end_hour": row.schedule_end_hour,
+        "schedule_end_minute": row.schedule_end_minute,
+        "cycle_minutes": row.cycle_minutes,
+        "sort_order": int(row.sort_order or 0),
         "is_enabled": row.is_enabled,
         "created_at": beijing_iso(row.created_date),
         "updated_at": beijing_iso(row.updated_date),
@@ -153,6 +166,56 @@ async def _require_link(session: AsyncSession, rule_id: int) -> UniRobotRule:
     return row
 
 
+def all_filters(query: AllRuleQuery) -> list[ColumnElement[bool]]:
+    """总列表：未删除的两种规则。名称模糊且转义 % 和 _。"""
+    filters: list[ColumnElement[bool]] = [UniRobotRule.is_deleted == 0]
+    if query.rule_kind is not None:
+        filters.append(UniRobotRule.rule_kind == query.rule_kind)
+    name = (query.name or "").strip()
+    if name:
+        escaped = name.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        filters.append(UniRobotRule.name.ilike(f"%{escaped}%", escape="\\"))
+    if query.is_enabled is not None:
+        filters.append(UniRobotRule.is_enabled == query.is_enabled)
+    return filters
+
+
+def mixed_item(row: UniRobotRule) -> dict[str, Any]:
+    """总列表的一条。推广链没有消耗区间，剧条件没有周期分钟。"""
+    return {
+        "id": str(row.id),
+        "name": row.name,
+        "rule_kind": row.rule_kind,
+        "template_id": str(row.template_id),
+        "platform_id": str(row.platform_id),
+        "max_videos_per_series": row.max_videos_per_series,
+        "schedule_kind": row.schedule_kind or "daily",
+        "schedule_hour": row.schedule_hour,
+        "schedule_minute": row.schedule_minute,
+        "schedule_end_hour": row.schedule_end_hour,
+        "schedule_end_minute": row.schedule_end_minute,
+        "cycle_minutes": row.cycle_minutes,
+        "sort_order": int(row.sort_order or 0),
+        "is_enabled": row.is_enabled,
+        "stat_span": row.stat_span,
+        "cost_min": None if row.cost_min is None else _money(row.cost_min),
+        "cost_max": None if row.cost_max is None else _money(row.cost_max),
+        "recovery_min": None if row.recovery_min is None else _recovery(row.recovery_min),
+        "recovery_max": None if row.recovery_max is None else _recovery(row.recovery_max),
+        "created_at": beijing_iso(row.created_date),
+        "updated_at": beijing_iso(row.updated_date),
+    }
+
+
+async def list_all_rules(session: AsyncSession, query: AllRuleQuery) -> dict[str, Any]:
+    """两种规则放在同一页，按 sort_order 从小到大。"""
+    params = PageParams(page=query.page, page_size=query.page_size)
+    rows, total = await page_link_rules(
+        session, all_filters(query), offset=params.offset, limit=params.page_size
+    )
+    return page_data([mixed_item(row) for row in rows], total, params)
+
+
 async def list_link_rules(session: AsyncSession, query: LinkRuleQuery) -> dict[str, Any]:
     """分页列出按推广链接规则。"""
     params = PageParams(page=query.page, page_size=query.page_size)
@@ -179,8 +242,13 @@ async def update_link_rule(
     row.template_id = template_id
     row.platform_id = platform_id
     row.max_videos_per_series = body.max_videos_per_series
+    row.schedule_kind = body.schedule_kind
     row.schedule_hour = body.schedule_hour
     row.schedule_minute = body.schedule_minute
+    row.schedule_end_hour = body.schedule_end_hour
+    row.schedule_end_minute = body.schedule_end_minute
+    row.cycle_minutes = body.cycle_minutes
+    row.sort_order = body.sort_order
     row.is_enabled = body.is_enabled
     row.stat_span = None
     row.cost_min = None
@@ -252,6 +320,7 @@ def drama_item(row: UniRobotRule) -> dict[str, Any]:
         "max_videos_per_series": row.max_videos_per_series,
         "schedule_hour": row.schedule_hour,
         "schedule_minute": row.schedule_minute,
+        "sort_order": int(row.sort_order or 0),
         "is_enabled": row.is_enabled,
         "stat_span": row.stat_span,
         "cost_min": _money(row.cost_min),
@@ -312,8 +381,10 @@ async def update_drama_rule(
     row.template_id = template_id
     row.platform_id = platform_id
     row.max_videos_per_series = body.max_videos_per_series
+    row.schedule_kind = "daily"
     row.schedule_hour = body.schedule_hour
     row.schedule_minute = body.schedule_minute
+    row.sort_order = body.sort_order
     row.is_enabled = body.is_enabled
     row.stat_span = body.stat_span
     row.cost_min = body.cost_min

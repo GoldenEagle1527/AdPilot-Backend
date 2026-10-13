@@ -1,7 +1,7 @@
 # 契约：submit-task-draft
 
 业务id：standard-delivery
-文档版本：4
+文档版本：7
 方法：POST
 路径：/api/v1/standard-delivery/task-drafts/{draft_id}/submit
 作用：确认提交当前投手自己的一条草稿。按模板切广告，经已装上的客户端建项目、传商品和主图，并把报文放在返回值里。
@@ -12,7 +12,7 @@
 
 作者：
 状态：draft
-更新日期：2026-10-09
+更新日期：2026-10-13
 
 ## 请求
 
@@ -25,11 +25,12 @@
 
 ## 响应
 
-`data.id` 是草稿 id。`data.aweme_id` 是这条草稿唯一的标准抖音号。`data.accounts` 按草稿里的账户顺序，每项含：
+`data.id` 是草稿 id。`data.aweme_id` 是这条草稿唯一的标准抖音号。`data.accounts` 一项是一个建出的项目，按草稿里的账户顺序，同一账户内按模板 `bid_panels` 顺序。免费草稿、或模板 `bid_panels` 为空时，一个账户一项。付费草稿且模板有出价面板时，同一个账户每个面板各建一个项目，各占一项，`advertiser_id` 会重复。每项含：
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | advertiser_id | integer | 巨量广告主 id |
+| bid_panel | string | 这个项目对应的一个出价面板名。免费或模板没有面板时为空串 |
 | project_id | integer | 客户端 `create_project` 返回的项目 id |
 | product_id | integer | 客户端商品上传返回的商品 id |
 | image_id | string | 模板上的 `product_image_id`（`img-` 前缀）。模板没有时才是本次图片上传返回的 id |
@@ -40,7 +41,11 @@
 
 `promotions[].project_id` 用本账户刚返回的项目 id。`promotion_materials.playlet_series_url_list` 只有草稿的 `album_url` 一条。视频素材带素材库 `material_id`，没有巨量视频号时不补 `video_id`。手动投放且模板有 `roi_goal` 时，ROI 在广告上；付费自动投放时 ROI 在项目的 `delivery_setting.roi_goal`。标准行不读 `roi_coefficient`。
 
-视频、标题按草稿保存顺序切。每条广告取 `videos_per_ad` 个视频、`titles_per_ad` 个标题。每个账户最多 `ads_per_account` 条。切完就停，不回头再取。
+`project.optimize_goal` 只读模板上写死的优化目标，不读草稿 `optimize_goal`：免费只有 `external_action=AD_CONVERT_TYPE_ACTIVE`，不带 `deep_external_action`；付费为 `AD_CONVERT_TYPE_PAY` 加 `deep_external_action=AD_CONVERT_TYPE_PURCHASE_ROI`。草稿和模板收费模式不一致时 400，不再换成另一套目标。
+
+视频、标题按草稿保存顺序切。每条广告取 `videos_per_ad` 个视频、`titles_per_ad` 个标题。每个账户最多 `ads_per_account` 条。切完就停，不回头再取。按面板拆出的几个项目用这个账户切到的同一组素材，各建各的广告；面板不多消耗素材。项目名称不随面板变，仍是剧名前两字 + `NB` + 月日时分。商品和主图每个账户只传一次，几个面板项目共用。
+
+提交成功后，每个建出的项目记一行 `delivery_task_project`（草稿、广告主行、面板名、巨量项目 id），其下每条广告记一行 `delivery_task_promotion`（巨量广告 id）。一个账户只建一个项目时，巨量项目 id 同时写回 `delivery_task_account.ocean_project_id`；按面板拆成多个项目时账户行这一列为空。这些和草稿 `submitted_at` 同一次提交。本次改动前已提交的草稿不回填。
 
 ## 错误
 
@@ -49,19 +54,20 @@
 | 401 | `未带或 Token 无效` | 未登录 |
 | 403 | `已登录但无对应菜单或组件` | 没有草稿所属收费模式的菜单 |
 | 404 | `投放草稿不存在` | 草稿不存在、已软删，或不是当前投手的 |
-| 400 | `手动投放每个广告最多 10 个视频` | `ocean_delivery_mode=MANUAL` 且 `videos_per_ad` 大于 10 |
 | 400 | `标题长度须为 5–30 个字` | 切进广告的标题有一条不在 5–30 个字 |
 | 400 | `专辑链接不能为空` | 草稿没有 `album_url` |
 | 400 | `广告位置不能为空` | 草稿和模板都没有版位 |
 | 400 | `项目预算不能为空` | 草稿和模板都没有项目预算 |
 | 400 | `广告开关不能为空` | 草稿和模板都没有广告状态 |
 | 400 | `抖音号不能为空` | 草稿和模板都没有抖音号 |
-| 400 | `模板还不能确认提交` | 模板还缺确认提交要用的字段 |
+| 400 | `付费投放任务须使用付费端原生模板` | 付费草稿挂了非付费模板 |
+| 400 | `免费投放任务须使用免费端原生模板` | 免费草稿挂了非免费模板 |
+| 400 | `模板还不能确认提交` | 模板还缺确认提交要用的字段，或模板上没有优化目标 |
 | 404 | `商品库不存在` | 草稿没写商品库，模板也没填 `library_kind`，或解析出来的库已经没有 |
 | 409 | `缺少兜底库` | 模板填了库类型，当前投手在该账户组织上没有这个类型的标准库，该组织也没有这个类型的兜底库 |
 | 503 | `图片上传接口未定` | 装的是真客户端，主图上传仍未接 |
 
-手动投放视频数超限、标题长度不对时，整单失败，不截断，也不先建项目。
+标题长度不对时，整单失败，不截断，也不先建项目。手动、自动投放的每广告视频数都用模板 `videos_per_ad`（1–30），不再按 10 拒绝。
 
 ## 被谁调用
 
@@ -73,6 +79,9 @@
 
 | 日期 | 文档版本 | 破坏？ | 变更 | 作者 |
 | --- | --- | --- | --- | --- |
+| 2026-10-13 | 7 | 是 | 付费草稿且模板有出价面板时，每个账户按面板各建一个项目，`accounts` 改为一项一个项目，同一 `advertiser_id` 可以出现多次。新增 `bid_panel`。提交后记下巨量项目 id 和广告 id。快照见 [_history/submit-task-draft-v6.md](_history/submit-task-draft-v6.md) | |
+| 2026-10-12 | 6 | 是 | 收费模式不一致时 400。去掉「付费草稿挂免费模板仍按付费目标提交」。快照见 [_history/submit-task-draft-v5.md](_history/submit-task-draft-v5.md) | |
+| 2026-10-12 | 5 | 否 | 优化目标改读模板写死值，草稿上的不参与。去掉「手动投放每个广告最多 10 个视频」 | |
 | 2026-10-09 | 4 | 否 | 项目 `audience` 在非不限时带上模板的性别和年龄。不限则省略 `gender`、`age` | |
 | 2026-10-09 | 3 | 是 | 草稿没写商品库时按模板 `library_kind` 解析投手标准库或组织兜底库。不再读模板 `product_library_id`。类型为空时不另选库。专辑链接仍只用草稿 | |
 | 2026-10-08 | 2 | 否 | 草稿未覆盖时读取模板的广告位置、定向、项目预算、商品库、广告状态、抖音号、主图。有 `img-` 主图则不再上传。专辑链接仍只用草稿 | |

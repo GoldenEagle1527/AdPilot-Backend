@@ -43,6 +43,23 @@ class UniRobotRule(BaseModel):
         CheckConstraint("schedule_hour BETWEEN 0 AND 23", name="ck_uni_robot_rule_hour"),
         CheckConstraint("schedule_minute BETWEEN 0 AND 59", name="ck_uni_robot_rule_minute"),
         CheckConstraint(
+            "schedule_kind IN ('daily', 'cycle')",
+            name="ck_uni_robot_rule_schedule_kind",
+        ),
+        CheckConstraint("sort_order >= 0", name="ck_uni_robot_rule_sort"),
+        CheckConstraint(
+            "cycle_minutes IS NULL OR cycle_minutes BETWEEN 1 AND 1440",
+            name="ck_uni_robot_rule_cycle",
+        ),
+        CheckConstraint(
+            "schedule_end_hour IS NULL OR schedule_end_hour BETWEEN 0 AND 23",
+            name="ck_uni_robot_rule_end_hour",
+        ),
+        CheckConstraint(
+            "schedule_end_minute IS NULL OR schedule_end_minute BETWEEN 0 AND 59",
+            name="ck_uni_robot_rule_end_minute",
+        ),
+        CheckConstraint(
             "("
             "rule_kind = 'promotion_link' "
             "AND stat_span IS NULL "
@@ -102,11 +119,30 @@ class UniRobotRule(BaseModel):
         server_default=text("800"),
         comment="每部剧最大视频素材数，默认 800",
     )
+    schedule_kind: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        default="daily",
+        server_default=text("'daily'"),
+        comment="时间调度：daily 每天定点、cycle 周期。剧条件固定每天",
+    )
     schedule_hour: Mapped[int] = mapped_column(
         Integer, nullable=False, comment="每天触发的小时，0–23"
     )
     schedule_minute: Mapped[int] = mapped_column(
         Integer, nullable=False, comment="每天触发的分钟，0–59"
+    )
+    sort_order: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0"), comment="排序，小的在前"
+    )
+    cycle_minutes: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, comment="周期分钟。推广链选周期时用"
+    )
+    schedule_end_hour: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, comment="每天结束小时"
+    )
+    schedule_end_minute: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, comment="每天结束分钟"
     )
     is_enabled: Mapped[bool] = mapped_column(
         Boolean,

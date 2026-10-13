@@ -36,14 +36,22 @@ def robot_item(row: StandardNativeRobotRule) -> dict[str, Any]:
         "schedule_kind": row.schedule_kind,
         "schedule_hour": row.schedule_hour,
         "schedule_minute": row.schedule_minute,
+        "schedule_end_hour": row.schedule_end_hour,
+        "schedule_end_minute": row.schedule_end_minute,
+        "delivery_hours": row.delivery_hours,
+        "bid_type": row.bid_type,
+        "cycle_minutes": row.cycle_minutes,
+        "sort_order": int(row.sort_order or 0),
         "template_id": str(row.template_id),
         "pitcher_user_id": str(row.pitcher_user_id),
         "platform_id": None if row.platform_id is None else str(row.platform_id),
         "accounts_per_series": row.accounts_per_series,
         "max_videos_per_series": row.max_videos_per_series,
         "stat_span": row.stat_span,
+        "cost_op": row.cost_op,
         "cost_min": _bound(row.cost_min, "0.01"),
         "cost_max": _bound(row.cost_max, "0.01"),
+        "recovery_op": row.recovery_op,
         "recovery_min": _bound(row.recovery_min, "0.0001"),
         "recovery_max": _bound(row.recovery_max, "0.0001"),
         "is_enabled": row.is_enabled,
@@ -81,11 +89,13 @@ async def _checked_template(session: AsyncSession, template_id: int, charge_mode
 
 
 def _check_shape(body: RobotWrite) -> None:
-    """推广链要剧场；每天执行要小时。"""
+    """推广链要剧场；每天定点要小时；起止时间要成对。剧条件的剧场有值就存。"""
     if body.rule_kind == "promotion_link" and body.platform_id is None:
         raise ApiError(400, "推广链规则需要剧场平台")
-    if body.schedule_kind == "period" and body.schedule_hour is None:
-        raise ApiError(400, "周期执行需要小时")
+    if body.schedule_kind in ("period", "daily") and body.schedule_hour is None:
+        raise ApiError(400, "每天执行需要小时")
+    if (body.schedule_end_hour is None) != (body.schedule_end_minute is None):
+        raise ApiError(400, "每天结束时间要同时给出小时和分钟")
 
 
 def _apply(row: StandardNativeRobotRule, body: RobotWrite, template_id: int) -> None:
@@ -95,13 +105,21 @@ def _apply(row: StandardNativeRobotRule, body: RobotWrite, template_id: int) -> 
     row.schedule_kind = body.schedule_kind
     row.schedule_hour = body.schedule_hour
     row.schedule_minute = body.schedule_minute
+    row.schedule_end_hour = body.schedule_end_hour
+    row.schedule_end_minute = body.schedule_end_minute
+    row.delivery_hours = body.delivery_hours
+    row.bid_type = body.bid_type
+    row.cycle_minutes = body.cycle_minutes
+    row.sort_order = body.sort_order
     row.template_id = template_id
     row.platform_id = body.platform_id
     row.accounts_per_series = body.accounts_per_series
     row.max_videos_per_series = body.max_videos_per_series
     row.stat_span = body.stat_span
+    row.cost_op = body.cost_op
     row.cost_min = body.cost_min
     row.cost_max = body.cost_max
+    row.recovery_op = body.recovery_op
     row.recovery_min = body.recovery_min
     row.recovery_max = body.recovery_max
     row.is_enabled = body.is_enabled
@@ -137,14 +155,22 @@ async def create_robot_rule(
         schedule_kind=body.schedule_kind,
         schedule_hour=body.schedule_hour,
         schedule_minute=body.schedule_minute,
+        schedule_end_hour=body.schedule_end_hour,
+        schedule_end_minute=body.schedule_end_minute,
+        delivery_hours=body.delivery_hours,
+        bid_type=body.bid_type,
+        cycle_minutes=body.cycle_minutes,
+        sort_order=body.sort_order,
         template_id=template_id,
         pitcher_user_id=user_id,
         platform_id=body.platform_id,
         accounts_per_series=body.accounts_per_series,
         max_videos_per_series=body.max_videos_per_series,
         stat_span=body.stat_span,
+        cost_op=body.cost_op,
         cost_min=body.cost_min,
         cost_max=body.cost_max,
+        recovery_op=body.recovery_op,
         recovery_min=body.recovery_min,
         recovery_max=body.recovery_max,
         is_enabled=body.is_enabled,
@@ -176,7 +202,11 @@ async def list_robot_rules(
             await session.scalars(
                 select(StandardNativeRobotRule)
                 .where(*filters)
-                .order_by(StandardNativeRobotRule.created_date.desc(), StandardNativeRobotRule.id.desc())
+                .order_by(
+                    StandardNativeRobotRule.sort_order.asc(),
+                    StandardNativeRobotRule.created_date.desc(),
+                    StandardNativeRobotRule.id.desc(),
+                )
                 .offset(params.offset)
                 .limit(params.page_size)
             )

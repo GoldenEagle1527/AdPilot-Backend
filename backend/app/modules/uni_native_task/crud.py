@@ -8,7 +8,7 @@ from sqlalchemy import ColumnElement, delete, exists, func, literal, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
 
-from app.modules.account.model import AdvertiserAccount, DouyinAccount
+from app.modules.account.model import AdvertiserAccount, DeliverySubject, DouyinAccount
 from app.modules.material.model import ManhuaSeries
 from app.modules.material_title.model import MaterialTitle
 from app.modules.material_video.model import MaterialVideo, MaterialVideoPitcher
@@ -30,7 +30,7 @@ _TABLES_SQL = text(
 )
 _TABLE_NAMES = ("manhua_series", "material_videos", "material_titles")
 
-TaskHead = tuple[UniNativeTask, DeliveryTemplate, str]
+TaskHead = tuple[UniNativeTask, DeliveryTemplate, str, str]
 
 
 class SeriesBrief:
@@ -114,6 +114,25 @@ async def pitcher_videos(
     return list(result.scalars().all())
 
 
+def pitcher_series_videos_stmt(series_id: int, user_id: int) -> Select[tuple[MaterialVideo]]:
+    """这部剧里，投手归属是当前用户的未删除视频。不看公有、共享和上传者。"""
+    return (
+        select(MaterialVideo)
+        .where(
+            MaterialVideo.series_id == series_id,
+            MaterialVideo.is_deleted == 0,
+            _pitched_to(user_id),
+        )
+        .order_by(MaterialVideo.created_date, MaterialVideo.id)
+    )
+
+
+async def pitcher_series_videos(session: AsyncSession, series_id: int, user_id: int) -> list[MaterialVideo]:
+    """自动带出时用。不限条数。调用方须先确认 material_videos 存在。"""
+    result = await session.execute(pitcher_series_videos_stmt(series_id, user_id))
+    return list(result.scalars().all())
+
+
 def own_titles_stmt(title_ids: list[int], user_id: int) -> Select[tuple[MaterialTitle]]:
     """当前用户自己上传、未删除的标题。"""
     return select(MaterialTitle).where(
@@ -130,10 +149,12 @@ async def own_titles(session: AsyncSession, title_ids: list[int], user_id: int) 
 
 
 def _joined(series_present: bool):
-    """任务连带模板。短剧表在库里时才连接剧名。"""
+    """任务连带模板和主体上的剧场。短剧表在库里时才连接剧名。"""
     book_name = ManhuaSeries.book_name if series_present else literal("").label("book_name")
-    stmt = select(UniNativeTask, DeliveryTemplate, book_name).join(
-        DeliveryTemplate, DeliveryTemplate.id == UniNativeTask.template_id
+    stmt = (
+        select(UniNativeTask, DeliveryTemplate, book_name, DeliverySubject.theater_name)
+        .join(DeliveryTemplate, DeliveryTemplate.id == UniNativeTask.template_id)
+        .join(DeliverySubject, DeliverySubject.id == DeliveryTemplate.subject_id)
     )
     if series_present:
         stmt = stmt.join(ManhuaSeries, ManhuaSeries.id == UniNativeTask.series_id)
@@ -141,9 +162,9 @@ def _joined(series_present: bool):
 
 
 def _as_head(row: Any) -> TaskHead:
-    """第三列是剧名。没有短剧表时它是空串。"""
-    task, template, book_name = row
-    return task, template, str(book_name or "")
+    """第三列是剧名，第四列是主体上的剧场名。没有短剧表时剧名是空串。"""
+    task, template, book_name, theater_name = row
+    return task, template, str(book_name or ""), str(theater_name or "")
 
 
 async def page_tasks(
@@ -187,9 +208,11 @@ async def get_task_row(
 
 async def accounts_by_tasks(
     session: AsyncSession, task_ids: list[int]
-) -> dict[int, list[tuple[DouyinAccount, AdvertiserAccount]]]:
-    """按任务分组的抖音号和账户，保持保存时的顺序。"""
-    grouped: dict[int, list[tuple[DouyinAccount, AdvertiserAccount]]] = {item: [] for item in task_ids}
+) -> dict[int, list[tuple[UniNativeTaskAccount, DouyinAccount, AdvertiserAccount]]]:
+    """按任务分组的账户行、抖音号和广告账户，保持保存时的顺序。"""
+    grouped: dict[int, list[tuple[UniNativeTaskAccount, DouyinAccount, AdvertiserAccount]]] = {
+        item: [] for item in task_ids
+    }
     if not task_ids:
         return grouped
     result = await session.execute(
@@ -200,7 +223,7 @@ async def accounts_by_tasks(
         .order_by(UniNativeTaskAccount.sort_order, UniNativeTaskAccount.id)
     )
     for account, douyin, advertiser in result.all():
-        grouped.setdefault(account.task_id, []).append((douyin, advertiser))
+        grouped.setdefault(account.task_id, []).append((account, douyin, advertiser))
     return grouped
 
 
@@ -270,7 +293,7 @@ async def replace_children(
     session: AsyncSession,
     task_id: int,
     pairs: list[tuple[DouyinAccount, AdvertiserAccount]],
-    links: list[tuple[str, str]],
+    links: list[tuple[str, str, str]],
     videos: list[MaterialVideo],
     titles: list[MaterialTitle],
     batch_titles: list[str],
@@ -290,10 +313,14 @@ async def replace_children(
                 sort_order=index,
             )
         )
-    for index, (charge_mode, link_text) in enumerate(links):
+    for index, (charge_mode, link_text, tier_name) in enumerate(links):
         session.add(
             UniNativeTaskLink(
-                task_id=task_id, charge_mode=charge_mode, link_text=link_text, sort_order=index
+                task_id=task_id,
+                charge_mode=charge_mode,
+                link_text=link_text,
+                recharge_template_name=tier_name,
+                sort_order=index,
             )
         )
     for index, video in enumerate(videos):

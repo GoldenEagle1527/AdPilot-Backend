@@ -1,14 +1,14 @@
 # 契约：get-template
 
 业务id：standard-delivery
-文档版本：5
+文档版本：6
 方法：GET
 路径：/api/v1/standard-delivery/templates/{template_id}
 作用：取一条未删除的投放模板。
 
 作者：
 状态：draft
-更新日期：2026-10-09
+更新日期：2026-10-12
 
 ## 请求
 
@@ -39,6 +39,7 @@
 
 | 日期 | 文档版本 | 破坏？ | 变更 | 作者 |
 | --- | --- | --- | --- | --- |
+| 2026-10-12 | 6 | 否 | 出参跟随列表项，增加 `optimize_goal`、`deep_optimize_goal` | |
 | 2026-10-09 | 5 | 否 | 出参跟随列表项，增加 `gender`、`age_bands` | |
 | 2026-10-09 | 4 | 是 | 出参跟随列表项：`library_kind` 替换 `product_library_id` | |
 | 2026-10-08 | 3 | 否 | 出参跟随列表项，增加标准模板新增字段 | |

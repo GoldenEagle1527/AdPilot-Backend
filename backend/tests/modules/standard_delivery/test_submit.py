@@ -23,8 +23,14 @@ from app.modules.material_video.model import MaterialVideo
 from app.modules.oceanengine.runtime import install_ocean_client
 from app.modules.standard_delivery.controller import router
 from app.modules.standard_delivery.crud import SeriesBrief
-from app.modules.standard_delivery.model import DeliveryTaskDraft, DeliveryTemplate
 from app.modules.oceanengine.delivery import split_project_budget
+from app.modules.standard_delivery.model import (
+    DeliveryTaskAccount,
+    DeliveryTaskDraft,
+    DeliveryTaskProject,
+    DeliveryTaskPromotion,
+    DeliveryTemplate,
+)
 from app.modules.standard_delivery.submit import libraries_for_kind, slice_materials, submit_draft, submit_loaded
 
 BACKEND = Path(__file__).resolve().parents[3]
@@ -101,7 +107,10 @@ class Sess:
         self.added.append(row)
 
     async def flush(self) -> None:
-        """不落库。"""
+        """不落库。还没有主键的新行按插入顺序给一个。"""
+        for index, row in enumerate(self.added, start=1):
+            if getattr(row, "id", None) is None:
+                row.id = index
 
     async def refresh(self, row: Any) -> None:
         """保持调用方已经写上的号。"""
@@ -150,6 +159,9 @@ def _template(**kwargs: Any) -> DeliveryTemplate:
         titles_per_ad=kwargs.get("titles_per_ad", 1),
     )
     row.id = 11
+    charge = row.charge_mode
+    row.optimize_goal = "AD_CONVERT_TYPE_PAY" if charge == "IAP" else "AD_CONVERT_TYPE_ACTIVE"
+    row.deep_optimize_goal = "AD_CONVERT_TYPE_PURCHASE_ROI" if charge == "IAP" else None
     return row
 
 
@@ -254,9 +266,16 @@ def _run(**kwargs: Any):
                 "titles",
                 [_title(21, "标题正好五字"), _title(22, "第二标题五字"), _title(23, "第三标题五字")],
             ),
+            account_rows=kwargs.pop("account_rows", None),
         )
     )
     return port, session, template, result
+
+
+def _account_row(advertiser_account_id: int, sort_order: int) -> DeliveryTaskAccount:
+    row = DeliveryTaskAccount(task_id=40, advertiser_account_id=advertiser_account_id, sort_order=sort_order)
+    row.id = 500 + sort_order
+    return row
 
 
 class BudgetSplitTests(unittest.TestCase):
@@ -342,28 +361,148 @@ class SubmitTests(unittest.TestCase):
         self.assertTrue(project["name"].startswith("甲壳NB"))
         self.assertEqual(session.commits, 1)
 
-    def test_manual_video_cap_rejects_the_whole_submit(self) -> None:
-        """手动投放每个广告超过 10 个视频，整单拒绝，不调用客户端。"""
+    def test_free_submit_keeps_one_project_per_account_and_stores_ids(self) -> None:
+        """免费一户一个项目，面板为空。项目 id 写回账户行，项目和广告 id 各记一行。"""
+        rows = [_account_row(31, 0), _account_row(32, 1)]
+        port, session, _template_row, result = _run(account_rows=rows)
+        self.assertEqual(len(port.projects), 2)
+        self.assertEqual([item["bid_panel"] for item in result["accounts"]], ["", ""])
+        self.assertEqual(rows[0].ocean_project_id, 8800000000000001)
+        self.assertEqual(rows[1].ocean_project_id, 8800000000000002)
+        projects = [row for row in session.added if isinstance(row, DeliveryTaskProject)]
+        self.assertEqual(
+            [(row.task_id, row.advertiser_account_id, row.bid_panel, row.ocean_project_id) for row in projects],
+            [(40, 31, "", 8800000000000001), (40, 32, "", 8800000000000002)],
+        )
+        promotions = [row for row in session.added if isinstance(row, DeliveryTaskPromotion)]
+        self.assertEqual(
+            [(row.task_project_id, row.ocean_promotion_id) for row in promotions],
+            [(projects[0].id, 9100000000000001), (projects[0].id, 9100000000000002)],
+        )
+        self.assertEqual(session.commits, 1)
+
+    def test_paid_panels_build_one_project_per_panel(self) -> None:
+        """付费两个面板、一个账户建两个项目。各记一个面板名和自己的广告 id，账户行不写项目 id。"""
+        template = _template(charge_mode="IAP", ads_per_account=1)
+        template.bid_panels = ["面板甲", "面板乙"]
+        row = _account_row(31, 0)
+        port, session, _template_row, result = _run(
+            template=template,
+            draft=_draft(charge_mode="IAP", optimize_goal="AD_CONVERT_TYPE_PAY"),
+            accounts=[_account(90001, 31)],
+            account_rows=[row],
+        )
+        self.assertEqual(len(port.projects), 2)
+        self.assertEqual(len(port.products), 1)
+        self.assertEqual([item["bid_panel"] for item in result["accounts"]], ["面板甲", "面板乙"])
+        self.assertEqual([item["advertiser_id"] for item in result["accounts"]], [90001, 90001])
+        first, second = result["accounts"]
+        base = first["promotions"][0]["name"]
+        self.assertRegex(base, r"^甲壳NB\d{8}$")
+        self.assertEqual(first["project"]["name"], f"{base}-面板甲")
+        self.assertEqual(second["project"]["name"], f"{base}-面板乙")
+        self.assertEqual([body["name"] for body in port.projects], [f"{base}-面板甲", f"{base}-面板乙"])
+        self.assertEqual(first["promotions"][0]["project_id"], first["project_id"])
+        self.assertEqual(second["promotions"][0]["project_id"], second["project_id"])
+        self.assertIsNone(row.ocean_project_id)
+        projects = [item for item in session.added if isinstance(item, DeliveryTaskProject)]
+        self.assertEqual(
+            [(item.bid_panel, item.ocean_project_id, item.sort_order) for item in projects],
+            [("面板甲", 8800000000000001, 0), ("面板乙", 8800000000000002, 1)],
+        )
+        promotions = [item for item in session.added if isinstance(item, DeliveryTaskPromotion)]
+        self.assertEqual(
+            [(item.task_project_id, item.ocean_promotion_id) for item in promotions],
+            [(projects[0].id, 9100000000000001), (projects[1].id, 9100000000000002)],
+        )
+        self.assertNotEqual(projects[0].id, projects[1].id)
+
+    def test_single_panel_keeps_the_plain_project_name(self) -> None:
+        """付费只有一个面板时，项目名不加后缀，仍是剧名前两字 + NB + 月日时分。"""
+        template = _template(charge_mode="IAP", ads_per_account=1)
+        template.bid_panels = ["面板甲"]
+        port, _session, _template_row, result = _run(
+            template=template,
+            draft=_draft(charge_mode="IAP", optimize_goal="AD_CONVERT_TYPE_PAY"),
+            accounts=[_account(90001, 31)],
+        )
+        self.assertEqual(len(port.projects), 1)
+        self.assertRegex(result["accounts"][0]["project"]["name"], r"^甲壳NB\d{8}$")
+        self.assertEqual(result["accounts"][0]["bid_panel"], "面板甲")
+
+    def test_unsafe_panel_names_fall_back_to_an_index(self) -> None:
+        """有一个面板名不适合放进项目名时，几个面板都改用 1 起的序号。"""
+        template = _template(charge_mode="IAP", ads_per_account=1)
+        template.bid_panels = ["面板甲", "面板 乙/高"]
+        _port, _session, _template_row, result = _run(
+            template=template,
+            draft=_draft(charge_mode="IAP", optimize_goal="AD_CONVERT_TYPE_PAY"),
+            accounts=[_account(90001, 31)],
+        )
+        names = [item["project"]["name"] for item in result["accounts"]]
+        base = result["accounts"][0]["promotions"][0]["name"]
+        self.assertEqual(names, [f"{base}-1", f"{base}-2"])
+
+    def test_manual_ad_takes_more_than_ten_videos(self) -> None:
+        """手动投放按模板视频数切，每个广告可以超过 10 个视频。"""
+        _port, _session, _template_row, result = _run(
+            template=_template(videos_per_ad=30, titles_per_ad=1, ads_per_account=1),
+            accounts=[_account(90001, 31)],
+            videos=[_video(index) for index in range(1, 31)],
+            titles=[_title(21, "标题正好五字")],
+        )
+        promotions = result["accounts"][0]["promotions"]
+        self.assertEqual(len(promotions), 1)
+        self.assertEqual(len(promotions[0]["promotion_materials"]["video_material_list"]), 30)
+
+    def test_free_goal_comes_from_the_template(self) -> None:
+        """免费只传模板上的激活，不传深度目标。草稿上的优化目标不参与。"""
+        template = _template()
+        template.optimize_goal = "AD_CONVERT_TYPE_ACTIVE"
+        template.deep_optimize_goal = None
+        draft = _draft()
+        draft.optimize_goal = "AD_CONVERT_TYPE_PAY"
+        _port, _session, _template_row, result = _run(template=template, draft=draft)
+        goal = result["accounts"][0]["project"]["optimize_goal"]
+        self.assertEqual(goal, {"external_action": "AD_CONVERT_TYPE_ACTIVE"})
+
+    def test_paid_task_on_free_template_is_rejected(self) -> None:
+        """付费任务挂免费模板时拒绝，不再改用付费目标。"""
+        template = _template()
+        template.optimize_goal = "AD_CONVERT_TYPE_ACTIVE"
+        template.deep_optimize_goal = None
         port = Port()
         install_ocean_client(port)
         with self.assertRaises(ApiError) as caught:
             asyncio.run(
                 submit_loaded(
                     Sess(_subject(), _library()),
-                    _draft(),
-                    _template(videos_per_ad=11),
+                    _draft(charge_mode="IAP", optimize_goal="AD_CONVERT_TYPE_PAY"),
+                    template,
                     _subject(),
                     _douyin(),
                     SeriesBrief(8, "甲壳虫"),
                     _library(),
                     [_account(90001, 31)],
-                    [_video(index) for index in range(1, 12)],
+                    [_video(1)],
                     [_title(21, "标题正好五字")],
                 )
             )
         self.assertEqual(caught.exception.status_code, 400)
-        self.assertEqual(caught.exception.message, "手动投放每个广告最多 10 个视频")
+        self.assertEqual(caught.exception.message, "付费投放任务须使用付费端原生模板")
         self.assertEqual(port.projects, [])
+
+    def test_paid_task_on_paid_template_uses_template_goals(self) -> None:
+        """付费任务挂付费模板时，项目优化目标来自付费模板，不读草稿。"""
+        template = _template(charge_mode="IAP")
+        template.optimize_goal = "AD_CONVERT_TYPE_PAY"
+        template.deep_optimize_goal = "AD_CONVERT_TYPE_PURCHASE_ROI"
+        draft = _draft(charge_mode="IAP", optimize_goal="AD_CONVERT_TYPE_ACTIVE")
+        _port, _session, _template_row, result = _run(template=template, draft=draft)
+        goal = result["accounts"][0]["project"]["optimize_goal"]
+        self.assertEqual(goal["external_action"], template.optimize_goal)
+        self.assertEqual(goal["deep_external_action"], template.deep_optimize_goal)
+        self.assertNotEqual(goal["external_action"], draft.optimize_goal)
 
     def test_bad_title_length_rejects_before_any_client_call(self) -> None:
         """切进广告的标题不在 5–55 字，整单失败，不截断、不跳过。"""

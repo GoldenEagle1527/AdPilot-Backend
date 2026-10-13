@@ -18,7 +18,7 @@ from app.modules.account.model import OeVideo, ProductLibrary
 from app.modules.material_title.model import MaterialTitle
 from app.modules.oceanengine.runtime import install_ocean_client
 from app.modules.uni_native_task.controller import router
-from app.modules.uni_native_task.model import UniNativeTaskLink
+from app.modules.uni_native_task.model import UniNativeTaskAccount, UniNativeTaskLink
 from app.modules.uni_native_task.schema import TaskWrite
 from app.modules.uni_native_task.service import resolve_links
 from app.modules.uni_native_task.submit import submit_loaded, submit_task
@@ -55,32 +55,99 @@ def _title(text: str = "标题正好五字") -> MaterialTitle:
     return row
 
 
-class LinkFillTests(unittest.TestCase):
-    def test_omitted_links_use_the_series_iaa_url(self) -> None:
-        """客户端不传链接时，向三方剧场要这部剧的 IAA。剧场没有链就保持空。"""
-        from app.modules.theater.model import TheaterPromotionLink
+def _theater_link(
+    link_id: int,
+    name: str,
+    url: str,
+    media: int,
+    *,
+    enabled: bool = True,
+    deleted: int = 0,
+):
+    """造一条剧场推广链。排序和收费模式由被测函数决定。"""
+    from app.modules.theater.model import TheaterPromotionLink
 
-        link = TheaterPromotionLink(
-            series_id=8,
-            promotion_url="https://iaa.example/from-theater",
-            recharge_template_name="IAA",
-            media_config_type=3,
+    row = TheaterPromotionLink(
+        series_id=8,
+        promotion_url=url,
+        recharge_template_name=name,
+        media_config_type=media,
+        is_enabled=enabled,
+    )
+    row.id = link_id
+    row.is_deleted = deleted
+    return row
+
+
+class LinkFillTests(unittest.TestCase):
+    def test_omitted_links_bring_every_enabled_tier(self) -> None:
+        """没传链接时，这部剧启用的推广链全部带出。同一档位多条都留，空链接不要。"""
+        from sqlalchemy.dialects import postgresql
+
+        from app.modules.theater.lookup import enabled_series_links_stmt
+
+        rows = [
+            _theater_link(1, "超超小额", "https://x/tiny", 2),
+            _theater_link(2, "小额", "https://x/small", 2),
+            _theater_link(3, "自定义", "https://x/other", 0),
+            _theater_link(9, "IAA", "https://x/iaa", 2),
+            _theater_link(4, "中额", "https://x/mid", 3),
+            _theater_link(8, "中额", "https://x/mid2", 2),
+            _theater_link(5, "超小额", "https://x/smaller", 2),
+            _theater_link(6, "小额", "", 2),
+            _theater_link(7, "小额", "   ", 2),
+            _theater_link(10, "IAA", "https://x/off", 3, enabled=False),
+            _theater_link(11, "小额", "https://x/gone", 2, deleted=1),
+        ]
+        session = FakeSession([rows])
+        links = asyncio.run(resolve_links(session, write_body(promotion_links=[]), 8))
+        self.assertEqual(
+            links,
+            [
+                ("IAA", "https://x/iaa", "IAA"),
+                ("IAA", "https://x/mid", "中额"),
+                ("IAP", "https://x/mid2", "中额"),
+                ("IAP", "https://x/small", "小额"),
+                ("IAP", "https://x/smaller", "超小额"),
+                ("IAP", "https://x/tiny", "超超小额"),
+                ("IAP", "https://x/other", "自定义"),
+            ],
         )
-        link.id = 9
-        link.is_deleted = 0
-        filled = FakeSession([[link], []])
-        links = asyncio.run(resolve_links(filled, write_body(promotion_links=[]), 8))
-        self.assertEqual(links, [("IAA", "https://iaa.example/from-theater")])
-        absent = FakeSession([[], []])
+        self.assertEqual(len(session.statements), 1)
+        sql = str(
+            enabled_series_links_stmt(8).compile(
+                dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}
+            )
+        )
+        self.assertIn("theater_promotion_links.series_id = 8", sql)
+        self.assertIn("theater_promotion_links.is_deleted = 0", sql)
+        self.assertIn("theater_promotion_links.is_enabled IS true", sql)
+        self.assertNotIn("LIMIT", sql)
+        absent = FakeSession([[]])
         self.assertEqual(asyncio.run(resolve_links(absent, write_body(promotion_links=[]), 8)), [])
 
     def test_client_links_are_kept_and_skip_the_theater_table(self) -> None:
-        """客户端传了文本就按原文保存，不再查剧场。"""
+        """客户端传了文本就按原文保存，不再查剧场。档位名不传就是空。"""
         session = FakeSession()
-        body = write_body()
+        body = write_body(
+            promotion_links=[
+                {
+                    "charge_mode": "IAP",
+                    "link_text": "https://hand.example/x",
+                    "recharge_template_name": "手填档",
+                },
+                {"charge_mode": "IAA", "link_text": "https://iaa.example/a"},
+            ]
+        )
         links = asyncio.run(resolve_links(session, body, 8))
         self.assertEqual(session.statements, [])
-        self.assertEqual(links[0], ("IAA", body.promotion_links[0].link_text))
+        self.assertEqual(
+            links,
+            [
+                ("IAP", "https://hand.example/x", "手填档"),
+                ("IAA", "https://iaa.example/a", ""),
+            ],
+        )
 
 
 class SubmitTests(unittest.TestCase):
@@ -153,6 +220,83 @@ class SubmitTests(unittest.TestCase):
         self.assertIn("unused", promo)
         self.assertNotEqual(result["status"], "完成")
 
+    def _submit(self, template: Any) -> tuple[Port, dict[str, Any]]:
+        port = Port()
+        install_ocean_client(port)
+        library = _library()
+        result = asyncio.run(
+            submit_loaded(
+                Sess(make_subject(), library),
+                make_task(),
+                template,
+                make_subject(),
+                "甲壳虫",
+                [(make_douyin(), make_advertiser())],
+                [],
+                [make_video()],
+                [_title()],
+                [],
+                library,
+            )
+        )
+        return port, result
+
+    def test_saved_schedule_product_and_aigc_reach_the_bodies(self) -> None:
+        """起止日期、时段、产品名称、卖点、行动号召和 AIGC 开关都按模板带上。商品仍用剧名。"""
+        from datetime import date
+
+        template = make_template()
+        template.schedule_type = "SCHEDULE_START_END"
+        template.schedule_start_date = date(2026, 10, 20)
+        template.schedule_end_date = date(2026, 10, 31)
+        template.schedule_time = "1" * 336
+        template.product_name = "产品甲"
+        template.selling_points = ["这是产品卖点"]
+        template.call_to_action_buttons = ["立即观看"]
+        port, result = self._submit(template)
+        project = result["accounts"][0]["project"]
+        setting = project["delivery_setting"]
+        self.assertEqual(setting["schedule_type"], "SCHEDULE_START_END")
+        self.assertEqual(setting["start_time"], "2026-10-20")
+        self.assertEqual(setting["end_time"], "2026-10-31")
+        self.assertEqual(setting["schedule_time"], "1" * 336)
+        self.assertEqual(setting["budget_mode"], "BUDGET_MODE_DAY")
+        self.assertEqual(setting["budget"], float(make_task().project_budget))
+        self.assertEqual(setting["roi_goal"], float(make_task().roi_coefficient))
+        self.assertNotIn("deep_bid_type", setting)
+        self.assertEqual(project["aigc_dynamic_creative_switch"], "ON")
+        self.assertEqual(port.projects[0]["template"]["aigc_dynamic_creative_switch"], "ON")
+        from app.modules.oceanengine.delivery import _project_remote_body
+        from app.modules.oceanengine.schema import ProjectCreate
+
+        remote = _project_remote_body(ProjectCreate(**port.projects[0]))
+        self.assertEqual(remote["aigc_dynamic_creative_switch"], "ON")
+        self.assertEqual(remote["delivery_setting"]["schedule_type"], "SCHEDULE_START_END")
+        self.assertEqual(project["delivery_range"], {"inventory_catalog": "UNIVERSAL_SMART"})
+        materials = result["accounts"][0]["promotions"][0]["promotion_materials"]
+        self.assertEqual(materials["product_info"]["titles"], ["产品甲"])
+        self.assertEqual(materials["product_info"]["selling_points"], ["这是产品卖点"])
+        self.assertEqual(materials["call_to_action_buttons"], ["立即观看"])
+        self.assertNotIn("source", result["accounts"][0]["promotions"][0])
+        self.assertEqual(port.products[0]["book_name"], "甲壳虫")
+
+    def test_unset_schedule_and_product_name_are_left_out(self) -> None:
+        """从今天起不带起止日期，时段不限不传。没填产品名称不拿剧名顶上。AIGC 关就传 OFF。"""
+        template = make_template()
+        template.schedule_type = "SCHEDULE_FROM_NOW"
+        template.aigc_dynamic_creative = False
+        _port, result = self._submit(template)
+        project = result["accounts"][0]["project"]
+        setting = project["delivery_setting"]
+        self.assertEqual(setting["schedule_type"], "SCHEDULE_FROM_NOW")
+        self.assertNotIn("start_time", setting)
+        self.assertNotIn("end_time", setting)
+        self.assertNotIn("schedule_time", setting)
+        self.assertEqual(project["aigc_dynamic_creative_switch"], "OFF")
+        info = result["accounts"][0]["promotions"][0]["promotion_materials"]["product_info"]
+        self.assertNotIn("titles", info)
+        self.assertEqual(info["selling_points"], [])
+
     def test_short_title_rejects_the_whole_submit(self) -> None:
         """标题长度不对就整单拒绝，不调用客户端。"""
         port = Port()
@@ -175,6 +319,97 @@ class SubmitTests(unittest.TestCase):
             )
         self.assertEqual(caught.exception.message, "标题长度须为 5–55 个字")
         self.assertEqual(port.projects, [])
+
+    def test_done_submit_writes_the_ocean_project_id(self) -> None:
+        """每个账户建出一个项目、一条广告，两个编号都写回这一行，和完成状态一起留下。"""
+        port = Port()
+        install_ocean_client(port)
+        row = UniNativeTaskAccount(task_id=40, douyin_account_id=4, advertiser_account_id=31, sort_order=0)
+        row.id = 1
+        task = make_task()
+        library = _library()
+        result = asyncio.run(
+            submit_loaded(
+                Sess(make_subject(), library),
+                task,
+                make_template(),
+                make_subject(),
+                "甲壳虫",
+                [(row, make_douyin(), make_advertiser())],
+                [],
+                [make_video()],
+                [_title()],
+                [],
+                library,
+            )
+        )
+        self.assertEqual(task.status, "done")
+        self.assertEqual(row.ocean_project_id, 8800000000000001)
+        self.assertEqual(row.ocean_project_id, result["accounts"][0]["project_id"])
+        self.assertEqual(len(port.projects), 1)
+        self.assertEqual(row.ocean_promotion_id, 9100000000000001)
+        self.assertEqual(row.ocean_promotion_id, result["accounts"][0]["promotions"][0]["promotion_id"])
+
+    def test_failed_submit_keeps_project_ids_already_created(self) -> None:
+        """后面的账户创建失败时，前面已经建出的巨量项目 id 留在账户行上，任务标失败。"""
+        port = Port()
+        create_project = port.create_project
+
+        async def _project(token: str, body: dict[str, Any]) -> dict[str, Any]:
+            if body.get("advertiser_id") == 90002:
+                raise ApiError(502, "创建项目失败")
+            return await create_project(token, body)
+
+        port.create_project = _project
+        install_ocean_client(port)
+        first = UniNativeTaskAccount(task_id=40, douyin_account_id=4, advertiser_account_id=31, sort_order=0)
+        second = UniNativeTaskAccount(task_id=40, douyin_account_id=6, advertiser_account_id=32, sort_order=1)
+        first.id = 1
+        second.id = 2
+        task = make_task()
+        library = _library()
+        with self.assertRaises(ApiError) as caught:
+            asyncio.run(
+                submit_loaded(
+                    Sess(make_subject(), library),
+                    task,
+                    make_template(),
+                    make_subject(),
+                    "甲壳虫",
+                    [
+                        (first, make_douyin(id=4, aweme_id="aweme-a"), make_advertiser(id=31, advertiser_id=90001)),
+                        (second, make_douyin(id=6, aweme_id="aweme-b"), make_advertiser(id=32, advertiser_id=90002)),
+                    ],
+                    [],
+                    [make_video()],
+                    [_title()],
+                    [],
+                    library,
+                )
+            )
+        self.assertEqual(caught.exception.status_code, 502)
+        self.assertEqual(caught.exception.message, "创建项目失败")
+        self.assertEqual(task.status, "failed")
+        self.assertEqual(task.failure_reason, "创建项目失败")
+        self.assertEqual(first.ocean_project_id, 8800000000000001)
+        self.assertIsNone(second.ocean_project_id)
+
+    def test_submit_refuses_when_the_task_already_left_saved(self) -> None:
+        """running、done、failed 再提交是 409，不再调客户端建项目。"""
+        for status in ("running", "done", "failed"):
+            task = make_task()
+            task.status = status
+            port = Port()
+            install_ocean_client(port)
+            session = FakeSession(
+                [tables("manhua_series", None, None), [(task, make_template(), "甲壳虫", "番茄")]]
+            )
+            with self.assertRaises(ApiError) as caught:
+                asyncio.run(submit_task(session, 40, 3))
+            self.assertEqual(caught.exception.status_code, 409)
+            self.assertEqual(caught.exception.message, "任务已提交，不能重复创建项目")
+            self.assertEqual(port.projects, [])
+            self.assertEqual(task.status, status)
 
 
 class HttpTests(unittest.TestCase):

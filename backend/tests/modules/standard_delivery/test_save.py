@@ -575,6 +575,42 @@ class CreateTemplateTests(unittest.TestCase):
         self.assertIsNone(row.title_select_mode)
         self.assertFalse(item["material_boost"])
 
+    def test_free_template_fixes_goal_and_defaults_to_aweme(self) -> None:
+        """免费只写激活，不写深度目标。不传广告位置时为抖音。"""
+        session = FakeSession([[make_subject()], []])
+        item = asyncio.run(create_template(session, template_body(), ALLOWED))
+        self.assertEqual(item["optimize_goal"], "AD_CONVERT_TYPE_ACTIVE")
+        self.assertIsNone(item["deep_optimize_goal"])
+        self.assertEqual(item["placement"], "aweme")
+        row = session.added[0]
+        self.assertEqual(row.optimize_goal, "AD_CONVERT_TYPE_ACTIVE")
+        self.assertIsNone(row.deep_optimize_goal)
+        self.assertEqual(row.placement, "aweme")
+
+    def test_paid_template_fixes_goal_and_purchase_roi(self) -> None:
+        """付费写付费和付费 ROI。不传广告位置也为抖音，传了通投就按通投。"""
+        session = FakeSession([[make_subject(charge_mode="IAP")], []])
+        item = asyncio.run(
+            create_template(session, template_body(charge_mode="IAP", bid_panels=["面板A"]), ALLOWED)
+        )
+        self.assertEqual(item["optimize_goal"], "AD_CONVERT_TYPE_PAY")
+        self.assertEqual(item["deep_optimize_goal"], "AD_CONVERT_TYPE_PURCHASE_ROI")
+        self.assertEqual(item["placement"], "aweme")
+        chosen = FakeSession([[make_subject(charge_mode="IAP")], []])
+        universal = asyncio.run(
+            create_template(
+                chosen,
+                template_body(charge_mode="IAP", bid_panels=["面板A"], placement="universal"),
+                ALLOWED,
+            )
+        )
+        self.assertEqual(universal["placement"], "universal")
+
+    def test_goal_is_not_an_input(self) -> None:
+        """模板入参不收优化目标。"""
+        with self.assertRaises(ValidationError):
+            template_body(optimize_goal="AD_CONVERT_TYPE_PAY")
+
     def test_standard_fields_are_stored_without_uni_columns(self) -> None:
         """版位、定向、预算、商品策略、广告状态、抖音号、主图和标题模式落在标准行上。"""
         douyin = DouyinAccount(aweme_id="aweme-1", name="标准号", delivery_mode="standard", enabled=True)
@@ -726,6 +762,50 @@ class CreateDraftTests(unittest.TestCase):
         self.assertEqual(caught.exception.status_code, 400)
         self.assertEqual(caught.exception.message, "抖音号不是已分配给当前投手的标准号")
         self.assertFalse(any(isinstance(row, DeliveryTaskDraft) for row in session.added))
+
+    def test_paid_draft_rejects_free_template(self) -> None:
+        """付费任务不能挂免费模板。"""
+        template, subject, *_rest = self._ready()
+        session = FakeSession([[(template, subject)]])
+        with self.assertRaises(ApiError) as caught:
+            asyncio.run(
+                create_draft(
+                    session,
+                    draft_body(charge_mode="IAP", optimize_goal="AD_CONVERT_TYPE_PAY"),
+                    3,
+                    ALLOWED,
+                )
+            )
+        self.assertEqual(caught.exception.status_code, 400)
+        self.assertEqual(caught.exception.message, "付费投放任务须使用付费端原生模板")
+        self.assertFalse(any(isinstance(row, DeliveryTaskDraft) for row in session.added))
+
+    def test_free_draft_rejects_paid_template(self) -> None:
+        """免费任务不能挂付费模板。"""
+        template, subject, *_rest = self._ready()
+        template.charge_mode = "IAP"
+        session = FakeSession([[(template, subject)]])
+        with self.assertRaises(ApiError) as caught:
+            asyncio.run(create_draft(session, draft_body(), 3, ALLOWED))
+        self.assertEqual(caught.exception.status_code, 400)
+        self.assertEqual(caught.exception.message, "免费投放任务须使用免费端原生模板")
+        self.assertFalse(any(isinstance(row, DeliveryTaskDraft) for row in session.added))
+
+    def test_paid_draft_accepts_paid_template(self) -> None:
+        """付费任务挂付费模板可以保存。"""
+        template, subject, douyin, series, accounts, video, title, library = self._ready()
+        template.charge_mode = "IAP"
+        session = FakeSession([[(template, subject)], [douyin], [series], accounts, [video], [title], [library]])
+        item = asyncio.run(
+            create_draft(
+                session,
+                draft_body(charge_mode="IAP", optimize_goal="AD_CONVERT_TYPE_PAY"),
+                3,
+                ALLOWED,
+            )
+        )
+        self.assertEqual(item["charge_mode"], "IAP")
+        self.assertEqual(item["template_id"], "11")
 
 
 if __name__ == "__main__":

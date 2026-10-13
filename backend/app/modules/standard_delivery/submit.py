@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import re
 from decimal import Decimal
 from typing import Any
 
@@ -27,6 +28,7 @@ from app.modules.oceanengine.delivery import (
 from app.modules.oceanengine.schema import ProductCreate, ProjectCreate, PromotionCreate, VideoCreate
 from app.modules.standard_delivery.crud import (
     SeriesBrief,
+    account_rows_by_draft,
     accounts_by_drafts,
     get_draft_row,
     get_library_by_id,
@@ -36,16 +38,19 @@ from app.modules.standard_delivery.crud import (
 )
 from app.modules.standard_delivery.model import (
     ChargeMode,
+    DeliveryTaskAccount,
     DeliveryTaskDraft,
+    DeliveryTaskProject,
+    DeliveryTaskPromotion,
     DeliveryTemplate,
     OceanDeliveryMode,
     Placement,
     ScheduleType,
 )
+from app.modules.standard_delivery.service import require_task_template
 
 _TITLE_MIN = 5
 _TITLE_MAX = 55
-_MANUAL_VIDEO_CAP = 10
 _IMAGE_MODE = {
     "vertical_video": "CREATIVE_IMAGE_MODE_VIDEO_VERTICAL",
     "horizontal_video": "CREATIVE_IMAGE_MODE_VIDEO",
@@ -180,16 +185,22 @@ def _delivery_setting(template: DeliveryTemplate, draft: DeliveryTaskDraft, budg
     return setting
 
 
-def _optimize_goal(draft: DeliveryTaskDraft) -> dict[str, Any]:
-    """免费只传激活。付费再加付费 ROI。不带 asset_ids。"""
-    goal: dict[str, Any] = {"external_action": draft.optimize_goal}
-    if draft.charge_mode == ChargeMode.IAP:
-        goal["deep_external_action"] = "AD_CONVERT_TYPE_PURCHASE_ROI"
+def _optimize_goal(draft: DeliveryTaskDraft, template: DeliveryTemplate) -> dict[str, Any]:
+    """以模板上写死的优化目标为准，不读草稿上的。免费只传激活，付费再加付费 ROI。不带 asset_ids。"""
+    require_task_template(draft.charge_mode, template.charge_mode)
+    if not template.optimize_goal:
+        raise ApiError(400, "模板还不能确认提交")
+    goal: dict[str, Any] = {"external_action": template.optimize_goal}
+    if template.deep_optimize_goal:
+        goal["deep_external_action"] = template.deep_optimize_goal
     return goal
 
 
 def _reject_unready(template: DeliveryTemplate, draft: DeliveryTaskDraft) -> None:
     """整单校验。不合格就不调用客户端。"""
+    require_task_template(draft.charge_mode, template.charge_mode)
+    if not template.optimize_goal:
+        raise ApiError(400, "模板还不能确认提交")
     if template.ocean_delivery_mode not in (OceanDeliveryMode.MANUAL, OceanDeliveryMode.PROCEDURAL):
         raise ApiError(400, "模板还不能确认提交")
     if template.videos_per_ad is None or template.titles_per_ad is None or template.ads_per_account is None:
@@ -200,8 +211,6 @@ def _reject_unready(template: DeliveryTemplate, draft: DeliveryTaskDraft) -> Non
         raise ApiError(400, "模板还不能确认提交")
     if not template.ad_source or not template.product_name:
         raise ApiError(400, "模板还不能确认提交")
-    if template.ocean_delivery_mode == OceanDeliveryMode.MANUAL and template.videos_per_ad > _MANUAL_VIDEO_CAP:
-        raise ApiError(400, "手动投放每个广告最多 10 个视频")
     if (
         template.ocean_delivery_mode == OceanDeliveryMode.PROCEDURAL
         and draft.charge_mode == ChargeMode.IAP
@@ -294,7 +303,7 @@ def _project_body(
         "operation": draft.project_operation,
         "delivery_range": _delivery_range(placement),
         "delivery_setting": _delivery_setting(template, draft, budget),
-        "optimize_goal": _optimize_goal(draft),
+        "optimize_goal": _optimize_goal(draft, template),
         "related_product": {
             "product_platform_id": int(library.library_no),
             "product_id": product_id,
@@ -354,12 +363,16 @@ async def submit_loaded(
     videos: list[MaterialVideo],
     titles: list[MaterialTitle],
     libraries: dict[int, ProductLibrary] | None = None,
+    account_rows: list[DeliveryTaskAccount] | None = None,
 ) -> dict[str, Any]:
     """按账户建项目，再按模板的条数切广告。不改模板的 delivery_mode。
 
     草稿没写的版位、项目预算、广告开关用模板。商品名称按模板的选择方式。
     标题库和批量粘贴的标题一起切。专辑链接用草稿上已解析的推广链。
     libraries 按巨量广告主 id 给每个账户自己的商品库；不传则全部用 library。
+    付费模板有出价面板时，同一个账户按面板各建一个项目，各自用这个账户切到的那几条广告素材。
+    建出的项目和广告记在 delivery_task_project、delivery_task_promotion。
+    account_rows 与 accounts 顺序一致时，一户一个项目的巨量项目 id 再写回账户行。
     """
     _reject_unready(template, draft)
     _within_appointment(draft)
@@ -380,9 +393,14 @@ async def submit_loaded(
         account_count=len(accounts),
     )
     _reject_titles([title for chunk in slices for _videos, chunk_titles in chunk for title in chunk_titles])
+    panels = _project_panels(draft, template)
+    suffixes = _panel_suffixes(panels)
+    rows: list[DeliveryTaskAccount | None] = (
+        [None] * len(accounts) if account_rows is None else list(account_rows)
+    )
     built: list[dict[str, Any]] = []
     shares = split_project_budget(budget, len(accounts))
-    for account, promotions, share in zip(accounts, slices, shares, strict=True):
+    for account, promotions, account_row, share in zip(accounts, slices, rows, shares, strict=True):
         advertiser_id = int(account.advertiser_id)
         chosen = library if libraries is None else libraries[advertiser_id]
         product = await upload_product(
@@ -398,73 +416,87 @@ async def submit_loaded(
             image_id = str(image["image_id"])
         else:
             image_id = stored_image
-        project = _project_body(
-            advertiser_id=advertiser_id,
-            name=name,
-            draft=draft,
-            template=template,
-            douyin=douyin,
-            library=chosen,
-            product_id=int(product["product_id"]),
-            placement=placement,
-            budget=share,
-            audience=audience,
-        )
-        created = await create_project(
-            session,
-            ProjectCreate(
-                advertiser_id=advertiser_id,
-                name=name,
-                landing_type="MICRO_GAME",
-                marketing_goal="VIDEO_AND_IMAGE",
-                ad_type="ALL",
-                delivery_mode=template.ocean_delivery_mode,
-                subject_id=int(subject.id),
-                template={
-                    "delivery_range": project["delivery_range"],
-                    "delivery_setting": project["delivery_setting"],
-                    "optimize_goal": project["optimize_goal"],
-                    "related_product": project["related_product"],
-                    "audience": project["audience"],
-                    "micro_promotion_type": project["micro_promotion_type"],
-                    "native_setting": project["native_setting"],
-                    "operation": project["operation"],
-                },
-            ),
-        )
-        project_id = int(created["project_id"])
         ocean_video_ids = await _upload_library_videos(
             session, advertiser_id, [video for chunk_videos, _titles in promotions for video in chunk_videos]
         )
-        promotion_rows: list[dict[str, Any]] = []
-        for chunk_videos, chunk_titles in promotions:
-            promotion_rows.append(
-                await _create_one_promotion(
-                    session,
-                    advertiser_id=advertiser_id,
-                    project_id=project_id,
-                    name=name,
-                    draft=draft,
-                    template=template,
-                    douyin=douyin,
-                    image_id=image_id,
-                    operation=operation,
-                    videos=chunk_videos,
-                    titles=chunk_titles,
-                    book_name=book_name,
-                    ocean_video_ids=ocean_video_ids,
-                )
+        for panel, suffix in zip(panels, suffixes, strict=True):
+            project_name = f"{name}-{suffix}" if suffix else name
+            project = _project_body(
+                advertiser_id=advertiser_id,
+                name=project_name,
+                draft=draft,
+                template=template,
+                douyin=douyin,
+                library=chosen,
+                product_id=int(product["product_id"]),
+                placement=placement,
+                budget=share,
+                audience=audience,
             )
-        built.append(
-            {
-                "advertiser_id": advertiser_id,
-                "project_id": project_id,
-                "product_id": int(product["product_id"]),
-                "image_id": image_id,
-                "project": project,
-                "promotions": promotion_rows,
-            }
-        )
+            created = await create_project(
+                session,
+                ProjectCreate(
+                    advertiser_id=advertiser_id,
+                    name=project_name,
+                    landing_type="MICRO_GAME",
+                    marketing_goal="VIDEO_AND_IMAGE",
+                    ad_type="ALL",
+                    delivery_mode=template.ocean_delivery_mode,
+                    subject_id=int(subject.id),
+                    template={
+                        "delivery_range": project["delivery_range"],
+                        "delivery_setting": project["delivery_setting"],
+                        "optimize_goal": project["optimize_goal"],
+                        "related_product": project["related_product"],
+                        "audience": project["audience"],
+                        "micro_promotion_type": project["micro_promotion_type"],
+                        "native_setting": project["native_setting"],
+                        "operation": project["operation"],
+                    },
+                ),
+            )
+            project_id = int(created["project_id"])
+            promotion_rows: list[dict[str, Any]] = []
+            for chunk_videos, chunk_titles in promotions:
+                promotion_rows.append(
+                    await _create_one_promotion(
+                        session,
+                        advertiser_id=advertiser_id,
+                        project_id=project_id,
+                        name=name,
+                        draft=draft,
+                        template=template,
+                        douyin=douyin,
+                        image_id=image_id,
+                        operation=operation,
+                        videos=chunk_videos,
+                        titles=chunk_titles,
+                        book_name=book_name,
+                        ocean_video_ids=ocean_video_ids,
+                    )
+                )
+            if account_row is not None and len(panels) == 1:
+                account_row.ocean_project_id = project_id
+            await _record_project(
+                session,
+                draft_id=int(draft.id),
+                advertiser_account_id=int(account.id),
+                bid_panel=panel,
+                project_id=project_id,
+                sort_order=len(built),
+                promotion_ids=[int(row["promotion_id"]) for row in promotion_rows],
+            )
+            built.append(
+                {
+                    "advertiser_id": advertiser_id,
+                    "bid_panel": panel,
+                    "project_id": project_id,
+                    "product_id": int(product["product_id"]),
+                    "image_id": image_id,
+                    "project": project,
+                    "promotions": promotion_rows,
+                }
+            )
     draft.submitted_at = beijing_now()
     await session.commit()
     return {"id": str(draft.id), "aweme_id": douyin.aweme_id, "accounts": built}
@@ -489,6 +521,59 @@ async def _upload_library_videos(
         )
         ocean_ids[video_id] = str(uploaded["video_id"])
     return ocean_ids
+
+
+def _project_panels(draft: DeliveryTaskDraft, template: DeliveryTemplate) -> list[str]:
+    """付费且模板有出价面板时，一个面板一个项目。免费或没有面板时一户一个项目，面板为空串。"""
+    panels = [str(panel) for panel in (template.bid_panels or [])]
+    if draft.charge_mode == ChargeMode.IAP and panels:
+        return panels
+    return [""]
+
+
+_SAFE_PANEL = re.compile(r"^[0-9A-Za-z\u4e00-\u9fff._]{1,20}$")
+
+
+def _panel_suffixes(panels: list[str]) -> list[str]:
+    """同一广告主下项目名不能重复。只有一个项目时不加后缀。
+
+    多个面板时用面板名做后缀；有一个面板名不适合放进名称，就全部改用 1 起的序号，免得两种后缀撞在一起。
+    """
+    if len(panels) <= 1:
+        return [""] * len(panels)
+    if all(_SAFE_PANEL.match(panel) for panel in panels):
+        return list(panels)
+    return [str(index) for index in range(1, len(panels) + 1)]
+
+
+async def _record_project(
+    session: AsyncSession,
+    *,
+    draft_id: int,
+    advertiser_account_id: int,
+    bid_panel: str,
+    project_id: int,
+    sort_order: int,
+    promotion_ids: list[int],
+) -> None:
+    """记下建出的巨量项目和它下面的广告。和草稿提交时间同一次提交。"""
+    row = DeliveryTaskProject(
+        task_id=draft_id,
+        advertiser_account_id=advertiser_account_id,
+        bid_panel=bid_panel,
+        ocean_project_id=project_id,
+        sort_order=sort_order,
+    )
+    session.add(row)
+    await session.flush()
+    for index, promotion_id in enumerate(promotion_ids):
+        session.add(
+            DeliveryTaskPromotion(
+                task_project_id=int(row.id),
+                ocean_promotion_id=promotion_id,
+                sort_order=index,
+            )
+        )
 
 
 async def _create_one_promotion(
@@ -580,6 +665,7 @@ async def submit_draft(
         if douyin is None:
             raise ApiError(400, "抖音号不是已分配给当前投手的标准号")
     accounts = (await accounts_by_drafts(session, [draft.id])).get(draft.id, [])
+    account_rows = await account_rows_by_draft(session, int(draft.id))
     videos = (await videos_by_drafts(session, [draft.id])).get(draft.id, [])
     titles = (await titles_by_drafts(session, [draft.id])).get(draft.id, [])
     libraries: dict[int, ProductLibrary] | None = None
@@ -603,4 +689,5 @@ async def submit_draft(
         videos,
         titles,
         libraries,
+        account_rows,
     )

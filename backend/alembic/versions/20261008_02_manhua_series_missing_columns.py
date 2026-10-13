@@ -18,26 +18,29 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "manhua_series",
-        sa.Column(
-            "tab_text",
-            sa.String(length=128),
-            nullable=False,
-            server_default=sa.text("''"),
-            comment="由 single_price 判断：不收费 IAA，收费 IAP",
-        ),
-    )
-    op.add_column(
-        "manhua_series",
-        sa.Column(
-            "promotion_triggered",
-            sa.Boolean(),
-            nullable=False,
-            server_default=sa.text("false"),
-            comment="到预估可投时间后是否已自动建过推广链同步任务",
-        ),
-    )
+    existing = {col["name"] for col in sa.inspect(op.get_bind()).get_columns("manhua_series")}
+    if "tab_text" not in existing:
+        op.add_column(
+            "manhua_series",
+            sa.Column(
+                "tab_text",
+                sa.String(length=128),
+                nullable=False,
+                server_default=sa.text("''"),
+                comment="由 single_price 判断：不收费 IAA，收费 IAP",
+            ),
+        )
+    if "promotion_triggered" not in existing:
+        op.add_column(
+            "manhua_series",
+            sa.Column(
+                "promotion_triggered",
+                sa.Boolean(),
+                nullable=False,
+                server_default=sa.text("false"),
+                comment="到预估可投时间后是否已自动建过推广链同步任务",
+            ),
+        )
 
 
 def downgrade() -> None:

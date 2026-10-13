@@ -1,7 +1,7 @@
 # 契约：create-task-draft
 
 业务id：standard-delivery
-文档版本：3
+文档版本：4
 方法：POST
 路径：/api/v1/standard-delivery/task-drafts
 作用：新增一条投放任务草稿。只落本系统字段，不调用创建项目或创建单元。
@@ -10,14 +10,15 @@
 
 作者：
 状态：draft
-更新日期：2026-10-08
+更新日期：2026-10-12
 
 ## 请求
 
 | 字段 | 位置（path/query/body/header） | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- | --- |
 | Authorization | header | string | 是 | `Bearer <token>`。菜单随模板的收费模式：免费 `39`，付费 `46` |
-| template_id | body | integer | 是 | 未删除的模板。收费模式从模板抄到草稿上 |
+| template_id | body | integer | 是 | 未删除的模板。免费任务只能选免费端原生模板（`charge_mode=IAA`），付费任务只能选付费端原生模板（`charge_mode=IAP`） |
+| charge_mode | body | string \| null | 否 | 任务收费模式 `IAA` 或 `IAP`。不传按免费。须与所选模板的收费模式相同 |
 | schedule_start | body | string \| null | 否 | 预约开始。与结束同时空或同时有值。无时区按北京时间 |
 | schedule_end | body | string \| null | 否 | 预约结束，须晚于开始 |
 | advertiser_ids | body | integer[] | 是 | 巨量广告主 id，与账户列表的 `account_id` 相同。1–100 个，不重复。须是当前投手名下 `sync_status=active` 且未删除的户 |
@@ -50,7 +51,9 @@
 | 404 | `短剧不存在` | 短剧不存在或已软删 |
 | 404 | `商品库不存在` | `library_no` 没有未删除的库 |
 | 400 | `抖音号不是已启用的标准号` | 号不存在、未启用，或不是标准号 |
-| 400 | `优化目标与模板收费模式不一致` | 目标和 IAA/IAP 对不上 |
+| 400 | `付费投放任务须使用付费端原生模板` | 付费任务选了非付费模板 |
+| 400 | `免费投放任务须使用免费端原生模板` | 免费任务选了非免费模板 |
+| 400 | `优化目标与模板收费模式不一致` | 目标和任务的 IAA/IAP 对不上 |
 | 400 | `账户不存在、未分配给当前投手或已失效` | 有账户不在当前投手的有效户里 |
 | 400 | `视频不存在、不属于该短剧或当前账号不可见` | 视频校验失败 |
 | 400 | `标题不存在或不属于当前账号` | 标题不是自己的或已删 |
@@ -67,6 +70,7 @@
 
 | 日期 | 文档版本 | 破坏？ | 变更 | 作者 |
 | --- | --- | --- | --- | --- |
+| 2026-10-12 | 4 | 是 | 模板须与任务收费模式一致。付费任务改挂付费模板，免费任务仍挂免费模板。不传 `charge_mode` 仍按免费。快照见 [_history/create-task-draft-v3.md](_history/create-task-draft-v3.md) | |
 | 2026-10-08 | 3 | 否 | 抖音号、版位、项目预算、商品库、广告开关可以不传，确认提交改用模板 | |
 | 2026-10-08 | 2 | 是 | 增加必填 `album_url`、`project_operation`、`promotion_operation`。不增加地域和 `asset_ids`。快照见 [_history/create-task-draft-v1.md](_history/create-task-draft-v1.md) | |
 | 2026-09-29 | 1 | 否 | 初稿 | |
