@@ -10,7 +10,20 @@ from __future__ import annotations
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import BigInteger, Date, DateTime, Index, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    CheckConstraint,
+    Date,
+    DateTime,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -257,3 +270,108 @@ class ReportUniGroupDay(BaseModel):
     all_pay_amount_income_trend: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     all_micro_game_income_trend: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     new_project_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+
+
+class ReportRoiConfig(BaseModel):
+    """利润报表共用的 ROI 系数。日期重叠时，读取按创建时间最新的一条。"""
+
+    __tablename__ = "report_roi_config"
+    __table_args__ = (
+        CheckConstraint("date_end >= date_start", name="ck_report_roi_config_range"),
+        CheckConstraint("roi_rate >= 0", name="ck_report_roi_config_rate"),
+        Index("ix_report_roi_config_range", "date_start", "date_end"),
+        {"comment": "利润 ROI 系数。没覆盖到的统计日按 1.00。"},
+    )
+
+    date_start: Mapped[date] = mapped_column(Date, nullable=False, comment="生效起，含当天")
+    date_end: Mapped[date] = mapped_column(Date, nullable=False, comment="生效止，含当天")
+    roi_rate: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False, comment="ROI 系数，两位小数")
+
+
+class ReportProfitDay(BaseModel):
+    """利润日切片。一个统计日、投放范围、收费模式、剧类型、平台、部门、投手一行。"""
+
+    __tablename__ = "report_profit_day"
+    __table_args__ = (
+        UniqueConstraint(
+            "stat_date",
+            "scope",
+            "charge_mode",
+            "drama_type",
+            "platform",
+            "department_id",
+            "pitcher_id",
+            name="uq_report_profit_day",
+        ),
+        CheckConstraint("scope IN ('standard', 'uni')", name="ck_report_profit_day_scope"),
+        CheckConstraint("platform IN ('tomato', 'ouxi')", name="ck_report_profit_day_platform"),
+        Index("ix_report_profit_day_date", "stat_date"),
+        {"comment": "利润日表。盈亏按 ROI 配置在读取时算，不落库。"},
+    )
+
+    stat_date: Mapped[date] = mapped_column(Date, nullable=False)
+    scope: Mapped[str] = mapped_column(String(16), nullable=False, comment="standard 标准，uni 全域")
+    charge_mode: Mapped[str] = mapped_column(
+        String(8), nullable=False, default="", server_default="", comment="IAA、IAP，或空"
+    )
+    drama_type: Mapped[str] = mapped_column(String(16), nullable=False, default="", server_default="")
+    platform: Mapped[str] = mapped_column(String(16), nullable=False, comment="tomato 番茄，ouxi 鸥溪")
+    department_id: Mapped[int] = mapped_column(Integer, nullable=False, comment="投手部门。没有部门时为 0")
+    department_name: Mapped[str] = mapped_column(String(128), nullable=False, default="", server_default="")
+    pitcher_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    pitcher_name: Mapped[str] = mapped_column(String(64), nullable=False, default="", server_default="")
+    stat_cost: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False, comment="消耗")
+    recovery: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False, comment="回收，即 stat_pay_amount")
+
+
+class ReportMaterialDay(BaseModel):
+    """素材日切片。一个统计日、头条素材、广告、项目一行。"""
+
+    __tablename__ = "report_material_day"
+    __table_args__ = (
+        UniqueConstraint(
+            "stat_date",
+            "ocean_material_id",
+            "promotion_id",
+            "project_id",
+            name="uq_report_material_day",
+        ),
+        CheckConstraint("scope IN ('standard', 'uni')", name="ck_report_material_day_scope"),
+        Index("ix_report_material_day_date", "stat_date"),
+        Index("ix_report_material_day_uploader", "uploader_id", "stat_date"),
+        Index("ix_report_material_day_series", "series_id", "stat_date"),
+        {"comment": "素材日表。列表按页面再汇总，不在请求时扫小时明细。"},
+    )
+
+    stat_date: Mapped[date] = mapped_column(Date, nullable=False)
+    ocean_material_id: Mapped[int] = mapped_column(BigInteger, nullable=False, comment="头条素材 id")
+    promotion_id: Mapped[int] = mapped_column(BigInteger, nullable=False, comment="巨量广告 id")
+    promotion_name: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    project_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    project_name: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    scope: Mapped[str] = mapped_column(String(16), nullable=False)
+    is_nobid: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false"), comment="标准投放且模板名含 NB 或 CBO"
+    )
+    charge_mode: Mapped[str] = mapped_column(String(8), nullable=False, default="", server_default="")
+    series_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    book_name: Mapped[str] = mapped_column(String(512), nullable=False, default="", server_default="")
+    estimate_publish_date: Mapped[date | None] = mapped_column(Date, nullable=True, comment="短剧预估可投日")
+    video_id: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="素材库 material_videos.id")
+    material_name: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    material_type: Mapped[str] = mapped_column(String(32), nullable=False, default="", server_default="")
+    ownership: Mapped[str] = mapped_column(String(16), nullable=False, default="", server_default="")
+    file_url: Mapped[str] = mapped_column(String(1024), nullable=False, default="", server_default="")
+    uploader_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    uploader_name: Mapped[str] = mapped_column(String(64), nullable=False, default="", server_default="")
+    uploader_department_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    uploader_department_name: Mapped[str] = mapped_column(String(128), nullable=False, default="", server_default="")
+    pitcher_id: Mapped[int] = mapped_column(Integer, nullable=False, comment="投放账户上的投手")
+    pitcher_name: Mapped[str] = mapped_column(String(64), nullable=False, default="", server_default="")
+    video_pitcher_ids: Mapped[list[int]] = mapped_column(ARRAY(Integer), nullable=False)
+    video_pitcher_names: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False)
+    stat_cost: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+    recovery: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+    show_cnt: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    click_cnt: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    convert_cnt: Mapped[int] = mapped_column(BigInteger, nullable=False)

@@ -10,6 +10,7 @@ from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.report import crud
+from app.modules.report.ledger_store import replace_ledger_days
 from app.modules.report.schema import ManhuaQuery
 from app.modules.report.service import (
     MANHUA_BASE,
@@ -46,6 +47,7 @@ async def rebuild_serving(session: AsyncSession, days: list[date]) -> int:
         for mode in ("IAP", "IAA"):
             written += await _manhua_day(session, day, mode)
         written += await _uni_day(session, day)
+    written += await replace_ledger_days(session, days)
     await session.commit()
     return written
 

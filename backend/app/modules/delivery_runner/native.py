@@ -34,7 +34,7 @@ def native_is_due(rule: StandardNativeRobotRule, now: datetime) -> bool:
         return False
     clock = as_beijing(now)
     last = None if rule.last_ran_at is None else as_beijing(rule.last_ran_at)
-    if rule.schedule_kind == "hourly":
+    if rule.schedule_kind in ("hourly", "cycle"):
         if clock.minute < int(rule.schedule_minute):
             return False
         if last is None:

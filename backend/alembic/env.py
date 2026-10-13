@@ -27,6 +27,7 @@ def load_models() -> None:
     import app.modules.uni_native_task.model  # noqa: F401
     import app.modules.uni_native_auto_run.model  # noqa: F401
     import app.modules.city_tier.model  # noqa: F401
+    import app.modules.report.serving  # noqa: F401
 
 
 config = context.config

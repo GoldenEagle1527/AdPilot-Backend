@@ -15,6 +15,7 @@ from app.modules.standard_robot.schema import RobotQuery, RobotWrite
 from app.modules.standard_robot.service import (
     delete_robot_rule,
     robot_filters,
+    robot_item,
     set_robot_enabled,
     update_robot_rule,
 )
@@ -118,7 +119,62 @@ class ManageTests(unittest.TestCase):
         self.assertEqual(row.pitcher_user_id, 3)
         self.assertEqual(data["id"], "7")
         self.assertEqual(data["rule_kind"], "nb")
+        self.assertIsNone(data["delivery_hours"])
+        self.assertEqual(data["sort_order"], 0)
         session.commit.assert_awaited()
+
+    def test_form_fields_round_trip(self) -> None:
+        """三种规则上前端要回看的字段，保存后原样出现在出参里。"""
+        row = make_rule(rule_kind="drama", platform_id=8)
+        session = _session(row)
+        template = MagicMock()
+        template.id = 4
+        template.charge_mode = "IAA"
+        body = write_body(
+            rule_kind="nb",
+            schedule_kind="cycle",
+            schedule_hour=18,
+            schedule_minute=0,
+            schedule_end_hour=23,
+            schedule_end_minute=59,
+            delivery_hours=6,
+            bid_type="NO_BID",
+            cycle_minutes=30,
+            sort_order=2,
+            platform_id=8,
+        )
+        with patch(
+            "app.modules.standard_robot.service.get_template_row",
+            new=AsyncMock(return_value=(template, MagicMock())),
+        ):
+            data = asyncio.run(update_robot_rule(session, 7, body, 3, "IAA"))
+        self.assertEqual(row.delivery_hours, 6)
+        self.assertEqual(row.bid_type, "NO_BID")
+        self.assertEqual(row.cycle_minutes, 30)
+        self.assertEqual(row.schedule_end_hour, 23)
+        self.assertEqual(row.schedule_end_minute, 59)
+        self.assertEqual(row.sort_order, 2)
+        self.assertEqual(row.platform_id, 8)
+        self.assertEqual(row.schedule_kind, "cycle")
+        self.assertEqual(data["delivery_hours"], 6)
+        self.assertEqual(data["bid_type"], "NO_BID")
+        self.assertEqual(data["cycle_minutes"], 30)
+        self.assertEqual(data["schedule_end_hour"], 23)
+        self.assertEqual(data["schedule_end_minute"], 59)
+        self.assertEqual(data["sort_order"], 2)
+        self.assertEqual(data["platform_id"], "8")
+        self.assertEqual(data["schedule_kind"], "cycle")
+
+    def test_old_row_still_lists_the_new_keys(self) -> None:
+        """还没填过新列的规则，出参也带上这些键，空的就是空。"""
+        data = robot_item(make_rule())
+        self.assertIsNone(data["schedule_end_hour"])
+        self.assertIsNone(data["schedule_end_minute"])
+        self.assertIsNone(data["delivery_hours"])
+        self.assertIsNone(data["bid_type"])
+        self.assertIsNone(data["cycle_minutes"])
+        self.assertEqual(data["sort_order"], 0)
+        self.assertIsNone(data["platform_id"])
 
     def test_other_owner_or_other_menu_is_missing(self) -> None:
         """别人的规则、付费规则走免费路径，都是不存在。"""
@@ -144,3 +200,15 @@ class ManageTests(unittest.TestCase):
         self.assertFalse(row.is_enabled)
         self.assertFalse(switched["is_enabled"])
         self.assertEqual(switched["charge_mode"], "IAA")
+
+    def test_daily_needs_an_hour_and_end_time_is_a_pair(self) -> None:
+        """每天定点缺小时、结束时间只给一半，都不收。"""
+        row = make_rule()
+        session = _session(row)
+        with self.assertRaises(ApiError) as missing_hour:
+            asyncio.run(update_robot_rule(session, 7, write_body(schedule_kind="daily", schedule_hour=None), 3, "IAA"))
+        self.assertEqual(missing_hour.exception.status_code, 400)
+        with self.assertRaises(ApiError) as half_end:
+            asyncio.run(update_robot_rule(session, 7, write_body(schedule_end_hour=23), 3, "IAA"))
+        self.assertEqual(half_end.exception.status_code, 400)
+        session.commit.assert_not_awaited()
