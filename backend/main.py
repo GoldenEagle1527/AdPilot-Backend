@@ -45,7 +45,10 @@ async def lifespan(_app: FastAPI):
 
     install_ocean_client_for_settings(settings)
     if settings.oceanengine.mock:
-        await _seed_oceanengine()
+        try:
+            await _seed_oceanengine()
+        except Exception:
+            logger.exception("巨量种子写入失败，服务继续启动")
     await _rebuild_report_days()
     ticker = asyncio.create_task(_due_rules_loop())
     material_ticker = None
