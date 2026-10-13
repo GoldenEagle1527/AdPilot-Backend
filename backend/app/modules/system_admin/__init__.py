@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from app.modules.system_admin.deps import require_menu
 from app.modules.system_admin.domain.access import nicknames_by_ids
+from app.modules.system_admin.domain.menu_config import read_menu_config, save_menu_config
 
 from app.modules.system_admin.api.department_roles import router as department_roles_router
 from app.modules.system_admin.api.department_tags import router as department_tags_router
@@ -30,4 +31,4 @@ router.include_router(user_roles_router)
 router.include_router(user_data_scope_router)
 router.include_router(password_reset_router)
 
-__all__ = ["require_menu", "router"]
+__all__ = ["read_menu_config", "require_menu", "router", "save_menu_config"]

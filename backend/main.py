@@ -20,6 +20,7 @@ from app.modules.material import router as material_router
 from app.modules.material_title import router as material_title_router
 from app.modules.material_video import router as material_video_router
 from app.modules.oceanengine import router as oceanengine_router
+from app.modules.ocean_ads import router as ocean_ads_router
 from app.modules.standard_delivery import router as standard_delivery_router
 from app.modules.standard_robot import router as standard_robot_router
 from app.modules.system_admin import router as system_admin_router
@@ -111,6 +112,7 @@ def create_app() -> FastAPI:
     app.include_router(material_title_router)
     app.include_router(material_video_router)
     app.include_router(oceanengine_router)
+    app.include_router(ocean_ads_router)
     app.include_router(theater_router)
     app.include_router(uni_robot_router)
     app.include_router(uni_template_router)

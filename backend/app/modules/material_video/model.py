@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from sqlalchemy import ForeignKey, Index, Integer, String, UniqueConstraint
+from sqlalchemy import BigInteger, ForeignKey, Index, Integer, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -61,6 +61,7 @@ class MaterialVideo(BaseModel):
         Index("ix_material_videos_ownership", "ownership"),
         Index("ix_material_videos_uploader", "uploader_id"),
         Index("ix_material_videos_tag_id", "tag_id"),
+        Index("ix_material_videos_ocean_material_id", "ocean_material_id"),
         {"comment": "视频素材。短剧只存 manhua_series 主键，剧名查询时回填。"},
     )
 
@@ -103,6 +104,11 @@ class MaterialVideo(BaseModel):
         ForeignKey("users.id"),
         nullable=False,
         comment="上传者，外键 users.id",
+    )
+    ocean_material_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        nullable=True,
+        comment="头条素材id，即创意id。上传视频返回的 material_id",
     )
     shares: Mapped[list[MaterialVideoShare]] = relationship(back_populates="video")
     pitchers: Mapped[list[MaterialVideoPitcher]] = relationship(back_populates="video")

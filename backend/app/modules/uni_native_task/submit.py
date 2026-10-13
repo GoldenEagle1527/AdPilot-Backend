@@ -23,7 +23,14 @@ from app.modules.account.model import (
 )
 from app.modules.material_title.model import MaterialTitle
 from app.modules.material_video.model import MaterialVideo
-from app.modules.oceanengine.delivery import create_project, create_promotion, upload_image, upload_product, upload_video
+from app.modules.oceanengine.delivery import (
+    create_project,
+    create_promotion,
+    split_project_budget,
+    upload_image,
+    upload_product,
+    upload_video,
+)
 from app.modules.oceanengine.schema import ProductCreate, ProjectCreate, PromotionCreate, VideoCreate
 from app.modules.standard_delivery.model import DeliveryTemplate
 from app.modules.uni_native_task.crud import (
@@ -56,10 +63,10 @@ def _project_name(book_name: str) -> str:
     return f"{book_name[:2]}NB{beijing_now().strftime('%m%d%H%M')}"
 
 
-def _video_material(video: MaterialVideo) -> dict[str, Any]:
-    """素材库主键。没有巨量视频号时不补。"""
+def _video_material(video: MaterialVideo, ocean_video_id: str) -> dict[str, Any]:
+    """广告报文用上传返回的巨量 video_id，不用素材库自增 id。"""
     return {
-        "material_id": int(video.id),
+        "video_id": ocean_video_id,
         "image_mode": _IMAGE_MODE.get(video.material_type, "CREATIVE_IMAGE_MODE_VIDEO_VERTICAL"),
     }
 
@@ -124,8 +131,9 @@ async def submit_loaded(
     name = _project_name(book_name)
     built: list[dict[str, Any]] = []
     link_rows = [{"charge_mode": link.charge_mode, "link_text": link.link_text} for link in links]
+    shares = split_project_budget(Decimal(task.project_budget), len(pairs))
     try:
-        for douyin, account in pairs:
+        for (douyin, account), share in zip(pairs, shares, strict=True):
             advertiser_id = int(account.advertiser_id)
             product = await upload_product(
                 session,
@@ -147,7 +155,7 @@ async def submit_loaded(
                 "delivery_range": {"inventory_catalog": "UNIVERSAL_SMART"},
                 "delivery_setting": {
                     "budget_mode": "BUDGET_MODE_DAY",
-                    "budget": _num(task.project_budget),
+                    "budget": _num(share),
                     "roi_goal": _num(task.roi_coefficient),
                 },
                 "related_product": {
@@ -181,17 +189,28 @@ async def submit_loaded(
                 ),
             )
             project_id = int(created["project_id"])
+            ocean_video_ids: dict[int, str] = {}
             for video in videos:
                 urls = list(getattr(video, "file_urls", None) or [])
                 video_url = urls[0] if urls else f"https://mock.example/videos/{int(video.id)}"
-                await upload_video(session, VideoCreate(advertiser_id=advertiser_id, video_url=video_url))
+                uploaded = await upload_video(
+                    session,
+                    VideoCreate(
+                        advertiser_id=advertiser_id,
+                        video_url=video_url,
+                        library_video_id=int(video.id),
+                    ),
+                )
+                ocean_video_ids[int(video.id)] = str(uploaded["video_id"])
             promotion = {
                 "advertiser_id": advertiser_id,
                 "project_id": project_id,
                 "name": name,
                 "native_setting": {"aweme_id": douyin.aweme_id},
                 "promotion_materials": {
-                    "video_material_list": [_video_material(video) for video in videos],
+                    "video_material_list": [
+                        _video_material(video, ocean_video_ids[int(video.id)]) for video in videos
+                    ],
                     "title_material_list": [{"title": title} for title in chosen],
                     "product_info": {"image_ids": [str(image["image_id"])]},
                     "playlet_series_url_list": [item["link_text"] for item in link_rows],
@@ -203,6 +222,8 @@ async def submit_loaded(
                     advertiser_id=advertiser_id,
                     name=name,
                     opt_status="ENABLE",
+                    series_id=int(task.series_id),
+                    douyin_account_id=int(douyin.id),
                     payload=promotion,
                 ),
             )

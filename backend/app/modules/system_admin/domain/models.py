@@ -13,6 +13,7 @@ from sqlalchemy import (
     func,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.modules.system_admin.domain.base import BaseModel
@@ -206,6 +207,22 @@ class RoleMenu(BaseModel):
 
     role_id: Mapped[int] = mapped_column(Integer, ForeignKey("roles.id", ondelete="CASCADE"))
     menu_id: Mapped[int] = mapped_column(Integer, ForeignKey("menu_nodes.id", ondelete="CASCADE"))
+
+
+class UserMenuConfig(BaseModel):
+    """这个用户在这个菜单上的一份配置。不表示角色能不能看见菜单。"""
+
+    __tablename__ = "user_menu_configs"
+    __table_args__ = (
+        UniqueConstraint("user_id", "menu_id", name="uq_user_menu_config"),
+        {"comment": "用户菜单配置。一行是一个用户、一个菜单、一份 JSON。"},
+    )
+
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    menu_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("menu_nodes.id", ondelete="CASCADE"), nullable=False
+    )
+    config: Mapped[dict] = mapped_column(JSONB, nullable=False, comment="配置。自定义列的勾选和顺序放在 columns")
 
 
 class DictItem(BaseModel):
