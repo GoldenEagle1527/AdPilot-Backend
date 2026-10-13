@@ -170,6 +170,46 @@ class DramaRuleItem(BaseModel):
     updated_at: str
 
 
+class AllRuleQuery(BaseModel):
+    """漫剧机器人总列表。两种规则放在一起，按排序从小到大。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    page: int = Field(1, ge=1, description="页码，从 1 起")
+    page_size: int = Field(20, ge=1, le=100, description="每页条数，最大 100")
+    name: str | None = Field(None, description="规则名称，模糊，不传为全部")
+    is_enabled: bool | None = Field(None, description="开关：true 开启、false 关闭，不传为全部")
+    rule_kind: Literal["promotion_link", "drama_condition"] | None = Field(
+        None, description="不传则两种规则都在这一页里"
+    )
+
+
+class AllRuleItem(BaseModel):
+    """总列表里的一条。另一类型用不到的字段为空。"""
+
+    id: str
+    name: str
+    rule_kind: str
+    template_id: str
+    platform_id: str
+    max_videos_per_series: int
+    schedule_kind: str
+    schedule_hour: int
+    schedule_minute: int
+    schedule_end_hour: int | None
+    schedule_end_minute: int | None
+    cycle_minutes: int | None
+    sort_order: int
+    is_enabled: bool
+    stat_span: str | None
+    cost_min: str | None
+    cost_max: str | None
+    recovery_min: str | None
+    recovery_max: str | None
+    created_at: str
+    updated_at: str
+
+
 class DramaDeleted(BaseModel):
     """软删后的出参。"""
 

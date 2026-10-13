@@ -16,7 +16,8 @@ from app.modules.uni_robot.controller import get_catalog, router
 from app.modules.uni_robot.crud import get_link_rule_stmt, link_page_stmt, name_taken_stmt
 from app.modules.uni_robot.model import RuleKind, UniRobotRule
 from app.modules.uni_robot.schema import LinkRuleQuery
-from app.modules.uni_robot.service import link_filters
+from app.modules.uni_robot.schema import AllRuleQuery
+from app.modules.uni_robot.service import all_filters, link_filters
 from tests.modules.uni_robot.fake_catalog import FAKE_PLATFORMS, FAKE_TEMPLATES, FakeUniRobotCatalog
 from tests.modules.uni_robot.test_rules import CREATED, FakeSession
 
@@ -97,6 +98,18 @@ class QueryShapeTests(unittest.TestCase):
         self.assertIn("is_deleted = 0", sql)
         self.assertIn("sort_order ASC", sql)
         self.assertIn("created_date DESC", sql)
+
+    def test_mixed_list_orders_both_kinds_by_sort(self) -> None:
+        """总列表不按类型拆开，两种规则按 sort_order 升序。"""
+        sql = str(
+            link_page_stmt(all_filters(AllRuleQuery()), offset=0, limit=20).compile(
+                compile_kwargs={"literal_binds": True}
+            )
+        )
+        self.assertNotIn("promotion_link", sql)
+        self.assertNotIn("drama_condition", sql)
+        self.assertIn("is_deleted = 0", sql)
+        self.assertIn("sort_order ASC", sql)
 
     def test_blank_name_does_not_filter(self) -> None:
         """空白名称当没传。百分号按字面量。"""

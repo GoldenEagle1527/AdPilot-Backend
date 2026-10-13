@@ -26,6 +26,7 @@ from app.modules.uni_robot.crud import (
 from app.modules.uni_robot.model import RuleKind, UniRobotRule
 from app.modules.uni_robot.port import UniRobotCatalog
 from app.modules.uni_robot.schema import (
+    AllRuleQuery,
     DramaRuleQuery,
     DramaRuleWrite,
     DramaScheduleWrite,
@@ -163,6 +164,56 @@ async def _require_link(session: AsyncSession, rule_id: int) -> UniRobotRule:
     if row is None or row.rule_kind != RuleKind.PROMOTION_LINK or int(row.is_deleted or 0) != 0:
         raise ApiError(404, "规则不存在")
     return row
+
+
+def all_filters(query: AllRuleQuery) -> list[ColumnElement[bool]]:
+    """总列表：未删除的两种规则。名称模糊且转义 % 和 _。"""
+    filters: list[ColumnElement[bool]] = [UniRobotRule.is_deleted == 0]
+    if query.rule_kind is not None:
+        filters.append(UniRobotRule.rule_kind == query.rule_kind)
+    name = (query.name or "").strip()
+    if name:
+        escaped = name.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        filters.append(UniRobotRule.name.ilike(f"%{escaped}%", escape="\\"))
+    if query.is_enabled is not None:
+        filters.append(UniRobotRule.is_enabled == query.is_enabled)
+    return filters
+
+
+def mixed_item(row: UniRobotRule) -> dict[str, Any]:
+    """总列表的一条。推广链没有消耗区间，剧条件没有周期分钟。"""
+    return {
+        "id": str(row.id),
+        "name": row.name,
+        "rule_kind": row.rule_kind,
+        "template_id": str(row.template_id),
+        "platform_id": str(row.platform_id),
+        "max_videos_per_series": row.max_videos_per_series,
+        "schedule_kind": row.schedule_kind or "daily",
+        "schedule_hour": row.schedule_hour,
+        "schedule_minute": row.schedule_minute,
+        "schedule_end_hour": row.schedule_end_hour,
+        "schedule_end_minute": row.schedule_end_minute,
+        "cycle_minutes": row.cycle_minutes,
+        "sort_order": int(row.sort_order or 0),
+        "is_enabled": row.is_enabled,
+        "stat_span": row.stat_span,
+        "cost_min": None if row.cost_min is None else _money(row.cost_min),
+        "cost_max": None if row.cost_max is None else _money(row.cost_max),
+        "recovery_min": None if row.recovery_min is None else _recovery(row.recovery_min),
+        "recovery_max": None if row.recovery_max is None else _recovery(row.recovery_max),
+        "created_at": beijing_iso(row.created_date),
+        "updated_at": beijing_iso(row.updated_date),
+    }
+
+
+async def list_all_rules(session: AsyncSession, query: AllRuleQuery) -> dict[str, Any]:
+    """两种规则放在同一页，按 sort_order 从小到大。"""
+    params = PageParams(page=query.page, page_size=query.page_size)
+    rows, total = await page_link_rules(
+        session, all_filters(query), offset=params.offset, limit=params.page_size
+    )
+    return page_data([mixed_item(row) for row in rows], total, params)
 
 
 async def list_link_rules(session: AsyncSession, query: LinkRuleQuery) -> dict[str, Any]:
