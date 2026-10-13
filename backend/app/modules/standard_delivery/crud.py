@@ -377,6 +377,17 @@ async def accounts_by_drafts(
     return grouped
 
 
+async def account_rows_by_draft(session: AsyncSession, draft_id: int) -> list[DeliveryTaskAccount]:
+    """一份草稿的账户行。顺序和 accounts_by_drafts 一致，提交后好把巨量项目 id 写回去。"""
+    result = await session.execute(
+        select(DeliveryTaskAccount)
+        .join(AdvertiserAccount, AdvertiserAccount.id == DeliveryTaskAccount.advertiser_account_id)
+        .where(DeliveryTaskAccount.task_id == draft_id)
+        .order_by(DeliveryTaskAccount.sort_order, DeliveryTaskAccount.id)
+    )
+    return list(result.scalars().all())
+
+
 async def videos_by_drafts(session: AsyncSession, draft_ids: list[int]) -> dict[int, list[MaterialVideo]]:
     """按草稿分组的视频，保持保存时的顺序。"""
     grouped: dict[int, list[MaterialVideo]] = {item: [] for item in draft_ids}

@@ -699,3 +699,117 @@ class OeMaterialReport(BaseModel):
     active: Mapped[int] = mapped_column(BigInteger, nullable=False, comment="激活数")
     game_addiction: Mapped[int] = mapped_column(BigInteger, nullable=False, comment="关键行为数")
     synced_at: Mapped[datetime] = mapped_column(_TS, nullable=False, comment="本行写入时间")
+
+
+class OeDeliveryReport(BaseModel):
+    """标准投放广告小时报表（BASIC_DATA）。一行是一个广告主、一小时、一个项目、一条广告。
+
+    只存巨量直接返回的累加指标。ROI、千展成本、点击率等比率由报表按区间合计后再算，不建列。
+    """
+
+    __tablename__ = "oe_delivery_report"
+    __table_args__ = (
+        UniqueConstraint(
+            "advertiser_id",
+            "stat_time_hour",
+            "cdp_project_id",
+            "cdp_promotion_id",
+            name="uq_oe_delivery_report_grain",
+        ),
+        Index("ix_oe_delivery_report_hour_project", "stat_time_hour", "cdp_project_id"),
+        Index("ix_oe_delivery_report_promotion_hour", "cdp_promotion_id", "stat_time_hour"),
+        {"comment": "巨量广告小时报表（BASIC_DATA）。比率字段不落库。"},
+    )
+
+    advertiser_id: Mapped[int] = mapped_column(BigInteger, nullable=False, comment="查询用的巨量广告主 id")
+    stat_time_hour: Mapped[str] = mapped_column(
+        String(64), nullable=False, comment="小时，北京时间 YYYY-MM-DD HH:MM:SS"
+    )
+    cdp_project_id: Mapped[int] = mapped_column(BigInteger, nullable=False, comment="项目 id")
+    cdp_project_name: Mapped[str | None] = mapped_column(Text, nullable=True, comment="项目名称")
+    cdp_promotion_id: Mapped[int] = mapped_column(BigInteger, nullable=False, comment="广告 id")
+    cdp_promotion_name: Mapped[str | None] = mapped_column(Text, nullable=True, comment="广告名称")
+    stat_cost: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False, comment="消耗，单位元")
+    stat_pay_amount: Mapped[Decimal] = mapped_column(
+        Numeric(18, 2), nullable=False, comment="付费金额（回传时间）。漫剧报表的回收"
+    )
+    attribution_game_in_app_ltv_1day: Mapped[Decimal] = mapped_column(
+        Numeric(18, 2), nullable=False, comment="当日付费金额"
+    )
+    attribution_game_in_app_ltv_8days: Mapped[Decimal] = mapped_column(
+        Numeric(18, 2), nullable=False, comment="激活后七日付费金额"
+    )
+    attribution_micro_game_0d_ltv: Mapped[Decimal] = mapped_column(
+        Numeric(18, 2), nullable=False, comment="小程序/小游戏当日 LTV"
+    )
+    attribution_micro_game_7d_ltv: Mapped[Decimal] = mapped_column(
+        Numeric(18, 2), nullable=False, comment="小程序/小游戏激活后七日 LTV"
+    )
+    show_cnt: Mapped[int] = mapped_column(BigInteger, nullable=False, comment="展示数")
+    click_cnt: Mapped[int] = mapped_column(BigInteger, nullable=False, comment="点击数")
+    convert_cnt: Mapped[int] = mapped_column(BigInteger, nullable=False, comment="转化数")
+    active: Mapped[int] = mapped_column(BigInteger, nullable=False, comment="激活数")
+    synced_at: Mapped[datetime] = mapped_column(_TS, nullable=False, comment="本行写入时间")
+
+
+class OeUniProjectReport(BaseModel):
+    """全域 ROI 项目小时报表（UNI_PROJECT_DATA）。一行是一个广告主、一小时、一个项目。
+
+    比率字段（all_roi_*）按巨量原值存一份，只对单行有意义；跨行合计时报表用 GMV / 成本重算。
+    """
+
+    __tablename__ = "oe_uni_project_report"
+    __table_args__ = (
+        UniqueConstraint(
+            "advertiser_id",
+            "stat_time_hour",
+            "cdp_project_id",
+            name="uq_oe_uni_project_report_grain",
+        ),
+        Index("ix_oe_uni_project_report_hour_project", "stat_time_hour", "cdp_project_id"),
+        {"comment": "巨量全域 ROI 项目小时报表（UNI_PROJECT_DATA）。"},
+    )
+
+    advertiser_id: Mapped[int] = mapped_column(BigInteger, nullable=False, comment="查询用的巨量广告主 id")
+    stat_time_hour: Mapped[str] = mapped_column(
+        String(64), nullable=False, comment="小时，北京时间 YYYY-MM-DD HH:MM:SS"
+    )
+    cdp_project_id: Mapped[int] = mapped_column(BigInteger, nullable=False, comment="项目 id")
+    cdp_project_name: Mapped[str | None] = mapped_column(Text, nullable=True, comment="项目名称")
+    all_stat_cost_trend: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False, comment="全域消耗")
+    all_stat_total_cost_trend: Mapped[Decimal] = mapped_column(
+        Numeric(18, 2), nullable=False, comment="全域成本"
+    )
+    all_gmv_trend: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False, comment="全域 GMV")
+    all_billing_gmv_0day_trend: Mapped[Decimal] = mapped_column(
+        Numeric(18, 2), nullable=False, comment="当日全域 GMV（计费时间）"
+    )
+    all_billing_gmv_24h_trend: Mapped[Decimal] = mapped_column(
+        Numeric(18, 2), nullable=False, comment="24 小时全域 GMV（计费时间）"
+    )
+    all_billing_gmv_3days_trend: Mapped[Decimal] = mapped_column(
+        Numeric(18, 2), nullable=False, comment="三日全域 GMV（计费时间）。合计三日 ROI 用"
+    )
+    all_income_trend: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False, comment="全域收入")
+    all_income_0day_trend: Mapped[Decimal] = mapped_column(
+        Numeric(18, 2), nullable=False, comment="当日全域收入（计费时间）"
+    )
+    all_pay_amount_income_trend: Mapped[Decimal] = mapped_column(
+        Numeric(18, 2), nullable=False, comment="付费收入"
+    )
+    all_micro_game_income_trend: Mapped[Decimal] = mapped_column(
+        Numeric(18, 2), nullable=False, comment="变现收入"
+    )
+    all_roi_trend: Mapped[Decimal] = mapped_column(Numeric(14, 4), nullable=False, comment="全域 ROI，巨量原值")
+    all_roi_24h_trend: Mapped[Decimal] = mapped_column(
+        Numeric(14, 4), nullable=False, comment="全域 24 小时 ROI，巨量原值"
+    )
+    all_roi_0day_trend: Mapped[Decimal] = mapped_column(
+        Numeric(14, 4), nullable=False, comment="全域当日 ROI，巨量原值"
+    )
+    all_roi_3days_trend: Mapped[Decimal] = mapped_column(
+        Numeric(14, 4), nullable=False, comment="全域三日 ROI，巨量原值"
+    )
+    all_show_cnt_trend: Mapped[int] = mapped_column(BigInteger, nullable=False, comment="全域展示数")
+    all_click_cnt_trend: Mapped[int] = mapped_column(BigInteger, nullable=False, comment="全域点击数")
+    synced_at: Mapped[datetime] = mapped_column(_TS, nullable=False, comment="本行写入时间")

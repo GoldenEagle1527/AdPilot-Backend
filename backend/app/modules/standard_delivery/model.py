@@ -10,6 +10,7 @@ from decimal import Decimal
 from enum import StrEnum
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     CheckConstraint,
     Date,
@@ -635,6 +636,72 @@ class DeliveryTaskAccount(BaseModel):
         comment="广告主行",
     )
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, comment="请求里的顺序，从 0 起")
+    ocean_project_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        nullable=True,
+        comment="巨量项目 id。本户只建一个项目时写这里。付费按面板拆成多个项目时为空，看 delivery_task_project",
+    )
+
+
+class DeliveryTaskProject(BaseModel):
+    """确认提交后一个账户上建出的一个巨量项目。付费模板有出价面板时，一个面板一行。"""
+
+    __tablename__ = "delivery_task_project"
+    __table_args__ = (
+        Index("uq_delivery_task_project_ocean", "ocean_project_id", unique=True),
+        Index("ix_delivery_task_project_task", "task_id", "sort_order"),
+        Index("ix_delivery_task_project_advertiser", "advertiser_account_id"),
+        {"comment": "标准投放提交后建出的巨量项目。免费或没有面板时一户一行，面板为空串。"},
+    )
+
+    task_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("delivery_task_draft.id", ondelete="CASCADE"),
+        nullable=False,
+        comment="草稿。短剧、投手、收费模式从草稿取",
+    )
+    # 草稿账户行保存时整表替换，这里挂广告主行，改草稿不会把已建项目一起删掉。
+    advertiser_account_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("advertiser_account.id", ondelete="RESTRICT"),
+        nullable=False,
+        comment="广告主行",
+    )
+    bid_panel: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        default="",
+        server_default="",
+        comment="这个项目对应的一个出价面板。免费或模板没有面板时为空串",
+    )
+    ocean_project_id: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, comment="巨量项目 id。不是本表自增主键"
+    )
+    sort_order: Mapped[int] = mapped_column(
+        Integer, nullable=False, comment="本草稿内的建项目顺序，从 0 起。先按账户，再按面板"
+    )
+
+
+class DeliveryTaskPromotion(BaseModel):
+    """一个巨量项目下建出的广告。一个项目可以有多条。"""
+
+    __tablename__ = "delivery_task_promotion"
+    __table_args__ = (
+        Index("uq_delivery_task_promotion_ocean", "ocean_promotion_id", unique=True),
+        Index("ix_delivery_task_promotion_project", "task_project_id", "sort_order"),
+        {"comment": "标准投放提交后建出的巨量广告。挂在 delivery_task_project 下。"},
+    )
+
+    task_project_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("delivery_task_project.id", ondelete="CASCADE"),
+        nullable=False,
+        comment="提交时建出的项目行",
+    )
+    ocean_promotion_id: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, comment="巨量广告 id。不是本表自增主键"
+    )
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, comment="本项目内的建广告顺序，从 0 起")
 
 
 class DeliveryTaskVideo(BaseModel):

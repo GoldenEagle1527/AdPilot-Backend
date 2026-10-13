@@ -143,6 +143,11 @@ class UniNativeTaskAccount(BaseModel):
         nullable=True,
         comment="巨量项目 id。一行账户一个项目。未创建为空。不是本表自增主键",
     )
+    ocean_promotion_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        nullable=True,
+        comment="巨量广告 id。一个项目一条广告。未创建为空",
+    )
 
 
 class UniNativeTaskLink(BaseModel):

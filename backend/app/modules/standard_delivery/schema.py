@@ -618,9 +618,10 @@ class DeletedItem(BaseModel):
 
 
 class SubmitAccount(BaseModel):
-    """一个账户上建出的项目和广告报文。"""
+    """一个账户上建出的一个项目和它的广告报文。付费按面板拆项目时，同一账户有多项。"""
 
     advertiser_id: int
+    bid_panel: str = ""
     project_id: int
     product_id: int
     image_id: str

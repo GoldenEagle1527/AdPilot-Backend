@@ -1,7 +1,7 @@
 # 契约：submit-task-draft
 
 业务id：standard-delivery
-文档版本：6
+文档版本：7
 方法：POST
 路径：/api/v1/standard-delivery/task-drafts/{draft_id}/submit
 作用：确认提交当前投手自己的一条草稿。按模板切广告，经已装上的客户端建项目、传商品和主图，并把报文放在返回值里。
@@ -12,7 +12,7 @@
 
 作者：
 状态：draft
-更新日期：2026-10-12
+更新日期：2026-10-13
 
 ## 请求
 
@@ -25,11 +25,12 @@
 
 ## 响应
 
-`data.id` 是草稿 id。`data.aweme_id` 是这条草稿唯一的标准抖音号。`data.accounts` 按草稿里的账户顺序，每项含：
+`data.id` 是草稿 id。`data.aweme_id` 是这条草稿唯一的标准抖音号。`data.accounts` 一项是一个建出的项目，按草稿里的账户顺序，同一账户内按模板 `bid_panels` 顺序。免费草稿、或模板 `bid_panels` 为空时，一个账户一项。付费草稿且模板有出价面板时，同一个账户每个面板各建一个项目，各占一项，`advertiser_id` 会重复。每项含：
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | advertiser_id | integer | 巨量广告主 id |
+| bid_panel | string | 这个项目对应的一个出价面板名。免费或模板没有面板时为空串 |
 | project_id | integer | 客户端 `create_project` 返回的项目 id |
 | product_id | integer | 客户端商品上传返回的商品 id |
 | image_id | string | 模板上的 `product_image_id`（`img-` 前缀）。模板没有时才是本次图片上传返回的 id |
@@ -42,7 +43,9 @@
 
 `project.optimize_goal` 只读模板上写死的优化目标，不读草稿 `optimize_goal`：免费只有 `external_action=AD_CONVERT_TYPE_ACTIVE`，不带 `deep_external_action`；付费为 `AD_CONVERT_TYPE_PAY` 加 `deep_external_action=AD_CONVERT_TYPE_PURCHASE_ROI`。草稿和模板收费模式不一致时 400，不再换成另一套目标。
 
-视频、标题按草稿保存顺序切。每条广告取 `videos_per_ad` 个视频、`titles_per_ad` 个标题。每个账户最多 `ads_per_account` 条。切完就停，不回头再取。
+视频、标题按草稿保存顺序切。每条广告取 `videos_per_ad` 个视频、`titles_per_ad` 个标题。每个账户最多 `ads_per_account` 条。切完就停，不回头再取。按面板拆出的几个项目用这个账户切到的同一组素材，各建各的广告；面板不多消耗素材。项目名称不随面板变，仍是剧名前两字 + `NB` + 月日时分。商品和主图每个账户只传一次，几个面板项目共用。
+
+提交成功后，每个建出的项目记一行 `delivery_task_project`（草稿、广告主行、面板名、巨量项目 id），其下每条广告记一行 `delivery_task_promotion`（巨量广告 id）。一个账户只建一个项目时，巨量项目 id 同时写回 `delivery_task_account.ocean_project_id`；按面板拆成多个项目时账户行这一列为空。这些和草稿 `submitted_at` 同一次提交。本次改动前已提交的草稿不回填。
 
 ## 错误
 
@@ -76,6 +79,7 @@
 
 | 日期 | 文档版本 | 破坏？ | 变更 | 作者 |
 | --- | --- | --- | --- | --- |
+| 2026-10-13 | 7 | 是 | 付费草稿且模板有出价面板时，每个账户按面板各建一个项目，`accounts` 改为一项一个项目，同一 `advertiser_id` 可以出现多次。新增 `bid_panel`。提交后记下巨量项目 id 和广告 id。快照见 [_history/submit-task-draft-v6.md](_history/submit-task-draft-v6.md) | |
 | 2026-10-12 | 6 | 是 | 收费模式不一致时 400。去掉「付费草稿挂免费模板仍按付费目标提交」。快照见 [_history/submit-task-draft-v5.md](_history/submit-task-draft-v5.md) | |
 | 2026-10-12 | 5 | 否 | 优化目标改读模板写死值，草稿上的不参与。去掉「手动投放每个广告最多 10 个视频」 | |
 | 2026-10-09 | 4 | 否 | 项目 `audience` 在非不限时带上模板的性别和年龄。不限则省略 `gender`、`age` | |

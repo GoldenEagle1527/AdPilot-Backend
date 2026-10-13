@@ -320,7 +320,7 @@ class SubmitTests(unittest.TestCase):
         self.assertEqual(port.projects, [])
 
     def test_done_submit_writes_the_ocean_project_id(self) -> None:
-        """每个账户建出一个项目，编号写回这一行，和完成状态一起留下。"""
+        """每个账户建出一个项目、一条广告，两个编号都写回这一行，和完成状态一起留下。"""
         port = Port()
         install_ocean_client(port)
         row = UniNativeTaskAccount(task_id=40, douyin_account_id=4, advertiser_account_id=31, sort_order=0)
@@ -345,6 +345,9 @@ class SubmitTests(unittest.TestCase):
         self.assertEqual(task.status, "done")
         self.assertEqual(row.ocean_project_id, 8800000000000001)
         self.assertEqual(row.ocean_project_id, result["accounts"][0]["project_id"])
+        self.assertEqual(len(port.projects), 1)
+        self.assertEqual(row.ocean_promotion_id, 9100000000000001)
+        self.assertEqual(row.ocean_promotion_id, result["accounts"][0]["promotions"][0]["promotion_id"])
 
     def test_failed_submit_keeps_project_ids_already_created(self) -> None:
         """后面的账户创建失败时，前面已经建出的巨量项目 id 留在账户行上，任务标失败。"""

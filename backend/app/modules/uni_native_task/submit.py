@@ -131,7 +131,7 @@ def _reject_titles(titles: list[str]) -> None:
 def _loaded_pair(
     pair: tuple[Any, ...],
 ) -> tuple[UniNativeTaskAccount | None, DouyinAccount, AdvertiserAccount]:
-    """账户行在场时带上，好把巨量项目 id 写回去。直接调用可以只给抖音号和广告账户。"""
+    """账户行在场时带上，好把巨量项目 id 和广告 id 写回去。直接调用可以只给抖音号和广告账户。"""
     if isinstance(pair[0], UniNativeTaskAccount):
         link_row, douyin, advertiser = pair
         return link_row, douyin, advertiser
@@ -155,7 +155,7 @@ async def submit_loaded(
     """每个账户一行一个项目、一条广告。不改模板的 delivery_mode。
 
     标题不合格时保持 saved。通过后先标 running，假客户端返回后再标 done。
-    拿到巨量项目 id 后写回账户行，和任务状态同一次提交。失败前建出来的编号也留下。
+    拿到巨量项目 id、广告 id 后写回账户行，和任务状态同一次提交。失败前建出来的编号也留下。
     """
     chosen = [title.title for title in titles] + list(batch_titles)
     _reject_titles(chosen)
@@ -258,6 +258,9 @@ async def submit_loaded(
                 ),
             )
             promotion["promotion_id"] = int(created_promotion["promotion_id"])
+            if link_row is not None:
+                link_row.ocean_promotion_id = promotion["promotion_id"]
+                await session.flush()
             built.append(
                 {
                     "douyin_account_id": str(douyin.id),

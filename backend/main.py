@@ -20,6 +20,7 @@ from app.modules.material import router as material_router
 from app.modules.material_title import router as material_title_router
 from app.modules.material_video import router as material_video_router
 from app.modules.oceanengine import router as oceanengine_router
+from app.modules.report import router as report_router
 from app.modules.standard_delivery import router as standard_delivery_router
 from app.modules.standard_robot import router as standard_robot_router
 from app.modules.system_admin import router as system_admin_router
@@ -88,7 +89,8 @@ async def _due_rules_loop() -> None:
 
 
 async def _material_report_loop() -> None:
-    """关闭 mock 时启动。先拉一次，之后每小时拉近 30 天素材报表。"""
+    """关闭 mock 时启动。先拉一次，之后每小时拉近 30 天素材报表和近 8 天投放报表小时快照。"""
+    from app.modules.oceanengine.delivery_report import run_hourly_delivery_report
     from app.modules.oceanengine.material_report import run_hourly_material_report
 
     while True:
@@ -96,6 +98,8 @@ async def _material_report_loop() -> None:
             async for session in get_session():
                 written = await run_hourly_material_report(session)
                 logger.info("素材报表本小时写入 %s 行", written)
+                written = await run_hourly_delivery_report(session)
+                logger.info("投放报表本小时写入 %s 行", written)
                 break
         except asyncio.CancelledError:
             raise
@@ -144,6 +148,7 @@ def create_app() -> FastAPI:
     app.include_router(uni_native_auto_run_router)
     app.include_router(standard_delivery_router)
     app.include_router(standard_robot_router)
+    app.include_router(report_router)
     return app
 
 
