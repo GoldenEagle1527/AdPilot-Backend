@@ -223,9 +223,12 @@ def manhua_drama_rows(
     facts: list[ManhuaFact],
     links: dict[int, ProjectLink],
     query: ManhuaQuery,
-    user_id: int,
+    user_id: int | None,
 ) -> list[dict[str, Any]]:
-    """一部剧一行（付费再按面板拆）。投手合并成一格，指标是这些投手之和。当前用户须在投手里。"""
+    """一部剧一行（付费再按面板拆）。投手合并成一格，指标是这些投手之和。
+
+    user_id 为空时不过滤投手，给定时任务把全部行写入日表。
+    """
     groups: dict[tuple[int, str], dict[str, Any]] = {}
     for fact in facts:
         link = links.get(fact.project_id)
@@ -256,11 +259,12 @@ def manhua_drama_rows(
             group["costed"].add(fact.promotion_id)
     rows: list[dict[str, Any]] = []
     for (series_id, panel), group in groups.items():
-        if user_id not in group["pitcher_ids"]:
+        if user_id is not None and user_id not in group["pitcher_ids"]:
             continue
         if not _people_pass(query, group["teams"], group["pitchers"]):
             continue
         link: ProjectLink = group["link"]
+        sums = {name: group["sums"].get(name, ZERO) for name in MANHUA_BASE}
         rows.append(
             {
                 "series_id": series_id,
@@ -274,7 +278,16 @@ def manhua_drama_rows(
                 "teams": _joined(group["teams"]),
                 "pitchers": _joined(group["pitchers"]),
                 "promotion_with_cost_count": len(group["costed"]),
-                **manhua_metrics(group["sums"]),
+                "pitcher_ids": sorted(group["pitcher_ids"]),
+                "pitcher_names": sorted(name for name in group["pitchers"] if name),
+                "department_names": sorted(name for name in group["teams"] if name),
+                "bid_types": sorted(name for name in group["bid_types"] if name),
+                "panel_names": sorted(name for name in group["panels"] if name),
+                "panel_key": panel,
+                "costed_promotion_ids": sorted(group["costed"]),
+                "publish_date": link.publish_date,
+                "_sums": sums,
+                **manhua_metrics(sums),
             }
         )
     return rows
@@ -303,14 +316,16 @@ def manhua_project_rows(
     facts: list[ManhuaFact],
     links: dict[int, ProjectLink],
     query: ManhuaQuery,
-    user_id: int,
+    user_id: int | None,
     first_cost: dict[int, str] | None = None,
 ) -> list[dict[str, Any]]:
-    """一个项目一行。只看自己是投手的项目。"""
+    """一个项目一行。user_id 为空时写出全部投手，给定时任务刷日表。"""
     groups: dict[int, dict[str, Any]] = {}
     for fact in facts:
         link = links.get(fact.project_id)
-        if link is None or link.pitcher_id != user_id or not link_passes(link, query):
+        if link is None or not link_passes(link, query):
+            continue
+        if user_id is not None and link.pitcher_id != user_id:
             continue
         if not _people_pass(query, {link.department_name}, {link.pitcher_name}):
             continue
@@ -322,14 +337,22 @@ def manhua_project_rows(
     for project_id, group in groups.items():
         link = group["link"]
         first = (first_cost or {}).get(project_id, group["first"])
+        sums = {name: group["sums"].get(name, ZERO) for name in MANHUA_BASE}
         rows.append(
             {
                 "project_id": project_id,
                 "project_name": group["name"],
                 **_project_head(link),
+                "pitcher_id": link.pitcher_id,
+                "bid_type": link.bid_type,
+                "drama_type": link.drama_type,
+                "channel": link.channel,
+                "panel": link.bid_panel,
+                "publish_date": link.publish_date,
                 "created_at": _iso(link.created_at),
                 "first_cost_time": _hour_stamp(first),
-                **manhua_metrics(group["sums"]),
+                "_sums": sums,
+                **manhua_metrics(sums),
             }
         )
     return rows
@@ -340,17 +363,19 @@ def manhua_promotion_rows(
     links: dict[int, ProjectLink],
     promotions: dict[int, PromotionLink],
     query: ManhuaQuery,
-    user_id: int,
+    user_id: int | None,
     first_cost: dict[int, str] | None = None,
 ) -> list[dict[str, Any]]:
-    """一条广告一行。广告须在中台 delivery_task_promotion 里，且自己是投手。"""
+    """一条广告一行。广告须在中台 delivery_task_promotion 里。user_id 为空时写出全部投手。"""
     rows: list[dict[str, Any]] = []
     for fact in facts:
         promotion = promotions.get(fact.promotion_id)
         if promotion is None:
             continue
         link = links.get(promotion.project_id)
-        if link is None or link.pitcher_id != user_id or not link_passes(link, query):
+        if link is None or not link_passes(link, query):
+            continue
+        if user_id is not None and link.pitcher_id != user_id:
             continue
         if not _people_pass(query, {link.department_name}, {link.pitcher_name}):
             continue
@@ -364,8 +389,15 @@ def manhua_promotion_rows(
                 "project_id": promotion.project_id,
                 "project_name": fact.project_name,
                 **_project_head(link),
+                "pitcher_id": link.pitcher_id,
+                "bid_type": link.bid_type,
+                "drama_type": link.drama_type,
+                "channel": link.channel,
+                "panel": link.bid_panel,
+                "publish_date": link.publish_date,
                 "created_at": _iso(promotion.created_at),
                 "first_cost_time": _hour_stamp(first),
+                "_sums": sums,
                 **manhua_metrics(sums),
             }
         )
@@ -403,7 +435,7 @@ def uni_drama_rows(
     links: dict[int, ProjectLink],
     start: date,
     end: date,
-    user_id: int,
+    user_id: int | None,
     series_name: str | None = None,
     by_pitcher: bool = False,
 ) -> list[dict[str, Any]]:
@@ -433,9 +465,9 @@ def uni_drama_rows(
     rows: list[dict[str, Any]] = []
     for (pitcher_id, series_id, day), group in groups.items():
         link = group["link"]
-        if user_id not in group["pitcher_ids"]:
+        if user_id is not None and user_id not in group["pitcher_ids"]:
             continue
-        if by_pitcher and pitcher_id != user_id:
+        if by_pitcher and user_id is not None and pitcher_id != user_id:
             continue
         if series_name and series_name.strip() not in link.book_name:
             continue
@@ -448,7 +480,10 @@ def uni_drama_rows(
         if by_pitcher:
             row["pitcher_user_id"] = pitcher_id
             row["pitcher_name"] = link.pitcher_name
-        row.update(uni_metrics(group["sums"]))
+        sums = {name: group["sums"].get(name, ZERO) for name in (*UNI_MONEY, "new_project_count")}
+        row["pitcher_ids"] = sorted(group["pitcher_ids"])
+        row["_sums"] = sums
+        row.update(uni_metrics(sums))
         rows.append(row)
     return rows
 
@@ -496,18 +531,23 @@ def uni_pitcher_rows(
     links: dict[int, ProjectLink],
     start: date,
     end: date,
-    user_id: int,
+    user_id: int | None,
 ) -> list[dict[str, Any]]:
-    """投手报表：一个投手一天一行。只看自己。"""
+    """投手报表：一个投手一天一行。user_id 为空时写出全部投手。"""
     names = {link.pitcher_id: link.pitcher_name for link in links.values()}
     buckets = _bucket_rows(
-        facts, links, start, end, lambda link: link.pitcher_id if link.pitcher_id == user_id else None
+        facts,
+        links,
+        start,
+        end,
+        lambda link: link.pitcher_id if user_id is None or link.pitcher_id == user_id else None,
     )
     return [
         {
             "pitcher_user_id": pitcher_id,
             "pitcher_name": names.get(pitcher_id, ""),
             "stat_time_day": day,
+            "_sums": {name: sums.get(name, ZERO) for name in (*UNI_MONEY, "new_project_count")},
             **uni_metrics(sums),
             "new_drama_count": 0,
         }
@@ -520,22 +560,25 @@ def uni_group_rows(
     links: dict[int, ProjectLink],
     start: date,
     end: date,
-    department_ids: set[int],
+    department_ids: set[int] | None,
 ) -> list[dict[str, Any]]:
-    """组报表：一个部门一天一行。每个投手的项目只进该投手自己的部门。"""
+    """组报表：一个部门一天一行。department_ids 为空时写出全部部门。"""
     names = {link.department_id: link.department_name for link in links.values() if link.department_id is not None}
-    buckets = _bucket_rows(
-        facts,
-        links,
-        start,
-        end,
-        lambda link: link.department_id if link.department_id in department_ids else None,
-    )
+
+    def key_of(link: ProjectLink) -> int | None:
+        if link.department_id is None:
+            return None
+        if department_ids is not None and link.department_id not in department_ids:
+            return None
+        return link.department_id
+
+    buckets = _bucket_rows(facts, links, start, end, key_of)
     return [
         {
             "department_id": department_id,
             "department_name": names.get(department_id, ""),
             "stat_time_day": day,
+            "_sums": {name: sums.get(name, ZERO) for name in (*UNI_MONEY, "new_project_count")},
             **uni_metrics(sums),
             "new_drama_count": 0,
         }

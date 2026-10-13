@@ -24,6 +24,7 @@ from app.modules.report.controller import router
 from app.modules.report.export import workbook_bytes
 from app.modules.report.pages import uni_speed_data, visible_departments
 from app.modules.report.schema import ManhuaDramaQuery, ManhuaProjectQuery, UniSpeedQuery
+from app.modules.report.fold import fold_manhua_dramas
 from app.modules.report.service import (
     ManhuaFact,
     ProjectLink,
@@ -382,9 +383,9 @@ class HttpTests(unittest.TestCase):
     def test_drama_list_pages_with_summary_and_never_calls_ocean(self) -> None:
         facts = [fact(1, 101, "100", "50"), fact(2, 201, "300", "30")]
         links = {1: link(1, series_id=8), 2: link(2, series_id=9)}
+        built = manhua_drama_rows(facts, links, iap_query(), ME)
         with (
-            patch.object(crud, "manhua_facts", AsyncMock(return_value=facts)),
-            patch.object(crud, "standard_links", AsyncMock(return_value=links)),
+            patch("app.modules.report.pages.read_serving.manhua_drama_rows", AsyncMock(return_value=built)),
             patch("app.modules.oceanengine.client.OceanEngineClient.custom_report") as ocean,
         ):
             response = _client(["9"]).get(
@@ -408,17 +409,70 @@ class HttpTests(unittest.TestCase):
             1: link(1),
             2: link(2, pitcher_id=STRANGER, pitcher_name="乙", department_id=11, department_name="投放2组"),
         }
+        built = uni_group_rows(facts, links, DAY, DAY, {11})
+        reader = AsyncMock(return_value=built)
         with (
-            patch.object(crud, "uni_facts", AsyncMock(return_value=facts)),
-            patch.object(crud, "uni_links", AsyncMock(return_value=links)),
+            patch("app.modules.report.pages.read_serving.uni_group_rows", reader),
             patch.object(crud, "user_department_id", AsyncMock(return_value=11)),
         ):
             response = _client(["15"]).get(
                 "/api/v1/reports/uni/groups", params={"date_start": "2026-10-13", "date_end": "2026-10-13"}
             )
+        self.assertEqual(reader.await_args.args[2], {11})
         self.assertEqual(response.status_code, 200, response.text)
         rows = response.json()["data"]["list"]
         self.assertEqual([(row["department_id"], row["all_stat_cost_trend"]) for row in rows], [(11, 40.0)])
+
+
+class FoldTests(unittest.TestCase):
+    def test_two_days_of_one_drama_sum_and_count_an_ad_once(self) -> None:
+        base = {
+            "series_id": 8,
+            "panel_key": "小额",
+            "book_name": "霸总甜宠",
+            "drama_type": "漫剧",
+            "channel": "番茄",
+            "publish_date": date(2026, 9, 1),
+            "pitcher_ids": [ME],
+            "pitcher_names": ["甲"],
+            "department_names": ["投放1组"],
+            "bid_types": ["稳定成本"],
+            "panel_names": ["小额"],
+            "costed_promotion_ids": [101],
+        }
+        rows = [
+            {**base, "stat_cost": Decimal("100"), "stat_pay_amount": Decimal("30")},
+            {**base, "stat_cost": Decimal("50"), "stat_pay_amount": Decimal("20")},
+        ]
+        query = ManhuaDramaQuery(
+            charge_mode="IAP", date_start=date(2026, 10, 12), date_end=date(2026, 10, 13)
+        )
+        folded = fold_manhua_dramas(rows, query, ME)
+        self.assertEqual(len(folded), 1)
+        self.assertEqual(folded[0]["stat_cost"], 150.0)
+        self.assertEqual(folded[0]["promotion_with_cost_count"], 1)
+        self.assertEqual(folded[0]["pay_amount_roi"], 0.3333)
+
+    def test_owner_keeps_a_row_that_is_not_theirs(self) -> None:
+        row = {
+            "series_id": 8,
+            "panel_key": "小额",
+            "book_name": "霸总甜宠",
+            "drama_type": "漫剧",
+            "channel": "番茄",
+            "publish_date": date(2026, 9, 1),
+            "pitcher_ids": [STRANGER],
+            "pitcher_names": ["乙"],
+            "department_names": ["投放2组"],
+            "bid_types": ["稳定成本"],
+            "panel_names": ["小额"],
+            "costed_promotion_ids": [],
+            "stat_cost": Decimal("40"),
+            "stat_pay_amount": Decimal("10"),
+        }
+        folded = fold_manhua_dramas([row], iap_query(), None)
+        self.assertEqual(len(folded), 1)
+        self.assertEqual(folded[0]["pitchers"], "乙")
 
 
 if __name__ == "__main__":

@@ -166,6 +166,7 @@ async def run_hourly_delivery_report(session: AsyncSession) -> int:
         pairs = await _load_pairs(session)
         if not pairs:
             logger.info("投放报表跳过：没有可用访问令牌")
+            await _rebuild(session)
             return 0
         written = 0
         for advertiser_id, token in pairs:
@@ -177,7 +178,15 @@ async def run_hourly_delivery_report(session: AsyncSession) -> int:
                 session, client, advertiser_id, token, UNI_TOPIC, UNI_DIMENSIONS,
                 [*UNI_MONEY, *UNI_RATIOS, *UNI_COUNTS], uni_row, _upsert_uni,
             )
+        await _rebuild(session)
         return written
+
+
+async def _rebuild(session: AsyncSession) -> None:
+    """原始小时数落库之后，刷成列表直接读的日表。"""
+    from app.modules.report.refresh import rebuild_serving
+
+    await rebuild_serving(session, pull_days(beijing_now()))
 
 
 async def _pull_topic(

@@ -56,6 +56,7 @@ async def session_principal(session: AsyncSession, user: User) -> dict:
         "login_account": user.login_account,
         "tenant": user.tenant,
         "enabled": user.enabled,
+        "role_kind": user.role_kind,
         "menu_ids": sorted(str(item) for item in menus),
     }
 

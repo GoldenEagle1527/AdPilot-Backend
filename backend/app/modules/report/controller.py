@@ -42,6 +42,8 @@ from app.modules.report.schema import (
 )
 from app.modules.system_admin import require_menu
 from app.modules.system_admin.domain.access import effective_menu_ids, user_by_login
+from app.modules.system_admin.domain.enums import ROLE_KIND_OWNER
+from app.modules.system_admin.domain.models import User
 from app.modules.system_admin.domain.scope import resolve_data_scope
 
 router = APIRouter(prefix="/api/v1/reports", tags=["reports"])
@@ -75,6 +77,19 @@ def _user_id(principal: dict[str, Any]) -> int:
     return int(principal["id"])
 
 
+async def _viewer_id(session: AsyncSession, principal: dict[str, Any]) -> int | None:
+    """负责人看全部报表，返回空。其余账号只看自己是投手的行。"""
+    if principal.get("role_kind") == ROLE_KIND_OWNER:
+        return None
+    getter = getattr(session, "get", None)
+    if not callable(getter):
+        return _user_id(principal)
+    user = await getter(User, _user_id(principal))
+    if user is not None and user.role_kind == ROLE_KIND_OWNER:
+        return None
+    return _user_id(principal)
+
+
 @router.get(
     "/manhua/dramas",
     response_model=Envelope[ReportPage[ManhuaDramaItem, ManhuaMetrics]],
@@ -87,7 +102,7 @@ async def get_manhua_dramas(
 ) -> dict[str, Any]:
     """所选区间一部剧一行，付费再按面板拆行。当前用户须是该行投手之一。"""
     await _assert_menu(session, principal, _CHARGE_MENU[query.charge_mode])
-    return success(await manhua_page(session, query, "drama", _user_id(principal)))
+    return success(await manhua_page(session, query, "drama", await _viewer_id(session, principal)))
 
 
 @router.get(
@@ -102,7 +117,7 @@ async def get_manhua_projects(
 ) -> dict[str, Any]:
     """所选区间一个项目一行。只看自己是投手的项目。"""
     await _assert_menu(session, principal, _CHARGE_MENU[query.charge_mode])
-    return success(await manhua_page(session, query, "project", _user_id(principal)))
+    return success(await manhua_page(session, query, "project", await _viewer_id(session, principal)))
 
 
 @router.get(
@@ -117,7 +132,7 @@ async def get_manhua_promotions(
 ) -> dict[str, Any]:
     """所选区间一条广告一行。只看自己是投手的广告。"""
     await _assert_menu(session, principal, _CHARGE_MENU[query.charge_mode])
-    return success(await manhua_page(session, query, "promotion", _user_id(principal)))
+    return success(await manhua_page(session, query, "promotion", await _viewer_id(session, principal)))
 
 
 @router.get(
@@ -132,7 +147,7 @@ async def get_manhua_trend(
 ) -> dict[str, Any]:
     """所选一天按小时的消耗和付费金额。还没到的小时不返回。"""
     await _assert_menu(session, principal, _CHARGE_MENU[query.charge_mode])
-    return success(await manhua_trend_data(session, query, _user_id(principal), beijing_now()))
+    return success(await manhua_trend_data(session, query, await _viewer_id(session, principal), beijing_now()))
 
 
 @router.get(
@@ -148,7 +163,7 @@ async def get_manhua_export(
 ) -> Response:
     """与对应列表同筛选、同排序的全部行，不分页。"""
     await _assert_menu(session, principal, _CHARGE_MENU[query.charge_mode])
-    rows = await manhua_rows(session, query, query.level, _user_id(principal))
+    rows = await manhua_rows(session, query, query.level, await _viewer_id(session, principal))
     content = workbook_bytes(query.level, rows)
     name = f"漫剧报表-{query.charge_mode}-{query.level}-{query.date_start}_{query.date_end}.xlsx"
     return Response(
@@ -170,7 +185,7 @@ async def get_uni_dramas(
 ) -> dict[str, Any]:
     """所选区间一部剧一行。当前用户须是该剧投手之一。"""
     scope = await resolve_data_scope(session, principal)
-    return success(await uni_page(session, query, "dramas", scope))
+    return success(await uni_page(session, query, "dramas", scope, see_all=await _viewer_id(session, principal) is None))
 
 
 @router.get(
@@ -185,7 +200,9 @@ async def get_uni_pitcher_dramas(
 ) -> dict[str, Any]:
     """同短剧收益，多一格投手（多人用、连接）。"""
     scope = await resolve_data_scope(session, principal)
-    return success(await uni_page(session, query, "pitcher-dramas", scope))
+    return success(
+        await uni_page(session, query, "pitcher-dramas", scope, see_all=await _viewer_id(session, principal) is None)
+    )
 
 
 @router.get(
@@ -200,7 +217,7 @@ async def get_uni_pitchers(
 ) -> dict[str, Any]:
     """一个投手一天一行。只看自己。"""
     scope = await resolve_data_scope(session, principal)
-    return success(await uni_page(session, query, "pitchers", scope))
+    return success(await uni_page(session, query, "pitchers", scope, see_all=await _viewer_id(session, principal) is None))
 
 
 @router.get(
@@ -215,7 +232,7 @@ async def get_uni_groups(
 ) -> dict[str, Any]:
     """一个部门一天一行。可见部门是数据范围；范围为空只看本部门。"""
     scope = await resolve_data_scope(session, principal)
-    return success(await uni_page(session, query, "groups", scope))
+    return success(await uni_page(session, query, "groups", scope, see_all=await _viewer_id(session, principal) is None))
 
 
 @router.get(
@@ -231,4 +248,8 @@ async def get_uni_speed(
     """所选日与前一天按小时的全域消耗，带分时增长率。回收数组为空。"""
     await _assert_menu(session, principal, _SPEED_MENU[query.scope])
     scope = await resolve_data_scope(session, principal)
-    return success(await uni_speed_data(session, query, scope, beijing_now()))
+    return success(
+        await uni_speed_data(
+            session, query, scope, beijing_now(), see_all=await _viewer_id(session, principal) is None
+        )
+    )

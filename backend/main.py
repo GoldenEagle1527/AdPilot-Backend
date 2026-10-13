@@ -46,6 +46,7 @@ async def lifespan(_app: FastAPI):
     install_ocean_client_for_settings(settings)
     if settings.oceanengine.mock:
         await _seed_oceanengine()
+    await _rebuild_report_days()
     ticker = asyncio.create_task(_due_rules_loop())
     material_ticker = None
     if not settings.oceanengine.mock:
@@ -88,6 +89,21 @@ async def _due_rules_loop() -> None:
         await asyncio.sleep(_RULE_INTERVAL_SECONDS)
 
 
+async def _rebuild_report_days() -> None:
+    """用库里已有的小时快照刷近 8 天日表。不打巨量。mock 和正式启动都跑一次。"""
+    from app.core.times import beijing_now
+    from app.modules.oceanengine.delivery_report import pull_days
+    from app.modules.report.refresh import rebuild_serving
+
+    async for session in get_session():
+        try:
+            written = await rebuild_serving(session, pull_days(beijing_now()))
+            logger.info("报表日表启动刷新 %s 行", written)
+        except Exception:
+            logger.exception("报表日表启动刷新失败")
+        break
+
+
 async def _material_report_loop() -> None:
     """关闭 mock 时启动。先拉一次，之后每小时拉近 30 天素材报表和近 8 天投放报表小时快照。"""
     from app.modules.oceanengine.delivery_report import run_hourly_delivery_report
@@ -116,6 +132,9 @@ async def _seed_oceanengine() -> None:
     async for session in get_session():
         await ensure_oceanengine_seed(session)
         await ensure_theater_platforms(session)
+        from app.modules.report.mock_seed import ensure_report_mock
+
+        await ensure_report_mock(session)
         await session.commit()
         break
 
