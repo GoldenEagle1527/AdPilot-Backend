@@ -95,6 +95,7 @@ class QueryShapeTests(unittest.TestCase):
         self.assertIn("promotion_link", sql)
         self.assertNotIn("drama_condition", sql)
         self.assertIn("is_deleted = 0", sql)
+        self.assertIn("sort_order ASC", sql)
         self.assertIn("created_date DESC", sql)
 
     def test_blank_name_does_not_filter(self) -> None:

@@ -1,14 +1,14 @@
 # 契约：create-drama-rule
 
 业务id：uni-robot
-文档版本：2
+文档版本：3
 方法：POST
 路径：/api/v1/uni-robot/drama-rules
 作用：新增一条按剧条件规则。只保存，不创建任务，也不到点执行。
 
 作者：
 状态：draft
-更新日期：2026-09-30
+更新日期：2026-10-13
 
 ## 请求
 
@@ -21,6 +21,7 @@
 | max_videos_per_series | body | integer | 否 | 每部剧最大视频素材数，1–10000，默认 800 |
 | schedule_hour | body | integer | 是 | 每天触发的小时，0–23 |
 | schedule_minute | body | integer | 是 | 每天触发的分钟，0–59 |
+| sort_order | body | integer | 否 | 排序，0–9999，缺省 0 |
 | is_enabled | body | boolean | 否 | 开关，默认 false |
 | stat_span | body | string | 是 | 统计时间：`today` 当天、`yesterday` 昨天 |
 | cost_min | body | number | 是 | 消耗下限，单位元，≥ 0。不能大于上限，两端相等可以 |
@@ -55,5 +56,6 @@
 
 | 日期 | 文档版本 | 破坏？ | 变更 | 作者 |
 | --- | --- | --- | --- | --- |
+| 2026-10-13 | 3 | 否 | 入参和出参增加 `sort_order` | |
 | 2026-09-30 | 2 | 否 | 线上目录已接入：模板查全域模板表，平台没有来源时 400。去掉 503 | |
 | 2026-09-30 | 1 | 否 | 初稿 | |

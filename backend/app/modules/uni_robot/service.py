@@ -58,8 +58,13 @@ async def create_link_rule(
         template_id=template_id,
         platform_id=platform_id,
         max_videos_per_series=body.max_videos_per_series,
+        schedule_kind=body.schedule_kind,
         schedule_hour=body.schedule_hour,
         schedule_minute=body.schedule_minute,
+        schedule_end_hour=body.schedule_end_hour,
+        schedule_end_minute=body.schedule_end_minute,
+        cycle_minutes=body.cycle_minutes,
+        sort_order=body.sort_order,
         is_enabled=body.is_enabled,
         stat_span=None,
         cost_min=None,
@@ -87,8 +92,10 @@ async def create_drama_rule(
         template_id=template_id,
         platform_id=platform_id,
         max_videos_per_series=body.max_videos_per_series,
+        schedule_kind="daily",
         schedule_hour=body.schedule_hour,
         schedule_minute=body.schedule_minute,
+        sort_order=body.sort_order,
         is_enabled=body.is_enabled,
         stat_span=body.stat_span,
         cost_min=body.cost_min,
@@ -122,8 +129,13 @@ def link_item(row: UniRobotRule) -> dict[str, Any]:
         "template_id": str(row.template_id),
         "platform_id": str(row.platform_id),
         "max_videos_per_series": row.max_videos_per_series,
+        "schedule_kind": row.schedule_kind or "daily",
         "schedule_hour": row.schedule_hour,
         "schedule_minute": row.schedule_minute,
+        "schedule_end_hour": row.schedule_end_hour,
+        "schedule_end_minute": row.schedule_end_minute,
+        "cycle_minutes": row.cycle_minutes,
+        "sort_order": int(row.sort_order or 0),
         "is_enabled": row.is_enabled,
         "created_at": beijing_iso(row.created_date),
         "updated_at": beijing_iso(row.updated_date),
@@ -179,8 +191,13 @@ async def update_link_rule(
     row.template_id = template_id
     row.platform_id = platform_id
     row.max_videos_per_series = body.max_videos_per_series
+    row.schedule_kind = body.schedule_kind
     row.schedule_hour = body.schedule_hour
     row.schedule_minute = body.schedule_minute
+    row.schedule_end_hour = body.schedule_end_hour
+    row.schedule_end_minute = body.schedule_end_minute
+    row.cycle_minutes = body.cycle_minutes
+    row.sort_order = body.sort_order
     row.is_enabled = body.is_enabled
     row.stat_span = None
     row.cost_min = None
@@ -252,6 +269,7 @@ def drama_item(row: UniRobotRule) -> dict[str, Any]:
         "max_videos_per_series": row.max_videos_per_series,
         "schedule_hour": row.schedule_hour,
         "schedule_minute": row.schedule_minute,
+        "sort_order": int(row.sort_order or 0),
         "is_enabled": row.is_enabled,
         "stat_span": row.stat_span,
         "cost_min": _money(row.cost_min),
@@ -312,8 +330,10 @@ async def update_drama_rule(
     row.template_id = template_id
     row.platform_id = platform_id
     row.max_videos_per_series = body.max_videos_per_series
+    row.schedule_kind = "daily"
     row.schedule_hour = body.schedule_hour
     row.schedule_minute = body.schedule_minute
+    row.sort_order = body.sort_order
     row.is_enabled = body.is_enabled
     row.stat_span = body.stat_span
     row.cost_min = body.cost_min

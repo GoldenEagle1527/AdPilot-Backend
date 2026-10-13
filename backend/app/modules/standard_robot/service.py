@@ -48,8 +48,10 @@ def robot_item(row: StandardNativeRobotRule) -> dict[str, Any]:
         "accounts_per_series": row.accounts_per_series,
         "max_videos_per_series": row.max_videos_per_series,
         "stat_span": row.stat_span,
+        "cost_op": row.cost_op,
         "cost_min": _bound(row.cost_min, "0.01"),
         "cost_max": _bound(row.cost_max, "0.01"),
+        "recovery_op": row.recovery_op,
         "recovery_min": _bound(row.recovery_min, "0.0001"),
         "recovery_max": _bound(row.recovery_max, "0.0001"),
         "is_enabled": row.is_enabled,
@@ -114,8 +116,10 @@ def _apply(row: StandardNativeRobotRule, body: RobotWrite, template_id: int) -> 
     row.accounts_per_series = body.accounts_per_series
     row.max_videos_per_series = body.max_videos_per_series
     row.stat_span = body.stat_span
+    row.cost_op = body.cost_op
     row.cost_min = body.cost_min
     row.cost_max = body.cost_max
+    row.recovery_op = body.recovery_op
     row.recovery_min = body.recovery_min
     row.recovery_max = body.recovery_max
     row.is_enabled = body.is_enabled
@@ -163,8 +167,10 @@ async def create_robot_rule(
         accounts_per_series=body.accounts_per_series,
         max_videos_per_series=body.max_videos_per_series,
         stat_span=body.stat_span,
+        cost_op=body.cost_op,
         cost_min=body.cost_min,
         cost_max=body.cost_max,
+        recovery_op=body.recovery_op,
         recovery_min=body.recovery_min,
         recovery_max=body.recovery_max,
         is_enabled=body.is_enabled,

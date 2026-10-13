@@ -1,7 +1,7 @@
 # 契约：create-free-robot
 
 业务id：standard-robot
-文档版本：2
+文档版本：3
 方法：POST
 路径：/api/v1/standard-native-robots/free
 作用：新增一条免费漫剧端原生机器人。模板必须是 IAA。不在这次请求里提交投放。
@@ -32,8 +32,10 @@
 | accounts_per_series | integer | 否 | 1–20，缺省 3 |
 | max_videos_per_series | integer | 否 | 1–800，缺省 200 |
 | stat_span | string \| null | 否 | `today` 或 `yesterday` |
-| cost_min / cost_max | number \| null | 否 | 消耗区间，元 |
-| recovery_min / recovery_max | number \| null | 否 | 回收比值 |
+| cost_op | string \| null | 否 | `gt` 大于、`lt` 小于、`gte` 大于等于、`lte` 小于等于 |
+| cost_min / cost_max | number \| null | 否 | 消耗，元。大于、大于等于放 `cost_min`；小于、小于等于放 `cost_max` |
+| recovery_op | string \| null | 否 | 回收率比较，取值同 `cost_op` |
+| recovery_min / recovery_max | number \| null | 否 | 回收比值。大于、大于等于放 `recovery_min`；小于、小于等于放 `recovery_max` |
 | is_enabled | boolean | 否 | 缺省 true |
 
 `charge_mode` 不收，固定 IAA。所属投手是当前用户。
@@ -62,5 +64,6 @@
 
 | 日期 | 文档版本 | 破坏？ | 变更 | 作者 |
 | --- | --- | --- | --- | --- |
+| 2026-10-13 | 3 | 否 | 入参增加消耗、回收率比较符 `cost_op`、`recovery_op` | |
 | 2026-10-13 | 2 | 否 | 入参增加投放时间、竞价策略、周期、每天结束时分、排序；剧条件可带剧场；时间调度接受 daily、cycle | |
 | 2026-10-10 | 1 | 否 | 初稿。出参补齐可编辑字段 | |

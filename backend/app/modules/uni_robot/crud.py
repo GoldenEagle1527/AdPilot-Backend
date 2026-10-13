@@ -53,11 +53,15 @@ async def get_link_rule(session: AsyncSession, rule_id: int) -> UniRobotRule | N
 def link_page_stmt(
     filters: list[ColumnElement[bool]], *, offset: int, limit: int
 ) -> Select[tuple[UniRobotRule]]:
-    """按创建时间倒序的按推广链接分页查询。"""
+    """按排序升序，相同再按创建时间倒序。"""
     return (
         select(UniRobotRule)
         .where(*filters)
-        .order_by(UniRobotRule.created_date.desc(), UniRobotRule.id.desc())
+        .order_by(
+            UniRobotRule.sort_order.asc(),
+            UniRobotRule.created_date.desc(),
+            UniRobotRule.id.desc(),
+        )
         .offset(offset)
         .limit(limit)
     )
@@ -70,7 +74,7 @@ async def page_link_rules(
     offset: int,
     limit: int,
 ) -> tuple[list[UniRobotRule], int]:
-    """按创建时间倒序分页。返回 (行, 总数)。"""
+    """按排序升序分页。返回 (行, 总数)。"""
     total = int(
         (await session.execute(select(func.count()).select_from(UniRobotRule).where(*filters))).scalar_one()
     )
@@ -96,7 +100,7 @@ async def get_drama_rule(session: AsyncSession, rule_id: int) -> UniRobotRule | 
 def drama_page_stmt(
     filters: list[ColumnElement[bool]], *, offset: int, limit: int
 ) -> Select[tuple[UniRobotRule]]:
-    """按创建时间倒序的按剧条件分页查询。类型由 filters 限定。"""
+    """按排序升序的按剧条件分页查询。类型由 filters 限定。"""
     return link_page_stmt(filters, offset=offset, limit=limit)
 
 
@@ -107,5 +111,5 @@ async def page_drama_rules(
     offset: int,
     limit: int,
 ) -> tuple[list[UniRobotRule], int]:
-    """按创建时间倒序分页。返回 (行, 总数)。"""
+    """按排序升序分页。返回 (行, 总数)。"""
     return await page_link_rules(session, filters, offset=offset, limit=limit)

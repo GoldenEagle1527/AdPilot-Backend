@@ -31,8 +31,14 @@ class RobotWrite(BaseModel):
     accounts_per_series: int = Field(3, ge=1, le=20)
     max_videos_per_series: int = Field(200, ge=1, le=800)
     stat_span: Literal["today", "yesterday"] | None = None
+    cost_op: Literal["gt", "lt", "gte", "lte"] | None = Field(
+        None, description="消耗比较：gt 大于、lt 小于、gte 大于等于、lte 小于等于"
+    )
     cost_min: Decimal | None = None
     cost_max: Decimal | None = None
+    recovery_op: Literal["gt", "lt", "gte", "lte"] | None = Field(
+        None, description="回收率比较：gt 大于、lt 小于、gte 大于等于、lte 小于等于"
+    )
     recovery_min: Decimal | None = None
     recovery_max: Decimal | None = None
     is_enabled: bool = True
@@ -79,8 +85,10 @@ class RobotItem(BaseModel):
     accounts_per_series: int
     max_videos_per_series: int
     stat_span: str | None
+    cost_op: str | None
     cost_min: str | None
     cost_max: str | None
+    recovery_op: str | None
     recovery_min: str | None
     recovery_max: str | None
     is_enabled: bool

@@ -34,24 +34,29 @@ END
 
 
 def upgrade() -> None:
-    op.alter_column(
-        "manhua_series",
-        "category_text",
-        existing_type=sa.String(length=128),
-        type_=sa.String(length=512),
-        existing_nullable=False,
-        comment="常读题材，逗号分隔，如 玄幻脑洞,逆袭",
-    )
-    op.alter_column(
-        "manhua_series",
-        "estimate_publish_time",
-        existing_type=sa.String(length=64),
-        type_=sa.DateTime(timezone=True),
-        existing_nullable=False,
-        nullable=True,
-        postgresql_using=_ESTIMATE_TO_TIMESTAMP,
-        comment="常读预估可投时间（北京），常读没给为空",
-    )
+    columns = {col["name"]: col for col in sa.inspect(op.get_bind()).get_columns("manhua_series")}
+    category = columns["category_text"]["type"]
+    if getattr(category, "length", None) != 512:
+        op.alter_column(
+            "manhua_series",
+            "category_text",
+            existing_type=sa.String(length=128),
+            type_=sa.String(length=512),
+            existing_nullable=False,
+            comment="常读题材，逗号分隔，如 玄幻脑洞,逆袭",
+        )
+    estimate = columns["estimate_publish_time"]["type"]
+    if not isinstance(estimate, sa.DateTime):
+        op.alter_column(
+            "manhua_series",
+            "estimate_publish_time",
+            existing_type=sa.String(length=64),
+            type_=sa.DateTime(timezone=True),
+            existing_nullable=False,
+            nullable=True,
+            postgresql_using=_ESTIMATE_TO_TIMESTAMP,
+            comment="常读预估可投时间（北京），常读没给为空",
+        )
 
 
 def downgrade() -> None:

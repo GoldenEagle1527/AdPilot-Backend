@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
@@ -25,11 +25,26 @@ class RuleClock(BaseModel):
     max_videos_per_series: int = Field(800, ge=1, le=10000, description="每部剧最大视频素材数，默认 800")
     schedule_hour: int = Field(ge=0, le=23, description="每天触发的小时，0–23")
     schedule_minute: int = Field(ge=0, le=59, description="每天触发的分钟，0–59")
+    sort_order: int = Field(0, ge=0, le=9999, description="排序，小的在前")
     is_enabled: bool = Field(False, description="开关：true 开启、false 关闭")
 
 
 class LinkRuleWrite(RuleClock):
     """按推广链接创建批量任务。没有统计时间、消耗区间、回收率区间。"""
+
+    schedule_kind: Literal["daily", "cycle"] = Field(
+        "daily", description="时间调度：daily 每天、cycle 周期"
+    )
+    cycle_minutes: int | None = Field(None, ge=1, le=1440, description="周期分钟，如 10、30、60")
+    schedule_end_hour: int | None = Field(None, ge=0, le=23, description="每天结束小时")
+    schedule_end_minute: int | None = Field(None, ge=0, le=59, description="每天结束分钟")
+
+    @model_validator(mode="after")
+    def end_time_is_a_pair(self) -> LinkRuleWrite:
+        """结束时间的小时和分钟要成对。"""
+        if (self.schedule_end_hour is None) != (self.schedule_end_minute is None):
+            raise ValueError("每天结束时间要同时给出小时和分钟")
+        return self
 
 
 class LinkRuleQuery(BaseModel):
@@ -68,8 +83,13 @@ class LinkRuleItem(BaseModel):
     template_id: str
     platform_id: str
     max_videos_per_series: int
+    schedule_kind: str
     schedule_hour: int
     schedule_minute: int
+    schedule_end_hour: int | None
+    schedule_end_minute: int | None
+    cycle_minutes: int | None
+    sort_order: int
     is_enabled: bool
     created_at: str
     updated_at: str
@@ -139,6 +159,7 @@ class DramaRuleItem(BaseModel):
     max_videos_per_series: int
     schedule_hour: int
     schedule_minute: int
+    sort_order: int
     is_enabled: bool
     stat_span: str
     cost_min: str

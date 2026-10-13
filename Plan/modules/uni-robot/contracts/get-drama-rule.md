@@ -1,14 +1,14 @@
 # 契约：get-drama-rule
 
 业务id：uni-robot
-文档版本：1
+文档版本：2
 方法：GET
 路径：/api/v1/uni-robot/drama-rules/{rule_id}
 作用：取一条未删除的按剧条件规则。按推广链接不在这条路径上。
 
 作者：
 状态：draft
-更新日期：2026-09-30
+更新日期：2026-10-13
 
 ## 请求
 
@@ -30,6 +30,7 @@
 | max_videos_per_series | integer | 每部剧最大视频素材数 |
 | schedule_hour | integer | 每天触发的小时，0–23。本接口不到点执行 |
 | schedule_minute | integer | 每天触发的分钟，0–59 |
+| sort_order | integer | 排序，小的在前。旧行为 0 |
 | is_enabled | boolean | 开关 |
 | stat_span | string | 统计时间：`today` 当天、`yesterday` 昨天 |
 | cost_min | string | 消耗下限，单位元，两位小数 |
@@ -57,4 +58,5 @@
 
 | 日期 | 文档版本 | 破坏？ | 变更 | 作者 |
 | --- | --- | --- | --- | --- |
+| 2026-10-13 | 2 | 否 | 增加 `sort_order` | |
 | 2026-09-30 | 1 | 否 | 初稿 | |

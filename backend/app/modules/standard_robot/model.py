@@ -57,6 +57,14 @@ class StandardNativeRobotRule(BaseModel):
         ),
         CheckConstraint("sort_order >= 0", name="ck_std_native_robot_sort"),
         CheckConstraint(
+            "cost_op IS NULL OR cost_op IN ('gt', 'lt', 'gte', 'lte')",
+            name="ck_std_native_robot_cost_op",
+        ),
+        CheckConstraint(
+            "recovery_op IS NULL OR recovery_op IN ('gt', 'lt', 'gte', 'lte')",
+            name="ck_std_native_robot_recovery_op",
+        ),
+        CheckConstraint(
             "accounts_per_series BETWEEN 1 AND 20",
             name="ck_std_native_robot_accounts",
         ),
@@ -110,8 +118,14 @@ class StandardNativeRobotRule(BaseModel):
         Integer, nullable=False, default=200, server_default=text("200"), comment="每部剧视频上限，执行不超过 800"
     )
     stat_span: Mapped[str | None] = mapped_column(String(16), nullable=True, comment="today 或 yesterday")
+    cost_op: Mapped[str | None] = mapped_column(
+        String(8), nullable=True, comment="消耗比较：gt 大于、lt 小于、gte 大于等于、lte 小于等于"
+    )
     cost_min: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
     cost_max: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    recovery_op: Mapped[str | None] = mapped_column(
+        String(8), nullable=True, comment="回收率比较：gt 大于、lt 小于、gte 大于等于、lte 小于等于"
+    )
     recovery_min: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), nullable=True, comment="回收比值")
     recovery_max: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), nullable=True, comment="回收比值")
     is_enabled: Mapped[bool] = mapped_column(

@@ -1,7 +1,7 @@
 # 契约：list-free-robots
 
 业务id：standard-robot
-文档版本：2
+文档版本：3
 方法：GET
 路径：/api/v1/standard-native-robots/free
 作用：分页列出当前登录投手自己的免费（IAA）漫剧端原生机器人。不执行。
@@ -47,10 +47,12 @@
 | accounts_per_series | integer | 每部剧新账户数 |
 | max_videos_per_series | integer | 每部剧视频上限 |
 | stat_span | string \| null | `today` 或 `yesterday` |
-| cost_min | string \| null | 消耗下限，两位小数 |
-| cost_max | string \| null | 消耗上限 |
-| recovery_min | string \| null | 回收下限，四位小数，比值不是百分数 |
-| recovery_max | string \| null | 回收上限 |
+| cost_op | string \| null | 消耗比较：`gt` 大于、`lt` 小于、`gte` 大于等于、`lte` 小于等于。没选为空 |
+| cost_min | string \| null | 消耗下限，两位小数。大于、大于等于时用这个数 |
+| cost_max | string \| null | 消耗上限。小于、小于等于时用这个数 |
+| recovery_op | string \| null | 回收率比较，取值同 `cost_op` |
+| recovery_min | string \| null | 回收下限，四位小数，比值不是百分数。大于、大于等于时用这个数 |
+| recovery_max | string \| null | 回收上限。小于、小于等于时用这个数 |
 | is_enabled | boolean | 开关 |
 | created_at | string | 北京时间 `+08:00` |
 | updated_at | string | 北京时间 `+08:00` |
@@ -75,5 +77,6 @@
 
 | 日期 | 文档版本 | 破坏？ | 变更 | 作者 |
 | --- | --- | --- | --- | --- |
+| 2026-10-13 | 3 | 否 | 列表项增加 `cost_op`、`recovery_op`。小于、小于等于的数值仍在 `cost_max`、`recovery_max` | |
 | 2026-10-13 | 2 | 否 | 列表项增加投放时间、竞价策略、周期、每天结束时分、排序；`platform_id` 剧条件也回；`schedule_kind` 增加 `daily`、`cycle` | |
 | 2026-10-10 | 1 | 否 | 初稿 | |

@@ -142,6 +142,10 @@ class ManageTests(unittest.TestCase):
             cycle_minutes=30,
             sort_order=2,
             platform_id=8,
+            cost_op="gt",
+            cost_min=Decimal("22"),
+            recovery_op="lt",
+            recovery_max=Decimal("555"),
         )
         with patch(
             "app.modules.standard_robot.service.get_template_row",
@@ -164,6 +168,10 @@ class ManageTests(unittest.TestCase):
         self.assertEqual(data["sort_order"], 2)
         self.assertEqual(data["platform_id"], "8")
         self.assertEqual(data["schedule_kind"], "cycle")
+        self.assertEqual(data["cost_op"], "gt")
+        self.assertEqual(data["cost_min"], "22.00")
+        self.assertEqual(data["recovery_op"], "lt")
+        self.assertEqual(data["recovery_max"], "555.0000")
 
     def test_old_row_still_lists_the_new_keys(self) -> None:
         """还没填过新列的规则，出参也带上这些键，空的就是空。"""
@@ -173,6 +181,8 @@ class ManageTests(unittest.TestCase):
         self.assertIsNone(data["delivery_hours"])
         self.assertIsNone(data["bid_type"])
         self.assertIsNone(data["cycle_minutes"])
+        self.assertIsNone(data["cost_op"])
+        self.assertIsNone(data["recovery_op"])
         self.assertEqual(data["sort_order"], 0)
         self.assertIsNone(data["platform_id"])
 
