@@ -2,8 +2,9 @@
 
 列表只认 oe_project、oe_promotion，效果数按项目号、广告号从 oe_material_report 加总。
 报表夹具已经把一个标准付费项目和下面两条广告写进素材小时表和投放任务表，这里补上项目行和广告行。
-全域另建一个项目和一条广告。素材小时表里没有它的行，消耗是 0。
+全域另建一个项目和一条广告，并在首次写入那天补两个小时的素材行，全域项目页才有消耗。
 主体、短剧、抖音号、预算和 ROI 都从夹具任务上读。夹具不在库里时不写。
+全域项目没有挂在投放任务上，报表日表刷新时会丢掉这些素材行，不进利润和素材报表。
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ from decimal import Decimal
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.times import BEIJING, beijing_now
 from app.modules.account.model import AdvertiserAccount, OeMaterialReport, OeProject, OePromotion
 from app.modules.standard_delivery.model import (
     DeliveryTaskDraft,
@@ -29,6 +31,12 @@ _UNI_PROJECT = 80030001
 _UNI_PROMOTION = 80030002
 _UNI_PROJECT_NAME = "全域夹具项目"
 _UNI_PROMOTION_NAME = "全域夹具广告"
+_UNI_MATERIAL = 80030003
+_UNI_MATERIAL_NAME = "全域夹具素材"
+# 和报表夹具广告 8001 每小时的数一致。
+_UNI_HOURS = (10, 14)
+_UNI_HOUR_COST = Decimal("120.00")
+_UNI_HOUR_PAY = Decimal("36.00")
 
 
 def project_template(budget: Decimal | None, roi_goal: Decimal | None = None) -> dict:
@@ -45,6 +53,8 @@ async def ensure_ocean_ads_mock(session: AsyncSession) -> None:
     """补齐标准和全域各一个项目，以及下面的广告。"""
     await _ensure_standard(session)
     await _ensure_uni(session)
+    await session.flush()
+    await _ensure_uni_hours(session)
     await session.flush()
 
 
@@ -149,6 +159,53 @@ async def _ensure_uni(session: AsyncSession) -> None:
             name=_UNI_PROMOTION_NAME,
         )
     )
+
+
+def uni_hour_rows(advertiser_id: int, day: str, synced_at: object) -> list[OeMaterialReport]:
+    """全域夹具广告在这一天的素材小时行。"""
+    return [
+        OeMaterialReport(
+            advertiser_id=advertiser_id,
+            stat_time_hour=f"{day} {hour:02d}:00:00",
+            material_id=_UNI_MATERIAL,
+            ad_platform_material_name=_UNI_MATERIAL_NAME,
+            cdp_promotion_id=_UNI_PROMOTION,
+            cdp_promotion_name=_UNI_PROMOTION_NAME,
+            cdp_project_id=_UNI_PROJECT,
+            cdp_project_name=_UNI_PROJECT_NAME,
+            stat_cost=_UNI_HOUR_COST,
+            attribution_billing_game_in_app_ltv_1day=_UNI_HOUR_PAY,
+            stat_pay_amount=_UNI_HOUR_PAY,
+            show_cnt=1000,
+            click_cnt=50,
+            convert_cnt=5,
+            active=8,
+            game_addiction=0,
+            synced_at=synced_at,
+        )
+        for hour in _UNI_HOURS
+    ]
+
+
+async def _ensure_uni_hours(session: AsyncSession) -> None:
+    """全域项目还在、这条广告一行素材数据都没有时，补首次写入那天的两个小时。"""
+    project = await session.scalar(
+        select(OeProject).where(OeProject.ocean_project_id == _UNI_PROJECT, OeProject.is_deleted == 0)
+    )
+    if project is None:
+        return
+    existing = await session.scalar(
+        select(OeMaterialReport.id).where(
+            OeMaterialReport.advertiser_id == project.advertiser_id,
+            OeMaterialReport.cdp_promotion_id == _UNI_PROMOTION,
+        )
+    )
+    if existing is not None:
+        return
+    now = beijing_now()
+    day = now.astimezone(BEIJING).date().isoformat()
+    for row in uni_hour_rows(int(project.advertiser_id), day, now):
+        session.add(row)
 
 
 async def _project_exists(session: AsyncSession, ocean_project_id: int) -> bool:
