@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, model_validator
 
 
 DeliveryKind = Literal["standard", "uni"]
@@ -507,12 +507,24 @@ MENU_COLUMNS: dict[int, tuple[str, ...]] = {
 }
 
 
+def _menu_id_from_query(value: object) -> object:
+    """地址栏里的 menu_id 是文本。32 这类数字先转成整数，再核对是不是这四个菜单。"""
+    if isinstance(value, str):
+        text = value.strip()
+        if text.isdigit():
+            return int(text)
+    return value
+
+
+MenuId = Annotated[Literal[32, 33, 34, 35], BeforeValidator(_menu_id_from_query)]
+
+
 class ColumnQuery(BaseModel):
     """读这个用户在这个菜单上的列。没存过则返回默认顺序。"""
 
     model_config = ConfigDict(extra="forbid")
 
-    menu_id: Literal[32, 33, 34, 35]
+    menu_id: MenuId
 
 
 class ColumnWrite(BaseModel):
@@ -522,14 +534,22 @@ class ColumnWrite(BaseModel):
 
     menu_id: Literal[32, 33, 34, 35]
     columns: list[str] = Field(min_length=1, max_length=40)
+    fixed_columns: list[str] = Field(default_factory=list, description="右侧固定的列，最多 5 个，必须是已选列")
 
     @model_validator(mode="after")
     def columns_belong_to_the_menu(self) -> ColumnWrite:
         allowed = set(MENU_COLUMNS[self.menu_id])
+        chosen = set(self.columns)
         if any(name not in allowed for name in self.columns):
             raise ValueError("列名不在该菜单")
-        if len(self.columns) != len(set(self.columns)):
+        if len(self.columns) != len(chosen):
             raise ValueError("列名不能重复")
+        if len(self.fixed_columns) > 5:
+            raise ValueError("固定列最多5个")
+        if len(self.fixed_columns) != len(set(self.fixed_columns)):
+            raise ValueError("固定列不能重复")
+        if any(name not in chosen for name in self.fixed_columns):
+            raise ValueError("固定列必须是已选列")
         return self
 
 
@@ -538,5 +558,6 @@ class ColumnData(BaseModel):
 
     menu_id: Literal[32, 33, 34, 35]
     columns: list[str]
+    fixed_columns: list[str]
 
 

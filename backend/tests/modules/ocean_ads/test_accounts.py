@@ -8,7 +8,8 @@ from decimal import Decimal
 
 from pydantic import ValidationError
 
-from app.modules.ocean_ads.schema import AccountQuery, ColumnWrite, ProjectBudgetWrite, PromotionQuery
+from app.modules.ocean_ads.columns import kept_fixed
+from app.modules.ocean_ads.schema import AccountQuery, ColumnQuery, ColumnWrite, ProjectBudgetWrite, PromotionQuery
 from app.modules.ocean_ads.service import _rate, effect_numbers
 from app.modules.ocean_ads.pages import (
     accepted_delete_ids,
@@ -183,6 +184,26 @@ class RoiAndRejectTest(unittest.TestCase):
 
 class ColumnAndBudgetTest(unittest.TestCase):
     """自定义列必须属于该页。广告预算从创建报文抄下来。"""
+
+    def test_get_columns_accepts_menu_id_as_text(self) -> None:
+        self.assertEqual(ColumnQuery(menu_id="32").menu_id, 32)
+        self.assertEqual(ColumnQuery(menu_id="35").menu_id, 35)
+        with self.assertRaises(ValidationError):
+            ColumnQuery(menu_id="36")
+
+    def test_fixed_columns_must_be_selected_and_at_most_five(self) -> None:
+        saved = ColumnWrite(menu_id=32, columns=["account_name", "balance"], fixed_columns=["account_name"])
+        self.assertEqual(saved.fixed_columns, ["account_name"])
+        self.assertEqual(kept_fixed(None, ["account_name"]), [])
+        self.assertEqual(kept_fixed(["balance", "balance", "missing"], ["balance"]), ["balance"])
+        with self.assertRaises(ValidationError):
+            ColumnWrite(menu_id=32, columns=["account_name"], fixed_columns=["balance"])
+        with self.assertRaises(ValidationError):
+            ColumnWrite(
+                menu_id=32,
+                columns=["account_name", "account_id", "balance", "stat_cost", "show_cnt", "click_cnt"],
+                fixed_columns=["account_name", "account_id", "balance", "stat_cost", "show_cnt", "click_cnt"],
+            )
 
     def test_unknown_or_duplicate_column_is_rejected(self) -> None:
         with self.assertRaises(ValidationError):

@@ -83,7 +83,9 @@ async def put_columns(
 ) -> dict[str, Any]:
     """替换当前登录人在这个菜单上的勾选和顺序。"""
     await assert_menu(session, principal, body.menu_id)
-    data = await save_columns(session, int(principal["id"]), body.menu_id, body.columns)
+    data = await save_columns(
+        session, int(principal["id"]), body.menu_id, body.columns, body.fixed_columns
+    )
     await session.commit()
     return success(data)
 
