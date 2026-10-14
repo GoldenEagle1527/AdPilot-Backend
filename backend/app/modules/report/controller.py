@@ -9,10 +9,13 @@ from fastapi import APIRouter, Depends, Query
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.auth import require_token
 from app.core.db import get_session
 from app.core.envelope import ApiError, Envelope, success
 from app.core.times import beijing_now
 from app.modules.report.export import workbook_bytes
+from app.modules.report.home import HomeQuery as HomeCall
+from app.modules.report.home import home_view, save_home_fields
 from app.modules.report.pages import (
     manhua_page,
     manhua_rows,
@@ -21,6 +24,10 @@ from app.modules.report.pages import (
     uni_speed_data,
 )
 from app.modules.report.schema import (
+    HomeData,
+    HomeFieldsBody,
+    HomeFieldsData,
+    HomePageQuery,
     ManhuaDramaItem,
     ManhuaDramaQuery,
     ManhuaExportQuery,
@@ -253,3 +260,40 @@ async def get_uni_speed(
             session, query, scope, beijing_now(), see_all=await _viewer_id(session, principal) is None
         )
     )
+
+
+TokenUser = Annotated[dict[str, Any], Depends(require_token)]
+
+
+@router.get("/home", response_model=Envelope[HomeData], response_model_exclude_none=True, summary="首页")
+async def get_home(
+    session: SessionDep,
+    principal: TokenUser,
+    query: Annotated[HomePageQuery, Query()],
+) -> dict[str, Any]:
+    """五张卡和一条曲线。只读快照，不查菜单。"""
+    return success(
+        await home_view(
+            session,
+            principal,
+            HomeCall(
+                surface=query.surface,
+                charge_mode=query.charge_mode,
+                date_start=query.date_start,
+                date_end=query.date_end,
+                user_ids=tuple(query.user_ids),
+                department_ids=tuple(query.department_ids),
+                curve=query.curve,
+            ),
+        )
+    )
+
+
+@router.put("/home/fields", response_model=Envelope[HomeFieldsData], summary="首页自选字段")
+async def put_home_fields(
+    session: SessionDep,
+    principal: TokenUser,
+    body: HomeFieldsBody,
+) -> dict[str, Any]:
+    """整行替换当前账号该表面的三个自选。不查菜单。"""
+    return success(await save_home_fields(session, _user_id(principal), body.surface, list(body.fields)))

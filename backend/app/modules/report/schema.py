@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import date as Date
-from typing import Generic, Literal, Sequence, TypeVar
+from typing import Any, Generic, Literal, Sequence, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -330,3 +330,57 @@ class UniSpeedData(BaseModel):
     previous_date: str
     cost: SpeedSeries
     recovery: SpeedSeries
+
+
+class HomePageQuery(BaseModel):
+    """首页查询。日期成对可选，缺省不是今天。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    surface: Literal["manhua", "uni_drama", "uni_pitcher_drama", "uni_pitcher", "uni_group"]
+    charge_mode: Literal["IAA", "IAP"] | None = None
+    date_start: Date | None = None
+    date_end: Date | None = None
+    user_ids: list[int] = Field(default_factory=list)
+    department_ids: list[int] = Field(default_factory=list)
+    curve: str | None = None
+
+    @model_validator(mode="after")
+    def check_home(self) -> HomePageQuery:
+        if self.surface == "manhua" and self.charge_mode is None:
+            raise ValueError("漫剧首页必须带收费模式")
+        if self.surface != "manhua" and self.charge_mode is not None:
+            raise ValueError("该表面不能带收费模式")
+        if (self.date_start is None) ^ (self.date_end is None):
+            raise ValueError("日期须成对传入")
+        if self.date_start is not None and self.date_end is not None and self.date_start > self.date_end:
+            raise ValueError("日期段起不能晚于止")
+        return self
+
+
+class HomeFieldsBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    surface: Literal["manhua", "uni_drama", "uni_pitcher_drama", "uni_pitcher", "uni_group"]
+    fields: list[str] = Field(min_length=3, max_length=3)
+
+    @model_validator(mode="after")
+    def check_fields(self) -> HomeFieldsBody:
+        if len(set(self.fields)) != 3:
+            raise ValueError("自选字段须恰好三个且互不相同")
+        return self
+
+
+class HomeData(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    surface: str
+    charge_mode: str | None = None
+    grain: Literal["hour", "day"]
+    cards: list[dict[str, Any]]
+    curve: dict[str, Any]
+
+
+class HomeFieldsData(BaseModel):
+    surface: str
+    fields: list[str]
