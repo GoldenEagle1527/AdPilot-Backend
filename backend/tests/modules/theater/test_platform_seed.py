@@ -1,32 +1,13 @@
-"""启动时只在平台表为空时写入番茄和鸥溪。不连脚本里写死的库。"""
+"""平台种子是番茄和鸥溪。启动时联合夹具只从巨量 mock 分支写入。不连库。"""
 
 from __future__ import annotations
 
-import asyncio
 import unittest
 from pathlib import Path
-from typing import Any
 
-from scripts.seed_theater_platforms import _ROWS, ensure_theater_platforms
+from scripts.seed_theater_platforms import _ROWS
 
 BACKEND = Path(__file__).resolve().parents[3]
-
-
-class SeedSession:
-    """只记下计数和插入。"""
-
-    def __init__(self, count: int) -> None:
-        self.count = count
-        self.statements: list[Any] = []
-
-    async def scalar(self, statement: Any) -> int:
-        """返回预置行数。"""
-        self.statements.append(statement)
-        return self.count
-
-    async def execute(self, statement: Any) -> None:
-        """记下插入。"""
-        self.statements.append(statement)
 
 
 class PlatformSeedTests(unittest.TestCase):
@@ -37,19 +18,24 @@ class PlatformSeedTests(unittest.TestCase):
         self.assertEqual(_ROWS[1]["id"], 22)
         self.assertEqual(_ROWS[1]["name"], "鸥溪")
 
-    def test_empty_table_inserts_and_existing_rows_are_left_alone(self) -> None:
-        """没有行才插入。已经有平台就不改。"""
-        empty = SeedSession(0)
-        asyncio.run(ensure_theater_platforms(empty))
-        self.assertEqual(len(empty.statements), 2)
-        filled = SeedSession(2)
-        asyncio.run(ensure_theater_platforms(filled))
-        self.assertEqual(len(filled.statements), 1)
-
     def test_startup_seeds_platforms_only_with_the_ocean_mock(self) -> None:
-        """平台种子跟巨量种子一起，只从 mock 启动走进去。"""
+        """mock 分支只调用一次联合夹具，旧种子入口不再出现。"""
         text = (BACKEND / "main.py").read_text(encoding="utf-8")
-        self.assertIn("if settings.oceanengine.mock:", text)
-        self.assertIn("ensure_theater_platforms", text)
+        marker = "if settings.oceanengine.mock:"
+        self.assertIn(marker, text)
+        branch_start = text.index(marker) + len(marker)
+        rebuild = "await _rebuild_report_days()"
+        self.assertIn(rebuild, text[branch_start:])
+        branch = text[branch_start : text.index(rebuild, branch_start)]
+        self.assertEqual(branch.count("ensure_joint_mock("), 1)
+        for retired in (
+            "_seed_ocean_ads",
+            "_seed_oceanengine",
+            "ensure_oceanengine_seed",
+            "ensure_report_mock",
+            "ensure_ocean_ads_mock",
+            "ensure_theater_platforms",
+        ):
+            self.assertNotIn(retired, branch)
         self.assertNotIn("fake_catalog", text)
         self.assertNotIn("9101", text)

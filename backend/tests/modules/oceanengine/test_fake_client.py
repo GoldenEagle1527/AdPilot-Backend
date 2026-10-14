@@ -115,12 +115,20 @@ class RealClientTests(unittest.IsolatedAsyncioTestCase):
 
 class OceanSeedPlacementTests(unittest.TestCase):
     def test_seed_is_only_called_from_startup(self) -> None:
-        hits: list[str] = []
-        for path in _python_files():
-            text = path.read_text(encoding="utf-8")
-            if "ensure_oceanengine_seed(" in text:
-                hits.append(path.relative_to(_backend()).as_posix())
-        self.assertEqual(sorted(hits), ["app/modules/account/seed.py", "main.py"])
+        text = (_backend() / "main.py").read_text(encoding="utf-8")
+        start = text.index("if settings.oceanengine.mock:") + len("if settings.oceanengine.mock:")
+        end = text.index("await _rebuild_report_days()")
+        branch = text[start:end]
+        self.assertEqual(branch.count("ensure_joint_mock("), 1)
+        for gone in (
+            "_seed_ocean_ads",
+            "_seed_oceanengine",
+            "ensure_oceanengine_seed",
+            "ensure_report_mock",
+            "ensure_ocean_ads_mock",
+            "ensure_theater_platforms",
+        ):
+            self.assertNotIn(gone, branch)
 
     def test_frontend_demo_is_only_the_manual_script(self) -> None:
         hits: list[str] = []
