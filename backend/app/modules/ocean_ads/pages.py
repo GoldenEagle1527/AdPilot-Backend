@@ -657,6 +657,7 @@ async def list_materials(
             OePromotion.promotion_id == OeMaterialReport.cdp_promotion_id,
             OePromotion.is_deleted == 1,
         )
+        .correlate_except(OePromotion)
         .exists(),
     ]
     if query.account_id is not None:
@@ -931,7 +932,7 @@ async def list_uni_projects(
                 "series_name": face.get("series_name"),
                 "douyin_aweme_id": face.get("douyin_aweme_id"),
                 "douyin_name": face.get("douyin_name"),
-                "stat_cost": _money(Decimal(metric[0]) if metric else 0),
+                "stat_cost": _money(_seven(metric)[0]),
                 "budget": _budget(project.template),
                 "roi_goal": _stored_roi(project.template),
                 "created_at": project.created_date.isoformat(),

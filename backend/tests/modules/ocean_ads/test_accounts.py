@@ -5,16 +5,26 @@ from __future__ import annotations
 import unittest
 from datetime import date
 from decimal import Decimal
+from pathlib import Path
 
 from pydantic import ValidationError
+from sqlalchemy.dialects.mysql import dialect as mysql_dialect
 
 from app.modules.ocean_ads.columns import kept_fixed
-from app.modules.ocean_ads.schema import AccountQuery, ColumnQuery, ColumnWrite, ProjectBudgetWrite, PromotionQuery
-from app.modules.ocean_ads.service import _rate, effect_numbers
+from app.modules.ocean_ads.schema import (
+    AccountQuery,
+    ColumnQuery,
+    ColumnWrite,
+    MaterialQuery,
+    ProjectBudgetWrite,
+    PromotionQuery,
+)
+from app.modules.ocean_ads.service import _money, _rate, effect_numbers
 from app.modules.ocean_ads.pages import (
     accepted_delete_ids,
     accepted_status_ids,
     batch_status,
+    list_materials,
     project_status_label,
     promotion_status_label,
     apply_reject_reasons,
@@ -22,6 +32,7 @@ from app.modules.ocean_ads.pages import (
     reject_lines,
     _aweme_from_template,
     _labels,
+    _seven,
     roi_text,
     stored_budget_mode,
 )
@@ -230,6 +241,50 @@ class ColumnAndBudgetTest(unittest.TestCase):
         self.assertEqual(_payload_budget({"budget": "12.5"}), Decimal("12.50"))
         self.assertIsNone(_payload_budget({"budget": 0}))
         self.assertIsNone(_payload_budget({}))
+
+
+class MaterialDeletedFilterTest(unittest.IsolatedAsyncioTestCase):
+    """所属项目或广告已软删的素材不出现。广告 NOT EXISTS 必须保留自己的 FROM。"""
+
+    async def test_both_not_exists_compile(self) -> None:
+        class Session:
+            def __init__(self) -> None:
+                self.statements: list = []
+
+            async def execute(self, statement):
+                self.statements.append(statement)
+
+                class Result:
+                    def all(self) -> list:
+                        return []
+
+                return Result()
+
+        session = Session()
+        data = await list_materials(
+            session,
+            MaterialQuery(stat_date=date(2026, 10, 14), page=1, page_size=5),
+            {"id": 1, "data_scope": {"self_only": True, "department_ids": []}},
+        )
+        self.assertEqual(data["list"], [])
+        self.assertEqual(data["total"], 0)
+        sql = " ".join(str(session.statements[0].compile(dialect=mysql_dialect())).split())
+        self.assertIn("NOT (EXISTS (SELECT oe_promotion.id FROM oe_promotion", sql)
+        self.assertIn("oe_promotion.is_deleted", sql)
+        self.assertIn("NOT (EXISTS (SELECT oe_project.id FROM oe_project", sql)
+        self.assertIn("oe_project.is_deleted", sql)
+
+
+class UniEmptyCostTest(unittest.TestCase):
+    """没有报表行时全域项目消耗是两位小数 0。"""
+
+    def test_missing_metric_is_zero_money(self) -> None:
+        self.assertEqual(_money(_seven(None)[0]), "0.00")
+        source = (
+            Path(__file__).resolve().parents[3] / "app" / "modules" / "ocean_ads" / "pages.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn('"stat_cost": _money(_seven(metric)[0]),', source)
+        self.assertNotIn("if metric else 0", source)
 
 
 if __name__ == "__main__":
