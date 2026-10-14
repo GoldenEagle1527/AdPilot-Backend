@@ -6,7 +6,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import delete
+from sqlalchemy import delete, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.report import crud
@@ -191,9 +191,124 @@ def _promotion(day: date, mode: str, row: dict[str, Any]) -> ReportManhuaPromoti
 
 
 def _uni_money(row: dict[str, Any]) -> dict[str, Any]:
-    sums = _sums(row, (*UNI_MONEY, "new_project_count"))
+    sums = _sums(row, (*UNI_MONEY, "new_project_count", "all_show_cnt_trend", "all_click_cnt_trend"))
     sums["new_project_count"] = int(sums["new_project_count"])
+    sums["all_show_cnt_trend"] = int(sums["all_show_cnt_trend"])
+    sums["all_click_cnt_trend"] = int(sums["all_click_cnt_trend"])
     return sums
+
+
+def backfill_uni_show_click(connection) -> None:
+    """已有日行补展示、点击。只 UPDATE，对不上的行保持 0。"""
+    connection.execute(
+        text(
+            """
+            UPDATE report_uni_drama_day AS d
+            SET all_show_cnt_trend = agg.show_cnt,
+                all_click_cnt_trend = agg.click_cnt
+            FROM (
+                SELECT substr(r.stat_time_hour, 1, 10) AS stat_day,
+                       map.series_id,
+                       COALESCE(SUM(r.all_show_cnt_trend), 0) AS show_cnt,
+                       COALESCE(SUM(r.all_click_cnt_trend), 0) AS click_cnt
+                FROM oe_uni_project_report AS r
+                JOIN (
+                    SELECT DISTINCT a.ocean_project_id, t.series_id
+                    FROM uni_native_task_account AS a
+                    JOIN uni_native_task AS t ON t.id = a.task_id AND t.is_deleted = 0
+                    WHERE a.is_deleted = 0 AND a.ocean_project_id IS NOT NULL
+                ) AS map ON map.ocean_project_id = r.cdp_project_id
+                WHERE r.is_deleted = 0
+                GROUP BY substr(r.stat_time_hour, 1, 10), map.series_id
+            ) AS agg
+            WHERE d.stat_date = agg.stat_day::date
+              AND d.series_id = agg.series_id
+            """
+        )
+    )
+    connection.execute(
+        text(
+            """
+            UPDATE report_uni_pitcher_drama_day AS d
+            SET all_show_cnt_trend = agg.show_cnt,
+                all_click_cnt_trend = agg.click_cnt
+            FROM (
+                SELECT substr(r.stat_time_hour, 1, 10) AS stat_day,
+                       map.pitcher_user_id,
+                       map.series_id,
+                       COALESCE(SUM(r.all_show_cnt_trend), 0) AS show_cnt,
+                       COALESCE(SUM(r.all_click_cnt_trend), 0) AS click_cnt
+                FROM oe_uni_project_report AS r
+                JOIN (
+                    SELECT DISTINCT a.ocean_project_id, t.series_id, t.pitcher_user_id
+                    FROM uni_native_task_account AS a
+                    JOIN uni_native_task AS t ON t.id = a.task_id AND t.is_deleted = 0
+                    WHERE a.is_deleted = 0 AND a.ocean_project_id IS NOT NULL
+                ) AS map ON map.ocean_project_id = r.cdp_project_id
+                WHERE r.is_deleted = 0
+                GROUP BY substr(r.stat_time_hour, 1, 10), map.pitcher_user_id, map.series_id
+            ) AS agg
+            WHERE d.stat_date = agg.stat_day::date
+              AND d.pitcher_id = agg.pitcher_user_id
+              AND d.series_id = agg.series_id
+            """
+        )
+    )
+    connection.execute(
+        text(
+            """
+            UPDATE report_uni_pitcher_day AS d
+            SET all_show_cnt_trend = agg.show_cnt,
+                all_click_cnt_trend = agg.click_cnt
+            FROM (
+                SELECT substr(r.stat_time_hour, 1, 10) AS stat_day,
+                       map.pitcher_user_id,
+                       COALESCE(SUM(r.all_show_cnt_trend), 0) AS show_cnt,
+                       COALESCE(SUM(r.all_click_cnt_trend), 0) AS click_cnt
+                FROM oe_uni_project_report AS r
+                JOIN (
+                    SELECT DISTINCT a.ocean_project_id, t.pitcher_user_id
+                    FROM uni_native_task_account AS a
+                    JOIN uni_native_task AS t ON t.id = a.task_id AND t.is_deleted = 0
+                    WHERE a.is_deleted = 0 AND a.ocean_project_id IS NOT NULL
+                ) AS map ON map.ocean_project_id = r.cdp_project_id
+                WHERE r.is_deleted = 0
+                GROUP BY substr(r.stat_time_hour, 1, 10), map.pitcher_user_id
+            ) AS agg
+            WHERE d.stat_date = agg.stat_day::date
+              AND d.pitcher_id = agg.pitcher_user_id
+            """
+        )
+    )
+    connection.execute(
+        text(
+            """
+            UPDATE report_uni_group_day AS d
+            SET all_show_cnt_trend = agg.show_cnt,
+                all_click_cnt_trend = agg.click_cnt
+            FROM (
+                SELECT substr(r.stat_time_hour, 1, 10) AS stat_day,
+                       map.department_id,
+                       COALESCE(SUM(r.all_show_cnt_trend), 0) AS show_cnt,
+                       COALESCE(SUM(r.all_click_cnt_trend), 0) AS click_cnt
+                FROM oe_uni_project_report AS r
+                JOIN (
+                    SELECT DISTINCT a.ocean_project_id, u.department_id
+                    FROM uni_native_task_account AS a
+                    JOIN uni_native_task AS t ON t.id = a.task_id AND t.is_deleted = 0
+                    JOIN users AS u ON u.id = t.pitcher_user_id
+                    WHERE a.is_deleted = 0
+                      AND a.ocean_project_id IS NOT NULL
+                      AND u.department_id IS NOT NULL
+                ) AS map ON map.ocean_project_id = r.cdp_project_id
+                WHERE r.is_deleted = 0
+                GROUP BY substr(r.stat_time_hour, 1, 10), map.department_id
+            ) AS agg
+            WHERE d.stat_date = agg.stat_day::date
+              AND d.department_id = agg.department_id
+            """
+        )
+    )
 
 
 def _uni_drama(day: date, row: dict[str, Any]) -> ReportUniDramaDay:

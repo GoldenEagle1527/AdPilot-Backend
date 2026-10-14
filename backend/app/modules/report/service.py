@@ -456,7 +456,7 @@ def uni_drama_rows(
         link = links.get(fact.project_id)
         if link is None:
             continue
-        _add(group_for(link, fact.day)["sums"], fact.metrics, UNI_MONEY)
+        _add(group_for(link, fact.day)["sums"], fact.metrics, (*UNI_MONEY, "all_show_cnt_trend", "all_click_cnt_trend"))
     for link in links.values():
         day = _day_of(link.created_at)
         if link.stored and _in_range(day, start, end):
@@ -480,7 +480,10 @@ def uni_drama_rows(
         if by_pitcher:
             row["pitcher_user_id"] = pitcher_id
             row["pitcher_name"] = link.pitcher_name
-        sums = {name: group["sums"].get(name, ZERO) for name in (*UNI_MONEY, "new_project_count")}
+        sums = {
+            name: group["sums"].get(name, ZERO)
+            for name in (*UNI_MONEY, "all_show_cnt_trend", "all_click_cnt_trend", "new_project_count")
+        }
         row["pitcher_ids"] = sorted(group["pitcher_ids"])
         row["_sums"] = sums
         row.update(uni_metrics(sums))
@@ -513,7 +516,11 @@ def _bucket_rows(
         key = key_of(link)
         if key is None:
             continue
-        _add(buckets[(key, fact.day)], fact.metrics, UNI_MONEY)
+        _add(
+            buckets[(key, fact.day)],
+            fact.metrics,
+            (*UNI_MONEY, "all_show_cnt_trend", "all_click_cnt_trend"),
+        )
     for link in links.values():
         day = _day_of(link.created_at)
         if not link.stored or not _in_range(day, start, end):
@@ -547,7 +554,10 @@ def uni_pitcher_rows(
             "pitcher_user_id": pitcher_id,
             "pitcher_name": names.get(pitcher_id, ""),
             "stat_time_day": day,
-            "_sums": {name: sums.get(name, ZERO) for name in (*UNI_MONEY, "new_project_count")},
+            "_sums": {
+                name: sums.get(name, ZERO)
+                for name in (*UNI_MONEY, "all_show_cnt_trend", "all_click_cnt_trend", "new_project_count")
+            },
             **uni_metrics(sums),
             "new_drama_count": 0,
         }
@@ -578,7 +588,10 @@ def uni_group_rows(
             "department_id": department_id,
             "department_name": names.get(department_id, ""),
             "stat_time_day": day,
-            "_sums": {name: sums.get(name, ZERO) for name in (*UNI_MONEY, "new_project_count")},
+            "_sums": {
+                name: sums.get(name, ZERO)
+                for name in (*UNI_MONEY, "all_show_cnt_trend", "all_click_cnt_trend", "new_project_count")
+            },
             **uni_metrics(sums),
             "new_drama_count": 0,
         }

@@ -184,6 +184,8 @@ class ReportUniDramaDay(BaseModel):
     all_pay_amount_income_trend: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     all_micro_game_income_trend: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     new_project_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    all_show_cnt_trend: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")
+    all_click_cnt_trend: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")
 
 
 class ReportUniPitcherDramaDay(BaseModel):
@@ -218,6 +220,8 @@ class ReportUniPitcherDramaDay(BaseModel):
     all_pay_amount_income_trend: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     all_micro_game_income_trend: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     new_project_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    all_show_cnt_trend: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")
+    all_click_cnt_trend: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")
 
 
 class ReportUniPitcherDay(BaseModel):
@@ -244,6 +248,8 @@ class ReportUniPitcherDay(BaseModel):
     all_pay_amount_income_trend: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     all_micro_game_income_trend: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     new_project_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    all_show_cnt_trend: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")
+    all_click_cnt_trend: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")
 
 
 class ReportUniGroupDay(BaseModel):
@@ -270,6 +276,8 @@ class ReportUniGroupDay(BaseModel):
     all_pay_amount_income_trend: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     all_micro_game_income_trend: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     new_project_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    all_show_cnt_trend: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")
+    all_click_cnt_trend: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")
 
 
 class ReportRoiConfig(BaseModel):
@@ -375,3 +383,23 @@ class ReportMaterialDay(BaseModel):
     show_cnt: Mapped[int] = mapped_column(BigInteger, nullable=False)
     click_cnt: Mapped[int] = mapped_column(BigInteger, nullable=False)
     convert_cnt: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+
+class ReportHomeField(BaseModel):
+    """首页三个自选。一个用户、一个表面一行。漫剧 IAA/IAP 共用 surface=manhua。"""
+
+    __tablename__ = "report_home_field"
+    __table_args__ = (
+        UniqueConstraint("user_id", "surface", name="uq_report_home_field_user_surface"),
+        CheckConstraint(
+            "surface IN ('manhua', 'uni_drama', 'uni_pitcher_drama', 'uni_pitcher', 'uni_group')",
+            name="ck_report_home_field_surface",
+        ),
+        {"comment": "首页自选字段。GET 不写缺省。"},
+    )
+
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    surface: Mapped[str] = mapped_column(String(32), nullable=False)
+    field_1: Mapped[str] = mapped_column(String(64), nullable=False)
+    field_2: Mapped[str] = mapped_column(String(64), nullable=False)
+    field_3: Mapped[str] = mapped_column(String(64), nullable=False)

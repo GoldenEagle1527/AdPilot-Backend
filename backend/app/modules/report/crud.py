@@ -387,6 +387,8 @@ async def uni_facts(session: AsyncSession, start: date, end: date) -> list[UniFa
             report.cdp_project_id,
             func.max(report.cdp_project_name),
             *[func.sum(getattr(report, name)) for name in UNI_MONEY],
+            func.sum(report.all_show_cnt_trend),
+            func.sum(report.all_click_cnt_trend),
         )
         .where(
             report.is_deleted == 0,
@@ -401,7 +403,10 @@ async def uni_facts(session: AsyncSession, start: date, end: date) -> list[UniFa
             day=str(stat_day),
             project_id=int(project_id),
             project_name=str(project_name or ""),
-            metrics={name: Decimal(value or 0) for name, value in zip(UNI_MONEY, sums)},
+            metrics={
+                name: Decimal(value or 0)
+                for name, value in zip((*UNI_MONEY, "all_show_cnt_trend", "all_click_cnt_trend"), sums)
+            },
         )
         for stat_day, project_id, project_name, *sums in rows.all()
     ]
