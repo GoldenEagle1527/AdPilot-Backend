@@ -1,4 +1,4 @@
-"""巨量广告联调数据：只在 mock 启动时写，已有同号就不再写。"""
+"""巨量广告联调数据：模板和小时行仍在 mock_seed；mock 启动只调联合夹具一次。"""
 
 from __future__ import annotations
 
@@ -6,34 +6,13 @@ import unittest
 from decimal import Decimal
 from datetime import datetime
 from pathlib import Path
-from types import SimpleNamespace
 
-from app.modules.ocean_ads.mock_seed import ensure_ocean_ads_mock, project_template, uni_hour_rows
+from app.modules.ocean_ads.mock_seed import project_template, uni_hour_rows
 from app.modules.ocean_ads.pages import _budget, _stored_roi
 
 
 def _backend() -> Path:
     return Path(__file__).resolve().parents[3]
-
-
-class _ExistingRows:
-    """库里已有同号的项目。"""
-
-    def __init__(self) -> None:
-        self.added: list[object] = []
-        self.flushed = False
-
-    async def scalar(self, _statement: object) -> object:
-        return SimpleNamespace(id=1, advertiser_id=1877368580368602)
-
-    async def execute(self, _statement: object) -> object:
-        raise AssertionError("已有项目时不再读夹具")
-
-    def add(self, row: object) -> None:
-        self.added.append(row)
-
-    async def flush(self) -> None:
-        self.flushed = True
 
 
 class ProjectTemplateTest(unittest.TestCase):
@@ -60,22 +39,20 @@ class UniHourRowsTest(unittest.TestCase):
         self.assertEqual(sum(row.stat_cost for row in rows), Decimal("240.00"))
 
 
-class SeedRunsOnceTest(unittest.IsolatedAsyncioTestCase):
-    async def test_existing_projects_are_left_alone(self) -> None:
-        session = _ExistingRows()
-        await ensure_ocean_ads_mock(session)  # type: ignore[arg-type]
-        self.assertEqual(session.added, [])
-        self.assertTrue(session.flushed)
+_RETIRED_SEED_NAMES = (
+    "_seed_ocean_ads",
+    "_seed_oceanengine",
+    "ensure_oceanengine_seed",
+    "ensure_report_mock",
+    "ensure_ocean_ads_mock",
+    "ensure_theater_platforms",
+)
 
 
 class SeedPlacementTest(unittest.TestCase):
-    def test_only_startup_calls_the_seed(self) -> None:
-        hits: list[str] = []
-        for path in (_backend() / "app").rglob("*.py"):
-            if "ensure_ocean_ads_mock(" in path.read_text(encoding="utf-8"):
-                hits.append(path.relative_to(_backend()).as_posix())
+    def test_mock_branch_calls_joint_mock_once(self) -> None:
         main = (_backend() / "main.py").read_text(encoding="utf-8")
-        self.assertEqual(hits, ["app/modules/ocean_ads/mock_seed.py"])
-        self.assertIn("ensure_ocean_ads_mock(session)", main)
         mock_branch = main.split("if settings.oceanengine.mock:", 1)[1].split("await _rebuild_report_days()", 1)[0]
-        self.assertIn("await _seed_ocean_ads()", mock_branch)
+        self.assertEqual(mock_branch.count("ensure_joint_mock("), 1)
+        for name in _RETIRED_SEED_NAMES:
+            self.assertNotIn(name, mock_branch)
