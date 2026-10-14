@@ -8,7 +8,7 @@
 
 账户出现在某个页签，要这个户在 `oe_promotion` 里有一条未删除的广告，它所属项目挂的主体是这个页签。对不上 `oe_promotion` 的素材行、已删除的广告或项目下的素材行，不算进账户的效果数。
 
-`account_id` 是 `advertiser_account.advertiser_id`。
+`account_id` 是 `advertiser_account.advertiser_id`。返回时是字符串。查询参数照旧。
 
 ## 变更历史
 
@@ -16,3 +16,4 @@
 | --- | --- | --- | --- | --- |
 | 2026-10-13 | 1 | 否 | 初稿。页签和收费模式取素材行项目 id 对上的项目所挂主体 | 李伟峰 |
 | 2026-10-14 | 2 | 否 | 按 3.5.1 改为经广告 id 对 `oe_promotion`，再取广告所属项目挂的主体。参数和返回字段不变 | 李伟峰 |
+| 2026-10-14 | 3 | 是 | 返回的 `account_id` 从数字改成字符串。旧版见 `_history/list-accounts-v2.md` | 李伟峰 |

@@ -12,3 +12,11 @@
 这是项目配置里的目标预算，不是剩余金额。通知巨量 `POST /open_api/v3.0/project/budget/update/`，`budget_mode` 为 `BUDGET_MODE_DAY`，一次最多 10 条。巨量返回成功的才把金额写回 `oe_project.template.delivery_setting.budget`。有失败项时，成功的已写入，接口返回 502。
 
 返回 `project_ids`。
+
+`project_ids` 正文里传字符串或数字都接受，19 位的巨量 id 要传字符串才不丢位。返回的 `project_ids` 是字符串数组。
+
+## 变更历史
+
+| 日期 | 版本 | 破坏？ | 改了什么 | 谁 |
+|------|------|--------|----------|----|
+| 2026-10-14 | 2 | 是 | 正文 `project_ids` 可传字符串。返回的 `project_ids` 从数字改成字符串。旧版见 `_history/update-project-budgets-v1.md` | 李伟峰 |
