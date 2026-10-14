@@ -1,0 +1,22 @@
+---
+description: 本后端仓只用 GitHub。feat 分支合入必须走 Pull Request，不要直推 main。
+alwaysApply: true
+---
+
+# 分支与 PR
+
+本仓唯一远程是 GitHub `origin`：`https://github.com/GoldenEagle1527/AdPilot-Backend`。不要添加 Gitea 远程，不要对 `git.73oc.local` 拉取、推送或开 Pull Request。前端仓不在这条里改。
+
+保护 `main`。不要在 `main` 上开发或直推。从最新 `main` 开分支：
+
+`feat/<business>/<short>`
+
+一个分支只做一个业务。不要往本仓塞前端工程。
+
+合入：对 GitHub `origin` 开 Pull Request → `main`。不要直推 `main`。
+
+一人多个接口仍宜一接口一 PR。改对外 HTTP 的同一 PR 必须改契约、变更历史、`Plan/modules/<id>/contracts/最新表.md`；破坏性带 `_history/`。合入后发群对接短文。
+
+生产密钥不准进仓。开发口令只写本仓 `deployment/dev.yaml`。
+
+人读细则：`Plan/meta/Git与Gitea.md`（ADR 0021）。
