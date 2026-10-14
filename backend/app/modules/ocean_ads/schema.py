@@ -6,8 +6,15 @@ from datetime import date
 from decimal import Decimal
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, model_validator
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, PlainSerializer, model_validator
 
+
+def _id_text(value: int) -> str:
+    return str(value)
+
+
+# 巨量、常读的 id 是 64 位整数，超出前端 JS 能精确表示的范围，返回时一律给字符串。
+OceanId = Annotated[int, PlainSerializer(_id_text, return_type=str)]
 
 DeliveryKind = Literal["standard", "uni"]
 ChargeMode = Literal["IAA", "IAP"]
@@ -60,7 +67,7 @@ class AccountQuery(BaseModel):
 class AccountItem(BaseModel):
     """一行账户。除数是 0 时比率是 0.00。"""
 
-    account_id: int
+    account_id: OceanId
     account_name: str
     balance: str | None
     stat_cost: str
@@ -129,17 +136,17 @@ class ProjectQuery(BaseModel):
 class ProjectBatchResult(BaseModel):
     """批量改过的项目，以及跟着改掉的广告条数。看不了的项目不出现在这里。"""
 
-    project_ids: list[int]
+    project_ids: list[OceanId]
     promotion_count: int
 
 
 class ProjectItem(BaseModel):
     """一行项目。标准和全域都在这里。除数是 0 时比率是 0.00。"""
 
-    project_id: int
+    project_id: OceanId
     project_name: str
     project_status: Literal["开启", "暂停"]
-    account_id: int
+    account_id: OceanId
     account_name: str
     budget: str | None
     stat_cost: str
@@ -183,7 +190,7 @@ class ProjectBudgetWrite(BaseModel):
 class ProjectBudgetResult(BaseModel):
     """巨量接受并已写入本地的项目。"""
 
-    project_ids: list[int]
+    project_ids: list[OceanId]
 
 
 class PromotionQuery(BaseModel):
@@ -269,20 +276,20 @@ class PromotionBatchWrite(BaseModel):
 class PromotionBatchResult(BaseModel):
     """改过的广告。看不了的广告不出现在这里。"""
 
-    promotion_ids: list[int]
+    promotion_ids: list[OceanId]
 
 
 class PromotionItem(BaseModel):
     """一行广告。父项目暂停时，状态是已被项目暂停。除数是 0 时比率是 0.00。"""
 
-    promotion_id: int
+    promotion_id: OceanId
     promotion_name: str
     promotion_status: Literal["投放中", "已暂停", "已被项目暂停"]
-    project_id: int | None
+    project_id: OceanId | None
     project_name: str | None
     series_name: str | None
-    book_id: int | None
-    account_id: int
+    book_id: OceanId | None
+    account_id: OceanId
     account_name: str
     promotion_links: list[str]
     budget: str | None
@@ -339,16 +346,16 @@ class MaterialQuery(BaseModel):
 class MaterialItem(BaseModel):
     """一行素材。同一天的小时行加总。material_id 在本页叫创意id，即头条素材id。"""
 
-    material_id: int | None = Field(None, description="创意id，即头条素材id。来自素材库视频的 ocean_material_id")
+    material_id: OceanId | None = Field(None, description="创意id，即头条素材id。来自素材库视频的 ocean_material_id")
     video_id: int | None = Field(None, description="我们自己的视频 id，material_videos.id")
     play_url: str | None = Field(None, description="可播放地址，素材库视频文件地址")
     poster_url: str | None = Field(None, description="第一帧地址。素材库没有单独存过封面时为空")
     material_name: str | None
-    promotion_id: int | None = Field(None, description="所属计划 id，oe_promotion.promotion_id。投放表没有则为空")
+    promotion_id: OceanId | None = Field(None, description="所属计划 id，oe_promotion.promotion_id。投放表没有则为空")
     promotion_name: str | None
-    project_id: int
+    project_id: OceanId
     project_name: str | None
-    account_id: int
+    account_id: OceanId
     account_name: str
     stat_cost: str
     show_cnt: int
@@ -391,11 +398,11 @@ class UniProjectQuery(BaseModel):
 class UniProjectItem(BaseModel):
     """一行全域项目。roi_goal 先是创建时填的系数。向巨量查到新值后更新。没填过且没查到是 -。"""
 
-    project_id: int
+    project_id: OceanId
     project_name: str
     project_status: Literal["开启", "暂停"]
     subject_name: str | None
-    account_id: int
+    account_id: OceanId
     account_name: str
     pitcher_user_id: int | None
     pitcher_name: str | None

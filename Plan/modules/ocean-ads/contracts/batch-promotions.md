@@ -14,3 +14,11 @@
 删除不通知巨量。`oe_promotion.is_deleted` 写成 1，`deleted_at` 记下时间。
 
 返回 `promotion_ids`。
+
+`promotion_ids` 正文里传字符串或数字都接受，19 位的巨量 id 要传字符串才不丢位。返回的 `promotion_ids` 是字符串数组。
+
+## 变更历史
+
+| 日期 | 版本 | 破坏？ | 改了什么 | 谁 |
+|------|------|--------|----------|----|
+| 2026-10-14 | 2 | 是 | 正文 `promotion_ids` 可传字符串。返回的 `promotion_ids` 从数字改成字符串。旧版见 `_history/batch-promotions-v1.md` | 李伟峰 |
