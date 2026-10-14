@@ -8,8 +8,11 @@ from decimal import Decimal
 from pathlib import Path
 
 from pydantic import ValidationError
+from sqlalchemy import select
 from sqlalchemy.dialects.mysql import dialect as mysql_dialect
+from sqlalchemy.dialects.postgresql import dialect as postgresql_dialect
 
+from app.modules.account.model import AdvertiserAccount
 from app.modules.ocean_ads.columns import kept_fixed
 from app.modules.ocean_ads.schema import (
     AccountQuery,
@@ -19,7 +22,7 @@ from app.modules.ocean_ads.schema import (
     ProjectBudgetWrite,
     PromotionQuery,
 )
-from app.modules.ocean_ads.service import _money, _rate, effect_numbers
+from app.modules.ocean_ads.service import _matches_kind, _money, _rate, effect_numbers, metrics_statement
 from app.modules.ocean_ads.pages import (
     accepted_delete_ids,
     accepted_status_ids,
@@ -241,6 +244,32 @@ class ColumnAndBudgetTest(unittest.TestCase):
         self.assertEqual(_payload_budget({"budget": "12.5"}), Decimal("12.50"))
         self.assertIsNone(_payload_budget({"budget": 0}))
         self.assertIsNone(_payload_budget({}))
+
+
+def _pg_sql(statement: object) -> str:
+    return " ".join(str(statement.compile(dialect=postgresql_dialect())).split())  # type: ignore[attr-defined]
+
+
+class AccountKindByPromotionTest(unittest.TestCase):
+    """3.5.1：素材行按广告 id 到 oe_promotion，再取广告所属项目挂的主体。"""
+
+    def test_metrics_join_through_the_promotion(self) -> None:
+        query = AccountQuery(delivery_kind="uni", charge_mode="IAP")
+        sql = _pg_sql(metrics_statement([1877368580368602], query))
+        self.assertIn("oe_promotion.advertiser_id = oe_material_report.advertiser_id", sql)
+        self.assertIn("oe_promotion.promotion_id = oe_material_report.cdp_promotion_id", sql)
+        self.assertIn("oe_project.ocean_project_id = oe_promotion.ocean_project_id", sql)
+        self.assertNotIn("oe_material_report.cdp_project_id", sql)
+        self.assertIn("oe_promotion.is_deleted", sql)
+        self.assertIn("delivery_subject.delivery_mode", sql)
+        self.assertIn("delivery_subject.charge_mode", sql)
+
+    def test_tab_needs_an_ad_of_that_kind(self) -> None:
+        query = AccountQuery(delivery_kind="standard")
+        sql = _pg_sql(select(AdvertiserAccount.id).where(_matches_kind(query)))
+        self.assertIn("EXISTS (SELECT oe_promotion.id FROM oe_promotion", sql)
+        self.assertIn("oe_promotion.advertiser_id = advertiser_account.advertiser_id", sql)
+        self.assertIn("oe_project.ocean_project_id = oe_promotion.ocean_project_id", sql)
 
 
 class MaterialDeletedFilterTest(unittest.IsolatedAsyncioTestCase):
