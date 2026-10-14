@@ -50,6 +50,10 @@ async def lifespan(_app: FastAPI):
             await _seed_oceanengine()
         except Exception:
             logger.exception("巨量种子写入失败，服务继续启动")
+        try:
+            await _seed_ocean_ads()
+        except Exception:
+            logger.exception("巨量广告联调数据写入失败，服务继续启动")
     await _rebuild_report_days()
     ticker = asyncio.create_task(_due_rules_loop())
     material_ticker = None
@@ -139,6 +143,16 @@ async def _seed_oceanengine() -> None:
         from app.modules.report.mock_seed import ensure_report_mock
 
         await ensure_report_mock(session)
+        await session.commit()
+        break
+
+
+async def _seed_ocean_ads() -> None:
+    """幂等补巨量广告列表的项目和广告。只在启动且 mock 时调用，接在报表夹具之后。"""
+    from app.modules.ocean_ads.mock_seed import ensure_ocean_ads_mock
+
+    async for session in get_session():
+        await ensure_ocean_ads_mock(session)
         await session.commit()
         break
 
