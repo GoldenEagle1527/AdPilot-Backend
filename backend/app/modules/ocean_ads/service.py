@@ -6,13 +6,19 @@ import json
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import Select, and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
 from app.core.envelope import ApiError
 from app.core.pagination import PageParams, page_data
-from app.modules.account.model import AdvertiserAccount, DeliverySubject, OeMaterialReport, OeProject
+from app.modules.account.model import (
+    AdvertiserAccount,
+    DeliverySubject,
+    OeMaterialReport,
+    OeProject,
+    OePromotion,
+)
 from app.modules.ocean_ads.schema import AccountQuery
 from app.modules.oceanengine.client import OceanEngineError
 from app.modules.oceanengine.runtime import _access_token, get_ocean_client
@@ -115,9 +121,11 @@ def _account_filters(query: AccountQuery, user_id: int, scope: DataScope) -> lis
 
 
 def _matches_kind(query: AccountQuery) -> ColumnElement[bool]:
-    """页签和收费模式取项目所挂主体。报表只有项目 id，主体上才有 standard/uni 和 IAA/IAP。"""
+    """3.5.1：按广告到 oe_promotion，取广告所属项目挂的主体。主体上才有 standard/uni 和 IAA/IAP。"""
     conditions = [
-        OeProject.advertiser_id == AdvertiserAccount.advertiser_id,
+        OePromotion.advertiser_id == AdvertiserAccount.advertiser_id,
+        OePromotion.is_deleted == 0,
+        OeProject.ocean_project_id == OePromotion.ocean_project_id,
         OeProject.is_deleted == 0,
         OeProject.subject_id == DeliverySubject.id,
         DeliverySubject.is_deleted == 0,
@@ -126,17 +134,16 @@ def _matches_kind(query: AccountQuery) -> ColumnElement[bool]:
         conditions.append(DeliverySubject.delivery_mode == query.delivery_kind)
     if query.charge_mode is not None:
         conditions.append(DeliverySubject.charge_mode == query.charge_mode)
-    return select(OeProject.id).where(*conditions).exists()
+    return select(OePromotion.id).where(*conditions).exists()
 
 
 def _report_filters(query: AccountQuery) -> list[ColumnElement[bool]]:
     """同一页签下，把日期范围内的小时行加总。日期取时间字符串的前 10 位。"""
     day_text = func.substr(OeMaterialReport.stat_time_hour, 1, 10)
     filters: list[ColumnElement[bool]] = [
+        OePromotion.is_deleted == 0,
         OeProject.is_deleted == 0,
         DeliverySubject.is_deleted == 0,
-        OeMaterialReport.cdp_project_id == OeProject.ocean_project_id,
-        OeProject.subject_id == DeliverySubject.id,
     ]
     if query.delivery_kind is not None:
         filters.append(DeliverySubject.delivery_mode == query.delivery_kind)
@@ -148,13 +155,9 @@ def _report_filters(query: AccountQuery) -> list[ColumnElement[bool]]:
     return filters
 
 
-async def _metrics(
-    session: AsyncSession, advertiser_ids: list[int], query: AccountQuery
-) -> dict[int, Any]:
-    """按账户加总。没有报表行的账户不在结果里。"""
-    if not advertiser_ids:
-        return {}
-    stmt = (
+def metrics_statement(advertiser_ids: list[int], query: AccountQuery) -> Select:
+    """素材行用账户 id 加广告 id 对上 oe_promotion，再经广告所属项目取主体。对不上广告表的行不算。"""
+    return (
         select(
             OeMaterialReport.advertiser_id,
             func.coalesce(func.sum(OeMaterialReport.stat_cost), 0),
@@ -163,12 +166,27 @@ async def _metrics(
             func.coalesce(func.sum(OeMaterialReport.show_cnt), 0),
             func.coalesce(func.sum(OeMaterialReport.click_cnt), 0),
         )
-        .join(OeProject, OeMaterialReport.cdp_project_id == OeProject.ocean_project_id)
+        .join(
+            OePromotion,
+            and_(
+                OePromotion.advertiser_id == OeMaterialReport.advertiser_id,
+                OePromotion.promotion_id == OeMaterialReport.cdp_promotion_id,
+            ),
+        )
+        .join(OeProject, OeProject.ocean_project_id == OePromotion.ocean_project_id)
         .join(DeliverySubject, OeProject.subject_id == DeliverySubject.id)
         .where(OeMaterialReport.advertiser_id.in_(advertiser_ids), *_report_filters(query))
         .group_by(OeMaterialReport.advertiser_id)
     )
-    rows = await session.execute(stmt)
+
+
+async def _metrics(
+    session: AsyncSession, advertiser_ids: list[int], query: AccountQuery
+) -> dict[int, Any]:
+    """按账户加总。没有报表行的账户不在结果里。"""
+    if not advertiser_ids:
+        return {}
+    rows = await session.execute(metrics_statement(advertiser_ids, query))
     return {int(advertiser_id): row for advertiser_id, *row in rows.all()}
 
 
