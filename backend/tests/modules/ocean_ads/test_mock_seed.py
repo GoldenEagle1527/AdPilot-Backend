@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import unittest
 from decimal import Decimal
+from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 
-from app.modules.ocean_ads.mock_seed import ensure_ocean_ads_mock, project_template
+from app.modules.ocean_ads.mock_seed import ensure_ocean_ads_mock, project_template, uni_hour_rows
 from app.modules.ocean_ads.pages import _budget, _stored_roi
 
 
@@ -21,8 +23,8 @@ class _ExistingRows:
         self.added: list[object] = []
         self.flushed = False
 
-    async def scalar(self, _statement: object) -> int:
-        return 1
+    async def scalar(self, _statement: object) -> object:
+        return SimpleNamespace(id=1, advertiser_id=1877368580368602)
 
     async def execute(self, _statement: object) -> object:
         raise AssertionError("已有项目时不再读夹具")
@@ -47,6 +49,15 @@ class ProjectTemplateTest(unittest.TestCase):
 
     def test_missing_budget_shows_empty(self) -> None:
         self.assertIsNone(_budget(project_template(None)))
+
+
+class UniHourRowsTest(unittest.TestCase):
+    def test_two_hours_under_the_uni_project(self) -> None:
+        rows = uni_hour_rows(1877368580368602, "2026-10-14", datetime(2026, 10, 14, 12, 0))
+        self.assertEqual([row.stat_time_hour for row in rows], ["2026-10-14 10:00:00", "2026-10-14 14:00:00"])
+        self.assertEqual({row.cdp_project_id for row in rows}, {80030001})
+        self.assertEqual({row.cdp_promotion_id for row in rows}, {80030002})
+        self.assertEqual(sum(row.stat_cost for row in rows), Decimal("240.00"))
 
 
 class SeedRunsOnceTest(unittest.IsolatedAsyncioTestCase):
